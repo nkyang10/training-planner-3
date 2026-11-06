@@ -410,9 +410,10 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('id="coach-panel"');
     expect(html).toContain('id="coach-suggestions"');
     expect(html).toContain('id="coach-history"');
-    expect(html).toContain('id="coach-undo"');
+    expect(html).not.toContain('id="coach-undo"');
     expect(html).toContain("Recent changes");
-    expect(html).toContain("undo the last change");
+    expect(html).toContain("ask in chat");
+    expect(html).not.toContain("undo the last change");
     expect(html).toContain("fetch('/calendar/history'");
     expect(html).toContain("data.suggestions");
     expect(html).toContain("chip.className = 'suggestion'");
@@ -420,6 +421,9 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain("100dvh");
+    expect(css).not.toContain("#coach-undo");
     expect(html).toContain("Calendar updated · 日曆已更新");
     expect(html).toContain('data-month="2026-11"');
     expect(html).toContain('data-day="2026-11-06"');

@@ -54,7 +54,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
   .top .profile { font-size: 13px; }
 }
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: #fff; background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
-#coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: min(540px, 72vh); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
+#coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
 #coach-panel[hidden] { display: none; }
 #coach-panel header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--wash); border-bottom: 1px solid var(--line); }
 #coach-panel header button { border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
@@ -68,13 +68,11 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 #coach-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fff; }
 #coach-form textarea { resize: none; padding: 10px; border: 1px solid var(--line); border-radius: 12px; font: inherit; background: var(--wash); }
 #coach-form .btn { padding: 10px 14px; }
-#coach-history { border-top: 1px solid var(--line); padding: 9px 12px; background: #fffaf5; max-height: 132px; overflow-y: auto; }
+#coach-history { border-top: 1px solid var(--line); padding: 9px 12px; background: #fffaf5; max-height: 132px; overflow-y: auto; overflow-x: hidden; }
 .coach-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 12px; }
-#coach-undo { border: 1px solid var(--line); background: #fff; color: var(--ember); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
-#coach-undo:disabled { opacity: .4; cursor: not-allowed; }
 #coach-history-list { display: grid; gap: 3px; font-size: 11px; }
-.change-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0; }
-.change-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0; min-width: 0; }
+.change-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .change-meta { flex: 0 0 auto; color: var(--muted); white-space: nowrap; }
 .change-item.reverted .change-summary { color: var(--muted); text-decoration: line-through; }
 .change-item .reverted { color: var(--danger); font-weight: 700; }
@@ -83,7 +81,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .suggestion { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1.2; cursor: pointer; text-align: left; }
 .suggestion:hover { border-color: var(--ember); color: var(--ember); }
 @media (max-width: 640px) {
-  #coach-panel { right: 0; bottom: 0; width: 100vw; height: 78vh; border-radius: 20px 20px 0 0; }
+  #coach-panel { right: 6px; bottom: 6px; width: calc(100vw - 12px); height: calc(100dvh - 12px); border-radius: 18px; }
   #coach-bubble { right: 12px; bottom: 12px; padding: 12px 16px; }
 }
 
