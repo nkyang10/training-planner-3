@@ -47,7 +47,7 @@ pnpm dev
 
 ## Status
 
-- 83 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 85 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh, page-wide CRUD
   animation, conversation reload after refresh, LLM-driven undo, suggestions.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.

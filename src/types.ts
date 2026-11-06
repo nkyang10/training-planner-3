@@ -39,7 +39,7 @@ export interface Memory {
   createdAt: string;
 }
 
-export type SessionKind = "easy" | "long" | "interval" | "tempo" | "rest" | "cross" | "race";
+export type SessionKind = "easy" | "long" | "interval" | "tempo" | "rest" | "cross" | "race" | "racewalk";
 
 export interface TrainingSession {
   sessionId: string;

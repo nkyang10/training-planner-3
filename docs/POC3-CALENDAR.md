@@ -165,7 +165,7 @@ The model is asked for exactly one JSON object:
       "sessionId": "session:… | null",
       "day": "YYYY-MM-DD",
       "title": "string",
-      "kind": "easy" | "long" | "interval" | "tempo" | "rest" | "cross" | "race",
+      "kind": "easy" | "long" | "interval" | "tempo" | "rest" | "cross" | "race" | "racewalk",
       "distanceKm": 0,
       "durationMin": 0,
       "note": "string | null"
@@ -178,14 +178,14 @@ The model is asked for exactly one JSON object:
 
 Rules enforced by `src/coach.ts`:
 
-- `add` and `update` need a day in `[today, today + 56]`; a past day is rejected.
+- `add` and `update` need a day in `[today, today + 120]`; a past day is rejected. A month/day without a year resolves to the next occurrence on or after today.
 - `update` and `remove` need an existing `sessionId` from the facts.
 - At most **14 actions** per turn; titles ≤ 80 chars; notes ≤ 280; distance 0–60 km; duration 0–300 min.
 - `suggestions` is required: 1–3 items, each 1–120 chars. They become tappable chips in the bubble.
 - `revertChangeSetId` is optional: an existing change-set id, or `"last"` for the newest non-reverted batch. A turn cannot
   combine a revert with `sessions`; that is rejected with zero writes.
 - Unknown keys, wrong types, invalid kinds and malformed days reject the whole turn.
-- A rejected turn writes **nothing**; the reply is a deterministic fallback.
+- A rejected turn writes **nothing**; the reply is a deterministic fallback. If the model echoes the JSON schema itself, the gateway asks once more with an explicit repair instruction before falling back.
 - The prompt includes the last 10 turns as "Conversation so far", the upcoming schedule with session ids, and the recent
   change sets (id, summary, createdAt, revertedAt), and asks the coach to review the existing plan before editing.
 
@@ -256,7 +256,7 @@ revert path. There is no direct revert API shortcut.
 ## 8. Calendar UX and animation
 
 - **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month.
-- **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`).
+- **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`).
 - **Garmin badge** `✓ n` on days with activities.
 - **Bubble** is a full-height floating panel: the log fills the available height and scrolls, with suggestions and the input
   pinned below; desktop and mobile both use the viewport height.
@@ -377,7 +377,7 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **83 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
+Current state: **85 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
 streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web + conversation reload.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
