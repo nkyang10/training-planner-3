@@ -388,10 +388,13 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("fetch('/chat/history'");
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
+    expect(html).toContain("scrollToLatest");
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain("100dvh");
+    expect(css).toContain("min-height: 0");
+    expect(css).toContain("max-height: 96px");
     expect(css).not.toContain("#coach-undo");
     expect(html).toContain("Calendar updated · 日曆已更新");
     expect(html).toContain('data-month="2026-11"');
