@@ -54,7 +54,7 @@ pnpm dev
 
 ## Honest limits
 
-There is no streaming in the bubble; the auth cookie is signed with
+The coach accepts bookings up to **180 days ahead** (shown in the bubble header). There is no streaming in the bubble; the auth cookie is signed with
 `POC3_AUTH_SECRET` (set a strong secret); the gateway trusts the internal `x-poc3-user` header; SQLite is single-process. See
 the solution doc for the full list.
 

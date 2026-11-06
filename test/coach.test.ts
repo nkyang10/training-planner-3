@@ -261,6 +261,9 @@ describe("extended race horizon", () => {
       TODAY,
     );
     expect(race.ok).toBe(true);
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], sessions: [{ day: "2027-04-01", title: "Run", kind: "easy" }] }, TODAY)).toMatchObject({
+      ok: true,
+    });
     expect(parseCoachTurn({ reply: "x", suggestions: ["a"], sessions: [{ day: "2027-06-01", title: "Run", kind: "easy" }] }, TODAY)).toMatchObject({
       ok: false,
       code: "session-too-far",

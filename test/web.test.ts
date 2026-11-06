@@ -379,6 +379,7 @@ describe("in-calendar coach bubble", () => {
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain('id="coach-bubble"');
     expect(html).toContain('id="coach-panel"');
+    expect(html).toContain("Bookings up to 180 days ahead");
     expect(html).toContain('id="coach-suggestions"');
     expect(html).not.toContain('id="coach-undo"');
     expect(html).not.toContain("undo the last change");
