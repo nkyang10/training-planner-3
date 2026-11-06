@@ -7,7 +7,7 @@
 ## Decision
 
 1. The model returns **one JSON object** with `reply`, `memories` and `sessions[]`.
-2. `parseCoachTurn` validates the whole object **before any write**: ISO days, future horizon (120 days), ≤14 actions,
+2. `parseCoachTurn` validates the whole object **before any write**: ISO days, future horizon (180 days), ≤14 actions,
    known kinds, numeric bounds, title/note lengths, CRUD actions, and the required `sessionId` for update/remove.
 3. A rejected turn writes **nothing** and returns a deterministic fallback reply.
 4. The gateway, not the model, owns ids and persistence. Session ids are deterministic for `add`; update/remove target the

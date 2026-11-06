@@ -120,7 +120,7 @@ function layout(title: string, body: string, user: AuthUser | undefined): string
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
-    <header><strong>AI Coach</strong><button id="coach-close" type="button" aria-label="Close chat">×</button></header>
+    <header><div><strong>AI Coach</strong><span class="coach-limit">Bookings up to 180 days ahead · 可預約未來 180 日</span></div><button id="coach-close" type="button" aria-label="Close chat">×</button></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
     <div id="coach-suggestions" aria-label="Suggested next messages"></div>
     <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>

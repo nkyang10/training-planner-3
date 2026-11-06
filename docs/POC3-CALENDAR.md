@@ -42,6 +42,7 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
    sign in.
 2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry session chips; Garmin days
    carry a `✓ n` badge. The nav shows your display name and links to **/profile**.
+   The coach header shows the booking limit: **Bookings up to 180 days ahead · 可預約未來 180 日**.
 3. Click **💬 Coach** (bottom-right). Tell it a goal or a constraint:
    - "I want to run a 10k in 8 weeks."
    - "Move Tuesday's run to Wednesday and delete Sunday's."
@@ -178,7 +179,7 @@ The model is asked for exactly one JSON object:
 
 Rules enforced by `src/coach.ts`:
 
-- `add` and `update` need a day in `[today, today + 120]`; a past day is rejected. A month/day without a year resolves to the next occurrence on or after today.
+- `add` and `update` need a day in `[today, today + 180]`; a past day is rejected. A month/day without a year resolves to the next occurrence on or after today.
 - `update` and `remove` need an existing `sessionId` from the facts.
 - At most **14 actions** per turn; titles ≤ 80 chars; notes ≤ 280; distance 0–60 km; duration 0–300 min.
 - `suggestions` is required: 1–3 items, each 1–120 chars. They become tappable chips in the bubble.
