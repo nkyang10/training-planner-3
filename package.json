@@ -1,0 +1,22 @@
+{
+  "name": "training-planner-poc3",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "POC3 — a calendar-first AI coach: the private calendar is the product, the coach bubble books and edits it.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "node tools/lint.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
+  }
+}
