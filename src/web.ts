@@ -137,12 +137,17 @@ function renderChatBubble(): string {
     if (!bubble || !panel || !close || !form || !input || !log || !suggestions) return;
     const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); void loadConversation(); };
     const hide = () => { panel.hidden = true; bubble.hidden = false; };
+    const scrollToLatest = () => {
+      requestAnimationFrame(() => {
+        log.scrollTop = log.scrollHeight;
+      });
+    };
     const add = (role, text) => {
       const line = document.createElement('div');
       line.className = 'bubble ' + role;
       line.textContent = text;
       log.appendChild(line);
-      log.scrollTop = log.scrollHeight;
+      scrollToLatest();
       return line;
     };
     let historyLoaded = false;
@@ -285,6 +290,7 @@ function renderChatBubble(): string {
         }
         add('coach', data.reply);
         setSuggestions(data.suggestions);
+        scrollToLatest();
         if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
           await animateChanges(data.changes || []);
           add('system', 'Calendar updated · 日曆已更新');
