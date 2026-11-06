@@ -256,7 +256,8 @@ revert path. There is no direct revert API shortcut.
 
 ## 8. Calendar UX and animation
 
-- **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month.
+- **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month. The nav marks the current
+  month as **This month** and changes that label to **Back to <current month>** when viewing another month.
 - **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`).
 - **Garmin badge** `✓ n` on days with activities.
 - **Bubble** is a full-height floating panel: the log fills the available height and scrolls, with suggestions and the input
@@ -378,7 +379,7 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **85 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
+Current state: **86 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
 streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web + conversation reload.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
