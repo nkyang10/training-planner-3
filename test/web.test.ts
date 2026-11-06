@@ -456,3 +456,15 @@ describe("conversation history after refresh", () => {
   });
 });
 
+describe("month navigation label", () => {
+  it("marks the current month and offers a way back from another month", async () => {
+    const { base, cookie } = await start();
+    const current = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(current).toContain("This month");
+    expect(current).toContain('aria-current="page"');
+    const other = await (await fetch(`${base}/calendar?month=2026-12`, { headers: { cookie } })).text();
+    expect(other).toContain("Back to November 2026");
+    expect(other).not.toContain(">This month</a>");
+  });
+});
+

@@ -30,6 +30,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .ok { color: var(--success); font-weight: 600; }
 .month-nav { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
 .month-nav a { text-decoration: none; color: var(--muted); font-weight: 600; }
+.month-nav .month-current { color: var(--ink); }
+.month-nav .month-current.active { color: var(--ember); }
 .dow, .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .dow span { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: center; padding-bottom: 4px; }
 .cell { min-height: 104px; border: 1px solid var(--line); border-radius: 12px; padding: 8px; background: var(--wash); text-decoration: none; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }

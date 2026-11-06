@@ -617,12 +617,15 @@ export function createWeb(options: WebOptions): WebApp {
         }
         const prev = addDays(start, -1).slice(0, 7);
         const next = addDays(end, 1).slice(0, 7);
+        const currentMonth = today.slice(0, 7);
+        const onCurrentMonth = month === currentMonth;
+        const currentLabel = `${MONTHS[Number(currentMonth.slice(5, 7)) - 1] ?? currentMonth} ${currentMonth.slice(0, 4)}`;
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1>${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}</h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
-            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a href="/calendar?month=${escapeHtml(today.slice(0, 7))}">This month</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
+            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a class="month-current${onCurrentMonth ? " active" : ""}" href="/calendar?month=${escapeHtml(currentMonth)}"${onCurrentMonth ? ' aria-current="page"' : ""}>${onCurrentMonth ? "This month" : `Back to ${escapeHtml(currentLabel)}`}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
             ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
