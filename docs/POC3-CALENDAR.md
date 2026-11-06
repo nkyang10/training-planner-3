@@ -6,8 +6,8 @@
 
 ## 1. What POC3 is
 
-POC3 keeps the conversation, memory and planning, but moves the **calendar to the centre of the product**. After login the
-runner lands on a private month calendar. The coach lives in a bubble on that page: the runner talks to it, and the calendar
+POC3 keeps the conversation, memory and planning, but moves the **calendar to the centre of the product**. After signup and
+login the runner lands on a private month calendar. The coach lives in a bubble on that page: the runner talks to it, and the calendar
 is the coach's working surface — it books, moves and deletes sessions in front of the runner, with a page-wide animation.
 
 The coach is not a human. It is an LLM behind a small server that validates every proposal before writing anything. The
@@ -15,10 +15,11 @@ calendar is **system-owned**: it is not the runner's Google/Outlook calendar, an
 
 POC3 is deliberately narrower than the earlier proofs:
 
-- **No Open WebUI requirement.** The calendar and the bubble are the product. Open WebUI is an optional companion surface
-  (full chat + its native calendar mirror), not the front door.
-- **One runner, one calendar.** Multi-user mapping and admin tooling are out of scope.
+- **Standalone product.** The calendar and the bubble are the product.
+- **Standalone accounts.** Multiple runners can sign up; every account has its own profile, calendar, conversations and
+  change history. Admin tooling is out of scope.
 - **The coach is the only writer.** There is no manual edit form; the bubble is the edit path.
+- **Every edit is auditable.** Each batch is stored with before/after snapshots and can be undone by another coach turn.
 
 ---
 
@@ -29,7 +30,7 @@ POC3 is deliberately narrower than the earlier proofs:
 | A chat thread hides the plan; the runner has to remember what was booked | The plan is visible immediately: month grid, today ring, Garmin completions |
 | "Coach said it changed something" is hard to verify | Every change is a visible cell edit + animation + `poc3.changes` metadata |
 | Chat UIs are generic; a training plan has days, weeks and load | Calendar-native CRUD, batch edits, day detail |
-| Embedding a full chat app is heavy (iframe, cookies, double login) | A same-origin bubble: no iframe, no second login, direct DOM access for animation |
+| Embedding a separate chat application is heavy (iframe, cookies, double login) | A same-origin bubble: no iframe, no second login, direct DOM access for animation |
 
 The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/0002-calendar-first-bubble.md).
 
@@ -37,17 +38,18 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 
 ## 3. The user journey
 
-1. Open `http://<host>:8091/login`, enter the demo token.
+1. Open `http://<host>:8091/signup`, create an account (username, display name, password, timezone, optional goal), then
+   sign in.
 2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry session chips; Garmin days
-   carry a `✓ n` badge.
+   carry a `✓ n` badge. The nav shows your display name and links to **/profile**.
 3. Click **💬 Coach** (bottom-right). Tell it a goal or a constraint:
    - "I want to run a 10k in 8 weeks."
    - "Move Tuesday's run to Wednesday and delete Sunday's."
    - "I only have 30 minutes on weekdays."
 4. The coach replies in the bubble and books the plan. The month grid updates **in place**; changed days animate.
-5. Later, Garmin activities appear on the same calendar after a sync. The coach can refer to them on the next turn.
-6. The **Full chat ↗** button opens Open WebUI for long-form conversation; the same coach gateway and the same SQLite are
-   behind both surfaces.
+5. The coach returns 1–3 tappable suggestions after every turn; the bubble also shows **Recent changes** with an Undo
+   button that sends "undo the last change" back through the coach.
+6. Later, Garmin activities appear on the same calendar after a sync. The coach can refer to them on the next turn.
 
 ---
 
@@ -64,32 +66,35 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 ┌──────────────────────┐        ┌─────────────────────────────────────┐
 │ POC3 web (:8091)     │        │ POC3 gateway (:8090)                │
 │ src/web.ts           │───────▶│ src/gateway.ts                      │
-│ - login / cookie     │  HTTP  │ - OpenAI-compatible /v1/chat/...    │
-│ - month/day render   │        │ - prompt + validate + apply CRUD    │
-│ - /calendar/data     │        │ - mirror to Open WebUI (optional)   │
-│ - /sync (Garmin)     │        └───────────────┬─────────────────────┘
-└──────────┬───────────┘                        │
-           │                                    ▼
+│ - signup/login/      │  HTTP  │ - OpenAI-compatible /v1/chat/...    │
+│   profile/cookie     │        │ - prompt + validate + apply CRUD    │
+│ - month/day render   │        │ - change sets + revert + suggestions│
+│ - /calendar/data     │        └───────────────┬─────────────────────┘
+│ - /calendar/history  │                        │
+│ - /sync (Garmin)     │                        │
+└──────────┬───────────┘                        ▼
            │                          ┌──────────────────────────────┐
            │                          │ SQLite (node:sqlite)         │
            │                          │ messages, memories,          │
            │                          │ sessions, activities         │
            │                          └──────────────────────────────┘
-           │                                    │
-           ▼                                    ▼
-   Garmin Personal API                  Open WebUI (:3010, optional)
-   activities                            native Calendar mirror
+           ▼
+   Garmin Personal API
+   activities
 ```
 
 Key properties:
 
-- **One store, two surfaces.** The calendar page and the gateway share the same SQLite file. The bubble never talks to the
-  LLM directly; it always goes through `/chat` → gateway.
+- **One store.** The calendar page and the gateway share the same SQLite file. The bubble never talks to the LLM directly;
+  it always goes through `/chat` → gateway.
 - **No iframe.** The bubble is part of the calendar document (ADR-0002). It can read the month cells and animate them.
 - **Server-side validation.** The model proposes; `parseCoachTurn` validates day, horizon, kinds, counts and CRUD ids before
   any write (ADR-0001).
-- **The calendar is a projection.** If the native mirror fails, the booking is still in SQLite; the calendar page reads
-  SQLite, not Open WebUI.
+- **Accounts are server-side.** `src/auth.ts` hashes passwords with scrypt and issues a signed `poc3_session` cookie; every
+  route resolves the current user and scopes all reads/writes to that `userId`.
+- **The calendar is a projection.** The booking is stored in SQLite; the calendar page reads SQLite.
+- **Changes are auditable.** The gateway writes one `ChangeSet` per batch with before/after snapshots; a later coach turn can
+  revert it.
 
 ---
 
@@ -97,15 +102,16 @@ Key properties:
 
 | Surface | URL | Implementation | Purpose |
 |---|---|---|---|
-| Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid, day detail, Garmin badges, login |
-| Coach bubble | bottom-right of the calendar | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, animation |
+| Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid, day detail, Garmin badges |
+| Coach bubble | bottom-right of the calendar | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation |
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
+| Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
+| Profile | `/profile` | `src/web.ts` | display name, timezone, goal, optional password change |
+| Change history | `/calendar/history` | `src/web.ts` + `src/store.ts` | recent batches, before/after, reverted state |
 | Day detail | `/day/YYYY-MM-DD` | `src/web.ts` | one day's sessions and activities |
-| Open WebUI | `:3010` (optional) | upstream Open WebUI | full chat thread + native Calendar mirror |
 | Garmin sync | `POST /sync` | `src/garmin.ts` | pull recent activities into the calendar |
 
-The bubble is **not** an Open WebUI widget, iframe or API-key embed. It is a same-origin client of `/chat`. Open WebUI is
-reached only by the **Full chat ↗** link.
+The bubble is a same-origin client of `/chat`; it is not an iframe, widget or API-key embed.
 
 ---
 
@@ -119,13 +125,15 @@ SQLite tables (created by `src/store.ts`):
 | `memories` | `memory_id`, `user_id`, `text`, `created_at` | durable facts the coach chose to remember |
 | `sessions` | `session_id`, `user_id`, `day`, `payload`, `created_at` | the training plan; `payload` is the full session JSON |
 | `activities` | `activity_id`, `user_id`, `day`, `payload`, `created_at` | Garmin activities mapped to calendar days |
+| `users` | `user_id`, `username` (unique, case-insensitive), `payload`, `created_at` | standalone account + profile + password hash |
+| `change_sets` | `change_set_id`, `user_id`, `created_at`, `payload`, `reverted_at` | audit log; payload has before/after entries |
 
 Session payload:
 
 ```json
 {
   "sessionId": "session:<sha256(userId:day:kind:title)[0..32]>",
-  "userId": "demo-runner",
+  "userId": "u_<uuid>",
   "day": "2026-11-10",
   "title": "輕鬆跑",
   "kind": "easy",
@@ -138,6 +146,10 @@ Session payload:
 
 The session id is deterministic for an add (`day + kind + title`), so re-planning the same booking replaces it instead of
 duplicating. `update` and `remove` target the existing id supplied by the prompt facts.
+
+`change_sets` is the audit trail. Each entry stores the full `before` and `after` session snapshots, so the inverse is
+unambiguous: an add is undone by a delete, a remove by restoring the snapshot, an update by restoring the previous snapshot.
+A revert is itself recorded as a new change set, so the history remains append-only.
 
 ---
 
@@ -160,7 +172,9 @@ The model is asked for exactly one JSON object:
       "durationMin": 0,
       "note": "string | null"
     }
-  ]
+  ],
+  "suggestions": ["1–3 short follow-ups"],
+  "revertChangeSetId": "change:… | last | null"
 }
 ```
 
@@ -169,10 +183,13 @@ Rules enforced by `src/coach.ts`:
 - `add` and `update` need a day in `[today, today + 56]`; a past day is rejected.
 - `update` and `remove` need an existing `sessionId` from the facts.
 - At most **14 actions** per turn; titles ≤ 80 chars; notes ≤ 280; distance 0–60 km; duration 0–300 min.
+- `suggestions` is required: 1–3 items, each 1–120 chars. They become tappable chips in the bubble.
+- `revertChangeSetId` is optional: an existing change-set id, or `"last"` for the newest non-reverted batch. A turn cannot
+  combine a revert with `sessions`; that is rejected with zero writes.
 - Unknown keys, wrong types, invalid kinds and malformed days reject the whole turn.
 - A rejected turn writes **nothing**; the reply is a deterministic fallback.
-- The prompt includes the last 10 turns as "Conversation so far" plus the upcoming schedule with session ids, and asks the
-  coach to review the existing plan before editing.
+- The prompt includes the last 10 turns as "Conversation so far", the upcoming schedule with session ids, and the recent
+  change sets (id, summary, createdAt, revertedAt), and asks the coach to review the existing plan before editing.
 
 ### CRUD, in one turn or many
 
@@ -187,24 +204,53 @@ A single reply may contain a batch of actions across days:
 ]
 ```
 
-The gateway applies the batch in order and then mirrors the **final state** of every affected session. A move-then-delete
-therefore cannot leave a stale native event. Native events whose session no longer exists are pruned after the batch.
-
-The response carries `poc3.changes` so the UI can animate:
+The gateway applies the batch in order, records one change set with before/after snapshots, and returns the changes for
+the UI:
 
 ```json
 {
   "poc3": {
     "sessions": 4,
     "memories": 1,
-    "calendarEvents": 4,
     "changes": [
       { "action": "update", "fromDay": "2026-11-10", "toDay": "2026-11-11", "title": "輕鬆跑", "kind": "easy" },
       { "action": "remove", "fromDay": "2026-11-17", "toDay": null, "title": "輕鬆跑", "kind": "easy" }
-    ]
+    ],
+    "changeSetId": "change:…",
+    "reverted": false,
+    "suggestions": ["加一次週末長跑", "將星期五改去星期六"]
   }
 }
 ```
+
+### Change history and undo
+
+Every batch is stored as a `ChangeSet` with `entries: ChangeEntry[]`. Each entry carries the full `before` and `after`
+session snapshots, the action and the old/new day:
+
+```ts
+interface ChangeEntry {
+  action: "add" | "update" | "remove" | "revert";
+  sessionId: string;
+  before: TrainingSession | null;
+  after: TrainingSession | null;
+  fromDay: string | null;
+  toDay: string | null;
+  title: string;
+  kind: SessionKind;
+}
+```
+
+A later coach turn can undo it by returning `revertChangeSetId` (or `"last"`). The gateway applies the inverse in reverse
+order:
+
+- `add` → delete the added session
+- `remove` → restore the `before` snapshot
+- `update` → restore the `before` snapshot (including a move back to `fromDay`)
+
+The revert is itself appended as a new change set (`summary: "Undo: …"`), and the original set is marked `revertedAt`. This
+keeps the log append-only and auditable. `GET /calendar/history` returns the newest first; the bubble shows the recent
+changes and an **Undo** button that sends "undo the last change" through the coach — there is no direct revert API shortcut.
 
 ---
 
@@ -240,24 +286,7 @@ Environment: `GARMIN_PERSONAL_API_KEY`.
 
 ---
 
-## 10. Optional Open WebUI native calendar mirror
-
-POC3 can mirror sessions into Open WebUI's own Calendar so the plan also appears in the chat product's sidebar:
-
-- `src/openwebui-calendar.ts` signs in, finds the default calendar, lists events in a generous window, creates or updates
-  one all-day event per session, and deletes events whose session no longer exists.
-- Events use **nanosecond** `start_at`/`end_at` (local midnight × 1e6) and `meta.poc3_session_id`, `meta.source: "poc3-coach"`.
-- POC3 ignores PoC2-era events because the metadata key is namespaced; run POC3 against a separate Open WebUI account/calendar
-  if you want strict isolation.
-- A mirror failure never loses the booking in SQLite; the chat reply is unaffected.
-
-Environment: `OPENWEBUI_URL`, `OPENWEBUI_EMAIL`, `OPENWEBUI_PASSWORD`, `POC3_TIMEZONE_OFFSET`.
-
-Open WebUI is optional. The calendar page does not read it.
-
----
-
-## 11. HTTP API
+## 10. HTTP API
 
 ### Gateway (`:8090`)
 
@@ -267,24 +296,30 @@ Open WebUI is optional. The calendar page does not read it.
 | `GET` | `/v1/models` | OpenAI-compatible model list (`poc3-coach`) |
 | `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE) |
 
-Headers: `Authorization: Bearer <POC3_TOKENS value>` (optional in the demo), `x-poc3-user: <userId>`.
+The gateway binds `127.0.0.1` and trusts the internal `x-poc3-user` header set by the web server; the browser never talks to
+it directly. The web surface is the authenticated entry point.
 
 ### Calendar web (`:8091`)
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/login`, `POST /login` | token login, sets `poc3` cookie |
+| `GET`/`POST` | `/signup` | create a standalone account (username, display name, password, timezone, goal) |
+| `GET`/`POST` | `/login` | password login; sets the signed `poc3_session` cookie |
 | `GET` | `/logout` | clears the cookie |
-| `GET` | `/calendar?month=YYYY-MM` | month grid |
+| `GET`/`POST` | `/profile` | display name, timezone, goal, optional password change |
+| `GET` | `/calendar?month=YYYY-MM` | month grid (authenticated, user-scoped) |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
 | `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh |
-| `POST` | `/chat` | bubble proxy → gateway; returns `{reply, sessions, changes}` |
+| `GET` | `/calendar/history` | recent change sets (newest first, reverted marker) |
+| `POST` | `/chat` | bubble proxy → gateway; returns `{reply, sessions, changes, suggestions, changeSetId, reverted}` |
 | `POST` | `/sync` | Garmin pull |
 | `GET` | `/static/app.css` | styles |
 
+All page routes except `/login`, `/signup`, `/health` and `/static/app.css` redirect unauthenticated requests to `/login`.
+
 ---
 
-## 12. Run it
+## 11. Run it
 
 Requirements: Node.js 24+, pnpm 12+ (or npm), a model endpoint that speaks OpenAI chat completions.
 
@@ -295,23 +330,21 @@ pnpm install
 Set the minimum environment (PowerShell shown):
 
 ```powershell
-$env:POC3_TOKENS='{"demo-token":"demo-runner"}'
+$env:POC3_AUTH_SECRET='<long random secret>'
 $env:POC3_DB='sqlite:data/poc3.sqlite'
 $env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
 $env:POC3_MODEL_API_KEY='<model key>'
 $env:POC3_MODEL_NAME='dgx/general'
 $env:POC3_CALENDAR_URL='http://127.0.0.1:8091/calendar'
-$env:POC3_TIMEZONE_OFFSET='+08:00'
 $env:GARMIN_PERSONAL_API_KEY='<Garmin personal API key>'
 pnpm dev
 ```
 
 Then:
 
-- Calendar: `http://127.0.0.1:8091/calendar` (token `demo-token` by default)
+- Sign up: `http://127.0.0.1:8091/signup`
+- Calendar: `http://127.0.0.1:8091/calendar`
 - Gateway: `http://127.0.0.1:8090/health`
-- Optional Open WebUI: set `OPENWEBUI_URL/EMAIL/PASSWORD`, open `http://127.0.0.1:3010`, then add an OpenAI connection
-  pointing at `http://<host>:8090/v1` with model `poc3-coach` in Open WebUI's admin settings.
 
 Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`).
 
@@ -322,26 +355,21 @@ Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`).
 | `POC3_GATEWAY_PORT` | `8090` | gateway port |
 | `POC3_WEB_PORT` | `8091` | calendar port |
 | `POC3_DB` | `sqlite:data/poc3.sqlite` | SQLite spec; directory is created |
-| `POC3_USER_ID` | `demo-runner` | fallback user when no `x-poc3-user` |
-| `POC3_TOKENS` | `{"demo-token":"demo-runner"}` | token → user JSON |
+| `POC3_AUTH_SECRET` | `poc3-dev-secret-change-me` | HMAC secret for the signed session cookie; set a strong value |
+| `POC3_USER_ID` | `demo-runner` | gateway fallback when no `x-poc3-user` header |
 | `POC3_MODEL_BASE_URL` | `http://192.168.1.202:8102/v1` | OpenAI-compatible endpoint |
 | `POC3_MODEL_API_KEY` | empty | model bearer |
 | `POC3_MODEL_NAME` | `dgx/general` | model name |
-| `POC3_MODEL_ID` | `poc3-coach` | id exposed to Open WebUI |
+| `POC3_MODEL_ID` | `poc3-coach` | id exposed by the gateway |
 | `POC3_CALENDAR_URL` | `http://127.0.0.1:8091/calendar` | link appended to replies |
 | `POC3_GATEWAY_URL` | `http://127.0.0.1:8090` | web → gateway |
-| `POC3_CHAT_URL` | empty | Full chat link (optional; hidden when empty) |
-| `POC3_TIMEZONE_OFFSET` | `+08:00` | native calendar all-day offset |
 | `GARMIN_PERSONAL_API_KEY` | empty | Garmin Personal API key |
-| `OPENWEBUI_URL` | empty | enables the native mirror |
-| `OPENWEBUI_EMAIL` | empty | mirror account |
-| `OPENWEBUI_PASSWORD` | empty | mirror password |
 
 Never commit real keys or `.env` files.
 
 ---
 
-## 13. Testing and gates
+## 12. Testing and gates
 
 ```bash
 pnpm lint
@@ -349,33 +377,33 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **51 tests in 6 files** — coach contract/actions/history, gateway streaming + CRUD + batch + mirror,
-store CRUD, Garmin mapping/token quirks, calendar web, native mirror create/update/delete/prune.
+Current state: **83 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
+streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
 
 ---
 
-## 14. Honest limits
+## 13. Honest limits
 
 1. **The bubble does not reload conversation history** after a page refresh. Messages are in SQLite and feed the coach, but the
-   panel starts empty. Open WebUI keeps its own threads.
-2. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming for Open WebUI.
-3. **One runner.** `POC3_USER_ID` / `x-poc3-user`; there is no multi-tenant mapping or signup.
-4. **No manual edit form.** The coach is the only writer by design; the runner can only ask it.
-5. **Native calendar is a view.** Open WebUI's UI refreshes on navigation; the calendar page is the live view.
-6. **No external calendar sync.** Open WebUI's native calendar does not sync Google/Outlook/CalDAV.
+   panel starts empty.
+2. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming.
+3. **Auth is PoC-grade.** The default `POC3_AUTH_SECRET` must be replaced; there is no email verification, password reset,
+   rate limit or session revocation list.
+4. **The gateway trusts `x-poc3-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
+5. **No manual edit form.** The coach is the only writer by design; the runner can only ask it.
+6. **No external calendar sync.** Google/Outlook/CalDAV are out of scope.
 7. **Single-process SQLite.** Fine for a PoC; not a multi-instance production store.
 8. **Animation is best-effort.** It is DOM/CSS/Web Animations; reduced-motion users get the grid update without the flourish.
 
 ---
 
-## 15. Documents
+## 14. Documents
 
-- [`FEATURES-FOR-REVIEW.md`](FEATURES-FOR-REVIEW.md) — candidate features from PoC1/PoC2/Open WebUI, prioritised for review.
+- [`FEATURES-FOR-REVIEW.md`](FEATURES-FOR-REVIEW.md) — candidate features from PoC1/PoC2, prioritised for review.
 - [`adr/0001-server-validated-coach.md`](adr/0001-server-validated-coach.md)
 - [`adr/0002-calendar-first-bubble.md`](adr/0002-calendar-first-bubble.md)
-- [`adr/0003-native-calendar-mirror.md`](adr/0003-native-calendar-mirror.md)
 - [`design/calendar-crud-animation.png`](design/calendar-crud-animation.png)
 
 POC3 is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog.

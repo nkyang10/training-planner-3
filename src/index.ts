@@ -1,10 +1,11 @@
 /**
- * POC3 entry point: the coach gateway (OpenAI-compatible, for Open WebUI) and the private calendar, sharing one store.
+ * POC3 entry point: the coach gateway (OpenAI-compatible, for the calendar's coach bubble) and the private calendar,
+ * sharing one store. The web surface owns accounts; the gateway trusts the internal x-poc3-user header.
  */
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { createAuth } from "./auth";
 import { createGarminClient } from "./garmin";
-import { createOpenWebUiCalendar } from "./openwebui-calendar";
 import { createGateway } from "./gateway";
 import { createStore } from "./store";
 import { createWeb } from "./web";
@@ -13,7 +14,7 @@ const gatewayPort = Number(process.env["POC3_GATEWAY_PORT"] ?? "8090");
 const webPort = Number(process.env["POC3_WEB_PORT"] ?? "8091");
 const databaseSpec = process.env["POC3_DB"] ?? "sqlite:data/poc3.sqlite";
 const userId = process.env["POC3_USER_ID"] ?? "demo-runner";
-const tokens = JSON.parse(process.env["POC3_TOKENS"] ?? '{"demo-token":"demo-runner"}') as Record<string, string>;
+const authSecret = process.env["POC3_AUTH_SECRET"] ?? "poc3-dev-secret-change-me";
 const garminKey = process.env["GARMIN_PERSONAL_API_KEY"];
 
 if (databaseSpec.startsWith("sqlite:")) {
@@ -22,20 +23,8 @@ if (databaseSpec.startsWith("sqlite:")) {
 }
 
 const handle = createStore(databaseSpec);
+const auth = createAuth({ store: handle.store, secret: authSecret });
 const garmin = garminKey === undefined || garminKey.length === 0 ? undefined : createGarminClient({ apiKey: garminKey });
-
-const openWebUiUrl = process.env["OPENWEBUI_URL"];
-const openWebUiEmail = process.env["OPENWEBUI_EMAIL"];
-const openWebUiPassword = process.env["OPENWEBUI_PASSWORD"];
-const calendarMirror =
-  openWebUiUrl === undefined || openWebUiEmail === undefined || openWebUiPassword === undefined
-    ? undefined
-    : createOpenWebUiCalendar({
-        baseUrl: openWebUiUrl,
-        email: openWebUiEmail,
-        password: openWebUiPassword,
-        ...(process.env["POC3_TIMEZONE_OFFSET"] === undefined ? {} : { timezoneOffset: process.env["POC3_TIMEZONE_OFFSET"] }),
-      });
 
 const gateway = createGateway({
   store: handle.store,
@@ -45,15 +34,13 @@ const gateway = createGateway({
   modelName: process.env["POC3_MODEL_NAME"] ?? "dgx/general",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
   calendarUrl: process.env["POC3_CALENDAR_URL"] ?? "http://127.0.0.1:8091/calendar",
-  ...(calendarMirror === undefined ? {} : { calendarMirror }),
 });
 
 const web = createWeb({
   store: handle.store,
-  tokens,
+  auth,
   gatewayUrl: process.env["POC3_GATEWAY_URL"] ?? "http://127.0.0.1:8090",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
-  chatUrl: process.env["POC3_CHAT_URL"] ?? "",
   ...(garmin === undefined ? {} : { garmin }),
 });
 

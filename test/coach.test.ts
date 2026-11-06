@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCoachHistory, buildCoachPrompt, parseCoachTurn } from "../src/coach";
-import type { Activity, Memory, Message, TrainingSession } from "../src/types";
+import type { Activity, ChangeSet, Memory, Message, TrainingSession } from "../src/types";
 
 const TODAY = "2026-11-05";
 
@@ -35,6 +35,15 @@ const message = (role: "user" | "assistant", text: string): Message => ({
   text,
   createdAt: "2026-11-05T00:00:00.000Z",
 });
+const changeSet = (changeSetId: string, summary: string, revertedAt: string | null = null): ChangeSet => ({
+  changeSetId,
+  userId: "u",
+  createdAt: "2026-11-05T00:00:00.000Z",
+  summary,
+  entries: [],
+  revertedAt,
+});
+const SUGGESTIONS = ["Book my long run for Sunday", "Move Thursday to Friday"];
 
 describe("coach turn", () => {
   it("accepts a grounded turn with memories and future sessions", () => {
@@ -43,6 +52,7 @@ describe("coach turn", () => {
         reply: "I booked an easy week and remembered your 10k goal.",
         memories: ["Training for a 10k in 8 weeks"],
         sessions: [{ day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35, note: "keep it conversational" }],
+        suggestions: SUGGESTIONS,
       },
       TODAY,
     );
@@ -50,6 +60,8 @@ describe("coach turn", () => {
     if (result.ok) {
       expect(result.turn.sessions[0]?.day).toBe("2026-11-06");
       expect(result.turn.memories).toHaveLength(1);
+      expect(result.turn.suggestions).toEqual(SUGGESTIONS);
+      expect(result.turn.revertChangeSetId).toBeNull();
     }
   });
 
@@ -77,6 +89,7 @@ describe("coach turn", () => {
       sessions: [session("2026-11-06")],
       activities: [activity],
       history: [],
+      recentChanges: [],
       question: "How is my week?",
     });
     expect(prompt).toContain("prefers mornings");
@@ -87,7 +100,7 @@ describe("coach turn", () => {
 
   it("caps history at the last 20 turns", () => {
     const history = Array.from({ length: 30 }, (_, index) => message("user", `m${index}`));
-    const built = buildCoachHistory({ today: TODAY, memories: [], sessions: [], activities: [], history, question: "q" });
+    const built = buildCoachHistory({ today: TODAY, memories: [], sessions: [], activities: [], history, recentChanges: [], question: "q" });
     expect(built).toHaveLength(20);
     expect(built[0]?.content).toBe("m10");
   });
@@ -102,6 +115,7 @@ describe("coach schedule actions", () => {
           { action: "update", sessionId: "session:a", day: "2026-11-07", title: "Easy 4 km", kind: "easy", distanceKm: 4, durationMin: 30 },
           { action: "remove", sessionId: "session:b" },
         ],
+        suggestions: ["Book an easy run for Sunday"],
       },
       TODAY,
     );
@@ -131,6 +145,7 @@ describe("coach schedule actions", () => {
       sessions: [],
       activities: [],
       history: [message("user", "I ran 5 km yesterday"), message("assistant", "Nice, keep it easy")],
+      recentChanges: [],
       question: "What next?",
     });
     expect(prompt).toContain("Conversation so far");
@@ -140,3 +155,87 @@ describe("coach schedule actions", () => {
   });
 });
 
+describe("coach suggestions", () => {
+  it("accepts 1-3 suggestions and trims them", () => {
+    const result = parseCoachTurn({ reply: "x", suggestions: ["  Book Sunday  ", "Move Thursday"] }, TODAY);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.turn.suggestions).toEqual(["Book Sunday", "Move Thursday"]);
+    const three = parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c"] }, TODAY);
+    expect(three.ok).toBe(true);
+  });
+
+  it("rejects missing, empty, oversized or too many suggestions", () => {
+    expect(parseCoachTurn({ reply: "x" }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
+    expect(parseCoachTurn({ reply: "x", suggestions: [] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c", "d"] }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-suggestions",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: [""] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a".repeat(121)] }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-suggestion",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: [42] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
+  });
+});
+
+describe("coach revert", () => {
+  it("accepts a revert id and keeps it separate from sessions", () => {
+    const last = parseCoachTurn({ reply: "Putting it back.", suggestions: ["Plan the week again"], revertChangeSetId: "last" }, TODAY);
+    expect(last.ok).toBe(true);
+    if (last.ok) {
+      expect(last.turn.revertChangeSetId).toBe("last");
+      expect(last.turn.sessions).toEqual([]);
+    }
+    const explicit = parseCoachTurn(
+      { reply: "Undone.", suggestions: ["Check Sunday"], revertChangeSetId: "change:9f2a-1b" },
+      TODAY,
+    );
+    expect(explicit.ok).toBe(true);
+    if (explicit.ok) expect(explicit.turn.revertChangeSetId).toBe("change:9f2a-1b");
+  });
+
+  it("rejects a malformed revert id", () => {
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], revertChangeSetId: 42 }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-revert",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], revertChangeSetId: "" }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-revert",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], revertChangeSetId: "two words" }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-revert",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], revertChangeSetId: "x".repeat(101) }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-revert",
+    });
+  });
+
+  it("puts recent changes with their ids into the prompt and asks for suggestions", () => {
+    const prompt = buildCoachPrompt({
+      today: TODAY,
+      memories: [],
+      sessions: [],
+      activities: [],
+      history: [],
+      recentChanges: [
+        changeSet("change:9", "move \"Long 8 km\" 2026-11-07 → 2026-11-09"),
+        changeSet("change:8", "add \"Easy 4 km\" on 2026-11-06", "2026-11-05T09:00:00.000Z"),
+      ],
+      question: "Undo that",
+    });
+    expect(prompt).toContain("recentChanges");
+    expect(prompt).toContain("change:9");
+    expect(prompt).toContain("change:8");
+    expect(prompt).toContain("move \\\"Long 8 km\\\"");
+    expect(prompt).toContain("\"revertedAt\":null");
+    expect(prompt).toContain("2026-11-05T09:00:00.000Z");
+    expect(prompt).toContain("suggestions");
+    expect(prompt).toContain("1-3");
+    expect(prompt).toContain("revertChangeSetId");
+  });
+});

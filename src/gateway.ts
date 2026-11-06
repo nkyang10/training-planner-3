@@ -1,17 +1,16 @@
 /**
- * The POC3 coach gateway: an OpenAI-compatible endpoint that Open WebUI can talk to as a "model".
+ * The POC3 coach gateway: an OpenAI-compatible endpoint the calendar's coach bubble talks to as a "model".
  *
- * Open WebUI stays the chat product. This gateway is where the coach gets memory and a calendar: it loads the runner's
- * memories, upcoming sessions and Garmin activities, asks the local model for one structured turn, validates it, writes
- * the memories/sessions, and returns only the natural-language reply to the chat.
+ * The gateway is where the coach gets memory and a calendar: it loads the runner's memories, upcoming sessions, Garmin
+ * activities and recent change sets, asks the local model for one structured turn, validates it, then writes the
+ * memories, the sessions and one change set for the batch (or undoes a change set), and returns the natural-language
+ * reply plus the metadata the calendar UI needs.
  */
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { buildCoachHistory, buildCoachPrompt, parseCoachTurn } from "./coach";
-import type { SessionAction } from "./coach";
-import type { SessionKind } from "./types";
-import type { CalendarEventDraft, CalendarMirror } from "./openwebui-calendar";
-import type { Store } from "./types";
+import { applyRevert } from "./history";
+import type { ChangeEntry, ChangeSet, Store, TrainingSession } from "./types";
 
 export interface GatewayOptions {
   store: Store;
@@ -23,8 +22,6 @@ export interface GatewayOptions {
   modelId?: string;
   /** Where the runner opens the calendar the coach writes into. */
   calendarUrl?: string;
-  /** Optional mirror into Open WebUI's native Calendar (no fork, no iframe). */
-  calendarMirror?: CalendarMirror;
   now?: () => string;
   fetchImpl?: typeof fetch;
 }
@@ -34,8 +31,21 @@ export interface Gateway {
   close(): Promise<void>;
 }
 
+/** The `poc3` block the calendar UI reads from a completion. */
+export interface GatewayMeta {
+  /** How many sessions the turn wrote (a batch) or restored/deleted (a revert). */
+  sessions: number;
+  memories: number;
+  changes: ChangeEntry[];
+  /** The change set this turn recorded, or null when nothing was written. */
+  changeSetId: string | null;
+  reverted: boolean;
+  suggestions: string[];
+}
+
 const FALLBACK_REPLY =
   "I could not safely write that turn, so nothing was changed. Please say it again in a simpler way — for example the goal, the days you can train, and anything that hurts.";
+const MAX_REVERT_LOOKBACK = 50;
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -118,7 +128,7 @@ async function askModel(
   }
 }
 
-function completionBody(id: string, model: string, reply: string, created: number, meta: { sessions: number; memories: number; calendarEvents: number; changes: unknown[] }): unknown {
+function completionBody(id: string, model: string, reply: string, created: number, meta: GatewayMeta): unknown {
   return {
     id,
     object: "chat.completion",
@@ -138,6 +148,29 @@ function streamChunk(id: string, model: string, created: number, content: string
     model,
     choices: [{ index: 0, delta: content.length === 0 ? {} : { content }, finish_reason: finish }],
   })}\n\n`;
+}
+
+function emptyMeta(): GatewayMeta {
+  return { sessions: 0, memories: 0, changes: [], changeSetId: null, reverted: false, suggestions: [] };
+}
+
+/** One line per mutation, short enough to store on the change set and show in the coach prompt. */
+function summarizeChanges(changes: readonly ChangeEntry[]): string {
+  const parts = changes.map((change) => {
+    if (change.action === "add") return `add "${change.title}" on ${change.toDay ?? "?"}`;
+    if (change.action === "remove") return `remove "${change.title}" from ${change.fromDay ?? "?"}`;
+    return `move "${change.title}" ${change.fromDay ?? "?"} → ${change.toDay ?? "?"}`;
+  });
+  const summary = parts.join("; ");
+  return summary.length > 280 ? `${summary.slice(0, 279)}…` : summary;
+}
+
+/** "last" means the newest change set that still stands, so an undo cannot pick an already undone batch. */
+function resolveChangeSet(store: Store, userId: string, requested: string): ChangeSet | undefined {
+  if (requested === "last") {
+    return store.listChangeSets(userId, MAX_REVERT_LOOKBACK).find((changeSet) => changeSet.revertedAt === null);
+  }
+  return store.getChangeSet(userId, requested);
 }
 
 export function createGateway(options: GatewayOptions): Gateway {
@@ -191,12 +224,14 @@ export function createGateway(options: GatewayOptions): Gateway {
       const userId = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : options.userId;
       const today = now().slice(0, 10);
       const history = options.store.listMessages(userId, 20);
+      const recentChanges = options.store.listChangeSets(userId, 10);
       const prompt = buildCoachPrompt({
         today,
         memories: options.store.listMemories(userId, 100),
         sessions: options.store.listSessions(userId, today, addDays(today, 56)),
         activities: options.store.listActivities(userId, 10),
         history,
+        recentChanges,
         question,
       });
       const createdAt = now();
@@ -210,29 +245,94 @@ export function createGateway(options: GatewayOptions): Gateway {
 
       let raw: unknown;
       try {
-        raw = await askModel(options, prompt, buildCoachHistory({ today, memories: [], sessions: [], activities: [], history, question }), question);
+        raw = await askModel(
+          options,
+          prompt,
+          buildCoachHistory({ today, memories: [], sessions: [], activities: [], history, recentChanges: [], question }),
+          question,
+        );
       } catch (error) {
         sendJson(response, 502, { error: { code: "model-failed", detail: error instanceof Error ? error.message : String(error) } });
         return;
       }
       const parsed = parseCoachTurn(raw, today);
       let reply = FALLBACK_REPLY;
-      let remembered = 0;
-      let calendarEvents = 0;
-      const changes: Array<{ action: SessionAction; sessionId: string; fromDay: string | null; toDay: string | null; title: string; kind: SessionKind }> = [];
+      const meta = emptyMeta();
       const failures: string[] = [];
-      const affected = new Set<string>();
       if (parsed.ok) {
-        reply = parsed.turn.reply;
-        for (const text of parsed.turn.memories) {
-          options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: now() });
-        }
-        remembered = parsed.turn.memories.length;
-        for (const draft of parsed.turn.sessions) {
-          if (draft.action === "add") {
-            const sessionId = `session:${createHash("sha256").update(`${userId}:${draft.day}:${draft.kind}:${draft.title}`).digest("hex").slice(0, 32)}`;
-            options.store.upsertSession({
-              sessionId,
+        const turn = parsed.turn;
+        if (turn.revertChangeSetId !== null && turn.sessions.length > 0) {
+          // An undo and a batch must stay separate turns: one answer cannot both restore and overwrite snapshots.
+          reply = `${FALLBACK_REPLY}\n\nI did not apply anything: an undo and schedule edits cannot share one turn.`;
+        } else if (turn.revertChangeSetId !== null) {
+          const target = resolveChangeSet(options.store, userId, turn.revertChangeSetId);
+          if (target === undefined) {
+            reply = `${FALLBACK_REPLY}\n\nI could not find the change you asked me to undo.`;
+          } else if (target.revertedAt !== null) {
+            reply = `${FALLBACK_REPLY}\n\nThat change was already undone, so there was nothing to revert.`;
+          } else {
+            const result = applyRevert(options.store, userId, target, now());
+            meta.changes = result.changes;
+            meta.reverted = true;
+            meta.sessions = result.changes.length;
+            meta.suggestions = turn.suggestions;
+            meta.changeSetId = options.store.listChangeSets(userId, 1)[0]?.changeSetId ?? null;
+            reply = turn.reply;
+            for (const text of turn.memories) {
+              options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: now() });
+            }
+            meta.memories = turn.memories.length;
+            if (result.changes.length > 0 && options.calendarUrl !== undefined) {
+              reply = `${reply}\n\nYour calendar: ${options.calendarUrl}`;
+            }
+          }
+        } else {
+          reply = turn.reply;
+          meta.suggestions = turn.suggestions;
+          for (const text of turn.memories) {
+            options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: now() });
+          }
+          meta.memories = turn.memories.length;
+          for (const draft of turn.sessions) {
+            if (draft.action === "add") {
+              const sessionId = `session:${createHash("sha256").update(`${userId}:${draft.day}:${draft.kind}:${draft.title}`).digest("hex").slice(0, 32)}`;
+              const before = options.store.getSession(userId, sessionId) ?? null;
+              const after: TrainingSession = {
+                sessionId,
+                userId,
+                day: draft.day,
+                title: draft.title,
+                kind: draft.kind,
+                distanceKm: draft.distanceKm,
+                durationMin: draft.durationMin,
+                note: draft.note,
+                createdAt: now(),
+              };
+              options.store.upsertSession(after);
+              meta.changes.push({ action: "add", sessionId, before, after, fromDay: null, toDay: draft.day, title: draft.title, kind: draft.kind });
+              continue;
+            }
+            const existing = draft.sessionId === null ? undefined : options.store.getSession(userId, draft.sessionId);
+            if (existing === undefined) {
+              failures.push(draft.title.length === 0 ? (draft.sessionId ?? "unknown session") : draft.title);
+              continue;
+            }
+            if (draft.action === "remove") {
+              options.store.deleteSession(userId, existing.sessionId);
+              meta.changes.push({
+                action: "remove",
+                sessionId: existing.sessionId,
+                before: existing,
+                after: null,
+                fromDay: existing.day,
+                toDay: null,
+                title: existing.title,
+                kind: existing.kind,
+              });
+              continue;
+            }
+            const after: TrainingSession = {
+              sessionId: existing.sessionId,
               userId,
               day: draft.day,
               title: draft.title,
@@ -241,71 +341,38 @@ export function createGateway(options: GatewayOptions): Gateway {
               durationMin: draft.durationMin,
               note: draft.note,
               createdAt: now(),
+            };
+            options.store.upsertSession(after);
+            meta.changes.push({
+              action: "update",
+              sessionId: existing.sessionId,
+              before: existing,
+              after,
+              fromDay: existing.day,
+              toDay: draft.day,
+              title: draft.title,
+              kind: draft.kind,
             });
-            changes.push({ action: "add", sessionId, fromDay: null, toDay: draft.day, title: draft.title, kind: draft.kind });
-            affected.add(sessionId);
-            continue;
           }
-          const existing = draft.sessionId === null ? undefined : options.store.getSession(userId, draft.sessionId);
-          if (existing === undefined) {
-            failures.push(draft.title.length === 0 ? (draft.sessionId ?? "unknown session") : draft.title);
-            continue;
+          if (failures.length > 0) {
+            reply = `${reply}\n\nNote: I could not find ${failures.length === 1 ? "one session" : `${failures.length} sessions`} you asked me to change, so that part was not applied.`;
           }
-          if (draft.action === "remove") {
-            options.store.deleteSession(userId, existing.sessionId);
-            changes.push({ action: "remove", sessionId: existing.sessionId, fromDay: existing.day, toDay: null, title: existing.title, kind: existing.kind });
-            affected.add(existing.sessionId);
-            continue;
+          if (meta.changes.length > 0) {
+            const changeSet: ChangeSet = {
+              changeSetId: `change:${randomUUID()}`,
+              userId,
+              createdAt: now(),
+              summary: summarizeChanges(meta.changes),
+              entries: meta.changes,
+              revertedAt: null,
+            };
+            options.store.appendChangeSet(changeSet);
+            meta.changeSetId = changeSet.changeSetId;
+            meta.sessions = meta.changes.length;
+            if (options.calendarUrl !== undefined) {
+              reply = `${reply}\n\nYour calendar: ${options.calendarUrl}`;
+            }
           }
-          options.store.upsertSession({
-            sessionId: existing.sessionId,
-            userId,
-            day: draft.day,
-            title: draft.title,
-            kind: draft.kind,
-            distanceKm: draft.distanceKm,
-            durationMin: draft.durationMin,
-            note: draft.note,
-            createdAt: now(),
-          });
-          changes.push({ action: "update", sessionId: existing.sessionId, fromDay: existing.day, toDay: draft.day, title: draft.title, kind: draft.kind });
-          affected.add(existing.sessionId);
-        }
-        if (failures.length > 0) {
-          reply = `${reply}\n\nNote: I could not find ${failures.length === 1 ? "one session" : `${failures.length} sessions`} you asked me to change, so that part was not applied.`;
-        }
-        if (changes.length > 0 && options.calendarUrl !== undefined) {
-          reply = `${reply}\n\nYour calendar: ${options.calendarUrl}`;
-        }
-      }
-      // A batch may touch the same session more than once (move then delete, delete then re-add). Mirror the FINAL
-      // state of every affected session, not each intermediate action, so the native calendar cannot end up stale.
-      const toMirror: CalendarEventDraft[] = [];
-      const toRemove: string[] = [];
-      for (const sessionId of affected) {
-        const final = options.store.getSession(userId, sessionId);
-        if (final === undefined) {
-          toRemove.push(sessionId);
-        } else {
-          toMirror.push({
-            sessionId,
-            day: final.day,
-            title: final.title,
-            description: final.note ?? `Booked by the AI coach (${final.kind}).`,
-            kind: final.kind,
-          });
-        }
-      }
-      if (options.calendarMirror !== undefined && (toMirror.length > 0 || toRemove.length > 0)) {
-        try {
-          const mirrored = await options.calendarMirror.ensureEvents(toMirror);
-          const removed = await options.calendarMirror.removeEvents(toRemove);
-          const valid = options.store.listSessions(userId, today, addDays(today, 56)).map((session) => session.sessionId);
-          const pruned = options.calendarMirror.prune === undefined ? 0 : await options.calendarMirror.prune(valid);
-          calendarEvents = mirrored.created + mirrored.updated + removed + pruned;
-        } catch {
-          // The native calendar is a view; a mirror failure must not lose the booking in POC3's own store.
-          calendarEvents = 0;
         }
       }
       options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text: reply, createdAt: now() });
@@ -325,7 +392,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         response.end();
         return;
       }
-      sendJson(response, 200, completionBody(id, modelId, reply, created, { sessions: changes.length, memories: remembered, calendarEvents, changes }));
+      sendJson(response, 200, completionBody(id, modelId, reply, created, meta));
     })().catch((error: unknown) => {
       if (!response.headersSent) {
         sendJson(response, 500, { error: { code: "gateway-failed", detail: error instanceof Error ? error.message : String(error) } });

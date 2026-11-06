@@ -1,8 +1,9 @@
 /**
- * The coach turn: the model answers with language, memories and future sessions. This module is pure: it builds the
- * prompt and validates the answer, so a malformed answer can be rejected before anything is written (ADR-0001).
+ * The coach turn: the model answers with language, memories, future sessions, follow-up suggestions and (rarely) a
+ * request to undo a recent batch. This module is pure: it builds the prompt and validates the answer, so a malformed
+ * answer can be rejected before anything is written (ADR-0001).
  */
-import type { Activity, Memory, Message, SessionKind, TrainingSession } from "./types";
+import type { Activity, ChangeSet, Memory, Message, SessionKind, TrainingSession } from "./types";
 
 export const SESSION_KINDS: readonly SessionKind[] = ["easy", "long", "interval", "tempo", "rest", "cross", "race"];
 const MAX_SESSIONS = 14;
@@ -11,6 +12,9 @@ const MAX_REPLY_CHARS = 2000;
 const MAX_MEMORY_CHARS = 200;
 const MAX_TITLE_CHARS = 80;
 const MAX_NOTE_CHARS = 280;
+const MAX_SUGGESTIONS = 3;
+const MAX_SUGGESTION_CHARS = 120;
+const MAX_REVERT_ID_CHARS = 100;
 const HORIZON_DAYS = 56;
 
 export type SessionAction = "add" | "update" | "remove";
@@ -31,6 +35,10 @@ export interface CoachTurn {
   reply: string;
   memories: string[];
   sessions: SessionDraft[];
+  /** 1-3 short follow-ups the runner can tap, in the runner's language. */
+  suggestions: string[];
+  /** A recent change set to undo ("last" allowed), or null for a normal turn. */
+  revertChangeSetId: string | null;
 }
 
 export type ParseResult = { ok: true; turn: CoachTurn } | { ok: false; code: string; detail: string };
@@ -41,6 +49,8 @@ export interface CoachPromptInput {
   sessions: readonly TrainingSession[];
   activities: readonly Activity[];
   history: readonly Message[];
+  /** Recent batches, newest first, so the coach knows what changed and what was already undone. */
+  recentChanges: readonly ChangeSet[];
   question: string;
 }
 
@@ -67,12 +77,14 @@ export const COACH_RULES: readonly string[] = [
   "You are the runner's AI coach. Talk naturally, one turn at a time, in the runner's language: if the latest message contains Chinese characters, reply in Traditional Chinese; otherwise reply in English.",
   "Proactively remember facts about the runner that help you coach them: goals, history, constraints, preferences, injuries, schedule. Do not ask the runner to curate or approve memories.",
   "When the runner says something training-related, build or adjust a periodic training system and book the future sessions. Chit-chat is fine; notice the training intent inside it.",
-  "Before editing, review the existing upcomingSessions (each has a sessionId) so the new plan is coherent with what is already booked.",
+  "Before editing, review the existing upcomingSessions (each has a sessionId) and recentChanges (each has a changeSetId, summary, createdAt and revertedAt) so the new plan is coherent with what is already booked and you never undo what was already undone.",
   "Use action=add for a new booking, action=update with the existing sessionId to change or move a booking, action=remove with the existing sessionId to delete one. You may emit several actions in one answer (for example move two runs, remove one, add one); do not limit yourself to a single action when the plan needs a batch.",
   "Only say you changed the schedule when you emitted update or remove; adding a session is not a change. In the reply, say what changed and what stayed.",
   "Only book sessions for today or later, never a past day, never more than 56 days ahead. Keep it realistic: at most 14 actions in one answer.",
   "Never diagnose, prescribe calories or weight, or guarantee a result. Pain or medical topics end with a clinician referral.",
-  "Answer with exactly one JSON object: {\"reply\": string, \"memories\": string[], \"sessions\": [{\"action\": \"add\"|\"update\"|\"remove\", \"sessionId\": string|null, \"day\": \"YYYY-MM-DD\", \"title\": string, \"kind\": \"easy\"|\"long\"|\"interval\"|\"tempo\"|\"rest\"|\"cross\"|\"race\", \"distanceKm\": number|null, \"durationMin\": number|null, \"note\": string|null}]}",
+  "End every answer with 1-3 follow-up suggestions the runner can tap next: short, concrete, imperative next steps of 1..120 characters each, in the runner's language, for example \"Book my long run for Sunday\" or \"Move Thursday to Friday\". No questions, no numbering, no duplicates.",
+  "If the runner asks to undo a change, set revertChangeSetId to a recentChanges changeSetId, or to \"last\" for the newest change that is not reverted yet, and emit no sessions in that turn. Never mix a revert with add/update/remove actions.",
+  "Answer with exactly one JSON object: {\"reply\": string, \"memories\": string[], \"sessions\": [{\"action\": \"add\"|\"update\"|\"remove\", \"sessionId\": string|null, \"day\": \"YYYY-MM-DD\", \"title\": string, \"kind\": \"easy\"|\"long\"|\"interval\"|\"tempo\"|\"rest\"|\"cross\"|\"race\", \"distanceKm\": number|null, \"durationMin\": number|null, \"note\": string|null}], \"suggestions\": string[], \"revertChangeSetId\": string|null}",
   "The reply is what the runner reads: warm, specific, and it says what you booked when you booked it. Never call the runner's message garbled; if the intent is unclear, ask one short clarifying question.",
 ];
 
@@ -96,6 +108,12 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
       paceSecPerKm: activity.paceSecPerKm,
       avgHr: activity.avgHr,
     })),
+    recentChanges: input.recentChanges.map((changeSet) => ({
+      changeSetId: changeSet.changeSetId,
+      summary: changeSet.summary,
+      createdAt: changeSet.createdAt,
+      revertedAt: changeSet.revertedAt,
+    })),
   };
   const conversation = input.history
     .slice(-10)
@@ -115,7 +133,7 @@ export function buildCoachHistory(input: CoachPromptInput): Array<{ role: "user"
 export function parseCoachTurn(raw: unknown, today: string): ParseResult {
   if (!isObject(raw)) return { ok: false, code: "not-an-object", detail: "the answer must be a JSON object" };
   const keys = Object.keys(raw).sort();
-  const allowed = ["memories", "reply", "sessions"];
+  const allowed = ["memories", "reply", "revertChangeSetId", "sessions", "suggestions"];
   if (keys.some((key) => !allowed.includes(key))) {
     return { ok: false, code: "extra-keys", detail: `unexpected keys: ${keys.filter((key) => !allowed.includes(key)).join(", ")}` };
   }
@@ -185,5 +203,26 @@ export function parseCoachTurn(raw: unknown, today: string): ParseResult {
       note: typeof noteValue === "string" && noteValue.trim().length > 0 ? noteValue.trim() : null,
     });
   }
-  return { ok: true, turn: { reply, memories, sessions } };
+  const rawSuggestions = raw["suggestions"];
+  if (!Array.isArray(rawSuggestions) || rawSuggestions.length < 1 || rawSuggestions.length > MAX_SUGGESTIONS) {
+    return { ok: false, code: "invalid-suggestions", detail: "suggestions must be an array of 1..3 strings" };
+  }
+  const suggestions: string[] = [];
+  for (const item of rawSuggestions) {
+    const text = typeof item === "string" ? item.trim() : "";
+    if (text.length === 0 || text.length > MAX_SUGGESTION_CHARS) {
+      return { ok: false, code: "invalid-suggestion", detail: "each suggestion must be 1..120 characters" };
+    }
+    suggestions.push(text);
+  }
+  const rawRevert = raw["revertChangeSetId"];
+  let revertChangeSetId: string | null = null;
+  if (rawRevert !== null && rawRevert !== undefined) {
+    const text = typeof rawRevert === "string" ? rawRevert.trim() : "";
+    if (text.length === 0 || text.length > MAX_REVERT_ID_CHARS || /\s/.test(text)) {
+      return { ok: false, code: "invalid-revert", detail: "revertChangeSetId must be null, \"last\", or one changeSetId from recentChanges" };
+    }
+    revertChangeSetId = text;
+  }
+  return { ok: true, turn: { reply, memories, sessions, suggestions, revertChangeSetId } };
 }

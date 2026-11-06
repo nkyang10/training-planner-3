@@ -10,7 +10,7 @@ body { margin: 0; font-family: var(--font); color: var(--ink); background: radia
 a { color: var(--ink); }
 .top { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.8); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 800; letter-spacing: .08em; text-decoration: none; color: var(--ember); }
-.top .chat { margin-left: auto; text-decoration: none; font-weight: 700; background: var(--ember); color: #fff; padding: 8px 14px; border-radius: 999px; }
+.top .profile { margin-left: auto; text-decoration: none; font-weight: 700; color: var(--ember); }
 .top a:last-child { text-decoration: none; color: var(--muted); }
 main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; }
 .page-head h1 { font-size: clamp(28px, 6vw, 44px); margin: 6px 0; letter-spacing: -.02em; }
@@ -23,6 +23,7 @@ main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; }
 label { font-weight: 600; font-size: 14px; }
 input, button { font: inherit; }
 input { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--wash); }
+input[readonly] { background: #f6eee6; color: var(--muted); }
 .btn { display: inline-block; border: 0; background: linear-gradient(135deg, var(--ember), var(--solar)); color: #fff; padding: 12px 18px; border-radius: 999px; font-weight: 800; cursor: pointer; text-decoration: none; text-align: center; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .error { color: var(--danger); font-weight: 600; }
@@ -50,7 +51,7 @@ input { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; 
   .cell { min-height: 78px; padding: 5px; }
   .session { font-size: 10px; padding: 2px 4px; }
   .top { padding: 10px 12px; gap: 8px; }
-  .top .chat { padding: 7px 10px; font-size: 13px; }
+  .top .profile { font-size: 13px; }
 }
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: #fff; background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: min(540px, 72vh); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
@@ -67,6 +68,20 @@ input { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; 
 #coach-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fff; }
 #coach-form textarea { resize: none; padding: 10px; border: 1px solid var(--line); border-radius: 12px; font: inherit; background: var(--wash); }
 #coach-form .btn { padding: 10px 14px; }
+#coach-history { border-top: 1px solid var(--line); padding: 9px 12px; background: #fffaf5; max-height: 132px; overflow-y: auto; }
+.coach-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 12px; }
+#coach-undo { border: 1px solid var(--line); background: #fff; color: var(--ember); border-radius: 999px; padding: 4px 10px; font-size: 11px; font-weight: 800; cursor: pointer; }
+#coach-undo:disabled { opacity: .4; cursor: not-allowed; }
+#coach-history-list { display: grid; gap: 3px; font-size: 11px; }
+.change-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.change-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.change-meta { flex: 0 0 auto; color: var(--muted); white-space: nowrap; }
+.change-item.reverted .change-summary { color: var(--muted); text-decoration: line-through; }
+.change-item .reverted { color: var(--danger); font-weight: 700; }
+#coach-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--wash); }
+#coach-suggestions:empty { display: none; }
+.suggestion { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1.2; cursor: pointer; text-align: left; }
+.suggestion:hover { border-color: var(--ember); color: var(--ember); }
 @media (max-width: 640px) {
   #coach-panel { right: 0; bottom: 0; width: 100vw; height: 78vh; border-radius: 20px 20px 0 0; }
   #coach-bubble { right: 12px; bottom: 12px; padding: 12px 16px; }
