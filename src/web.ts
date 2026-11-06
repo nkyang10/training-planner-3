@@ -3,19 +3,18 @@
  * books future sessions, Garmin completes them. There is no manual edit path in POC3 (ADR-0001).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { AuthError, type Auth, type AuthUser, type ProfileUpdate } from "./auth";
 import type { GarminClient } from "./garmin";
 import { mapGarminActivity } from "./garmin";
-import type { Activity, SessionKind, Store, TrainingSession } from "./types";
+import { CSS } from "./styles";
+import type { Activity, Store, TrainingSession } from "./types";
 
 export interface WebOptions {
   store: Store;
+  auth: Auth;
   /** The coach gateway; the embedded bubble talks through this server so the browser stays same-origin. */
   gatewayUrl?: string;
   modelId?: string;
-  fetchImpl?: typeof fetch;
-  /** token -> userId */
-  tokens: Record<string, string>;
-  chatUrl?: string;
   garmin?: GarminClient;
   now?: () => string;
 }
@@ -47,16 +46,6 @@ function redirect(response: ServerResponse, location: string, headers: Record<st
   response.end();
 }
 
-function parseCookies(request: IncomingMessage): Record<string, string> {
-  const header = request.headers.cookie ?? "";
-  const cookies: Record<string, string> = {};
-  for (const part of header.split(";")) {
-    const index = part.indexOf("=");
-    if (index > 0) cookies[part.slice(0, index).trim()] = decodeURIComponent(part.slice(index + 1).trim());
-  }
-  return cookies;
-}
-
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -72,7 +61,13 @@ async function readJsonBody(request: IncomingMessage): Promise<unknown> {
 
 async function readForm(request: IncomingMessage): Promise<URLSearchParams> {
   const chunks: Buffer[] = [];
-  for await (const chunk of request) chunks.push(chunk as Buffer);
+  let size = 0;
+  for await (const chunk of request) {
+    const buffer = chunk as Buffer;
+    size += buffer.length;
+    if (size > 200_000) throw new Error("request too large");
+    chunks.push(buffer);
+  }
   return new URLSearchParams(Buffer.concat(chunks).toString("utf8"));
 }
 
@@ -107,25 +102,31 @@ function activityLine(activity: Activity): string {
   return `<li><span class="tick">✓</span> ${escapeHtml(activity.title)}${amount.length === 0 ? "" : ` — ${escapeHtml(amount)}`} <span class="muted">(${escapeHtml(activity.source)})</span></li>`;
 }
 
-function layout(title: string, body: string, chatUrl: string, signedIn: boolean): string {
-  const chatLink = chatUrl.length > 0
-    ? `<a class="chat" href="${escapeHtml(chatUrl)}" target="_blank" rel="noreferrer">Full chat ↗</a>`
-    : "";
-  const nav = signedIn
-    ? `<nav class="top"><a class="brand" href="/calendar">⚡ AI COACH CALENDAR</a>${chatLink}<a href="/logout">Sign out</a></nav>`
-    : `<nav class="top"><span class="brand">⚡ AI COACH CALENDAR</span></nav>`;
-  const bubble = signedIn ? renderChatBubble() : "";
+function errorBanner(error?: string): string {
+  return error === undefined ? "" : `<p class="error" role="alert">${escapeHtml(error)}</p>`;
+}
+
+function layout(title: string, body: string, user: AuthUser | undefined): string {
+  const nav = user === undefined
+    ? `<nav class="top"><span class="brand">⚡ AI COACH CALENDAR</span><a class="profile" href="/login">Sign in</a><a href="/signup">Sign up</a></nav>`
+    : `<nav class="top"><a class="brand" href="/calendar">⚡ AI COACH CALENDAR</a><a class="profile" href="/profile">${escapeHtml(user.displayName)}</a><a href="/logout">Sign out</a></nav>`;
+  const bubble = user === undefined ? "" : renderChatBubble();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css"></head>
   <body>${nav}<main>${body}</main>${bubble}</body></html>`;
 }
 
-/** The in-calendar chat bubble: same gateway, same memory, same calendar writes as the full chat. */
+/** The in-calendar coach bubble: suggestions are tappable, and recent changes are visible with an LLM-driven undo. */
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
     <header><strong>AI Coach</strong><button id="coach-close" type="button" aria-label="Close chat">×</button></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
+    <section id="coach-history" aria-label="Recent changes">
+      <div class="coach-history-head"><strong>Recent changes</strong><button id="coach-undo" type="button" disabled>Undo</button></div>
+      <div id="coach-history-list"><p class="muted small">No changes yet.</p></div>
+    </section>
+    <div id="coach-suggestions" aria-label="Suggested next messages"></div>
     <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>
   </section>
   <script>
@@ -136,8 +137,11 @@ function renderChatBubble(): string {
     const form = document.getElementById('coach-form');
     const input = document.getElementById('coach-input');
     const log = document.getElementById('coach-log');
-    if (!bubble || !panel || !close || !form || !input || !log) return;
-    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); };
+    const historyList = document.getElementById('coach-history-list');
+    const undo = document.getElementById('coach-undo');
+    const suggestions = document.getElementById('coach-suggestions');
+    if (!bubble || !panel || !close || !form || !input || !log || !historyList || !undo || !suggestions) return;
+    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); void refreshHistory(); };
     const hide = () => { panel.hidden = true; bubble.hidden = false; };
     const add = (role, text) => {
       const line = document.createElement('div');
@@ -238,32 +242,101 @@ function renderChatBubble(): string {
         document.body.classList.remove('calendar-fx-active');
       }, 1200 + before.length * 140);
     };
-    bubble.addEventListener('click', show);
-    close.addEventListener('click', hide);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const text = input.value.trim();
+    const refreshHistory = async () => {
+      try {
+        const response = await fetch('/calendar/history');
+        if (!response.ok) return;
+        const data = await response.json();
+        const changes = Array.isArray(data.changes) ? data.changes.slice() : [];
+        changes.sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
+        historyList.replaceChildren();
+        if (changes.length === 0) {
+          const empty = document.createElement('p');
+          empty.className = 'muted small';
+          empty.textContent = 'No changes yet.';
+          historyList.appendChild(empty);
+          undo.disabled = true;
+          return;
+        }
+        let hasActive = false;
+        for (const change of changes) {
+          const item = document.createElement('div');
+          item.className = 'change-item' + (change.revertedAt ? ' reverted' : '');
+          const summary = document.createElement('span');
+          summary.className = 'change-summary';
+          summary.textContent = String(change.summary || change.changeSetId || 'Change');
+          const meta = document.createElement('span');
+          meta.className = 'change-meta';
+          meta.textContent = String(change.createdAt || '').replace('T', ' ').replace(/\\.\\d+Z$/, '');
+          if (change.revertedAt) {
+            const mark = document.createElement('span');
+            mark.className = 'reverted';
+            mark.textContent = 'reverted';
+            meta.appendChild(document.createTextNode(' · '));
+            meta.appendChild(mark);
+          } else {
+            hasActive = true;
+          }
+          item.appendChild(summary);
+          item.appendChild(meta);
+          historyList.appendChild(item);
+        }
+        undo.disabled = !hasActive;
+      } catch {
+        // Keep the last known history; a failed read must not break the chat.
+      }
+    };
+    const setSuggestions = (items) => {
+      suggestions.replaceChildren();
+      if (!Array.isArray(items)) return;
+      for (const item of items) {
+        const text = typeof item === 'string' ? item.trim() : '';
+        if (text.length === 0) continue;
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'suggestion';
+        chip.textContent = text;
+        chip.addEventListener('click', () => { void send(text); });
+        suggestions.appendChild(chip);
+      }
+    };
+    const send = async (raw) => {
+      const text = typeof raw === 'string' ? raw.trim() : '';
       if (text.length === 0) return;
       add('user', text);
-      input.value = '';
+      if (input.value.trim() === text) input.value = '';
       const typing = add('coach', '…');
       typing.classList.add('typing');
       try {
         const response = await fetch('/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: text }) });
         const data = await response.json();
         typing.remove();
-        if (!response.ok) add('error', data && data.error ? data.error.detail : 'The coach could not answer.');
-        else {
-          add('coach', data.reply);
-          if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
-            await animateChanges(data.changes || []);
-            add('system', 'Calendar updated · 日曆已更新');
-          }
+        if (!response.ok) {
+          add('error', data && data.error ? data.error.detail : 'The coach could not answer.');
+          return;
+        }
+        add('coach', data.reply);
+        setSuggestions(data.suggestions);
+        await refreshHistory();
+        if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
+          await animateChanges(data.changes || []);
+          add('system', 'Calendar updated · 日曆已更新');
+          await refreshHistory();
         }
       } catch {
         typing.remove();
         add('error', 'Network error. Try again.');
       }
+    };
+    bubble.addEventListener('click', show);
+    close.addEventListener('click', hide);
+    undo.addEventListener('click', () => { void send('undo the last change'); });
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (text.length === 0) return;
+      input.value = '';
+      void send(text);
     });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
@@ -276,31 +349,71 @@ function renderLogin(error?: string): string {
   return layout(
     "Sign in",
     `<section class="card narrow"><h1>Sign in</h1>
-      <p class="muted">This is the private calendar of your AI coach. The conversation happens in the chat.</p>
-      ${error === undefined ? "" : `<p class="error" role="alert">${escapeHtml(error)}</p>`}
-      <form method="post" action="/login" class="stack"><label for="token">Dev token</label><input id="token" name="token" required autocomplete="off"><button class="btn" type="submit">Continue</button></form>
-      <p class="muted small">Demo token: <code>demo-token</code></p>
+      <p class="muted">Your private training calendar, booked by your AI coach.</p>
+      ${errorBanner(error)}
+      <form method="post" action="/login" class="stack">
+        <label for="username">Username</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24">
+        <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="current-password" minlength="8">
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+      <p class="muted small">New here? <a href="/signup">Create an account</a></p>
     </section>`,
-    "",
-    false,
+    undefined,
+  );
+}
+
+function renderSignup(error?: string): string {
+  return layout(
+    "Create an account",
+    `<section class="card narrow"><h1>Create an account</h1>
+      <p class="muted">A private calendar for your training, kept by your AI coach.</p>
+      ${errorBanner(error)}
+      <form method="post" action="/signup" class="stack">
+        <label for="username">Username</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9_]{3,24}">
+        <label for="displayName">Display name</label><input id="displayName" name="displayName" required autocomplete="name" maxlength="60">
+        <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="new-password" minlength="8">
+        <label for="timezone">Timezone</label><input id="timezone" name="timezone" value="Asia/Hong_Kong" required autocomplete="off">
+        <label for="goal">Training goal <span class="muted small">(optional)</span></label><input id="goal" name="goal" maxlength="120" autocomplete="off">
+        <button class="btn" type="submit">Create account</button>
+      </form>
+      <p class="muted small">Already have an account? <a href="/login">Sign in</a></p>
+    </section>`,
+    undefined,
+  );
+}
+
+function renderProfile(user: AuthUser, saved: boolean, error?: string): string {
+  return layout(
+    "Profile",
+    `<section class="card narrow"><h1>Your profile</h1>
+      <p class="muted">Signed in as <strong>${escapeHtml(user.username)}</strong>.</p>
+      ${saved ? `<p class="ok" role="status">Profile saved.</p>` : ""}
+      ${errorBanner(error)}
+      <form method="post" action="/profile" class="stack">
+        <label for="username">Username</label><input id="username" value="${escapeHtml(user.username)}" readonly>
+        <label for="displayName">Display name</label><input id="displayName" name="displayName" value="${escapeHtml(user.displayName)}" required maxlength="60" autocomplete="name">
+        <label for="timezone">Timezone</label><input id="timezone" name="timezone" value="${escapeHtml(user.timezone)}" required autocomplete="off">
+        <label for="goal">Training goal <span class="muted small">(optional)</span></label><input id="goal" name="goal" value="${escapeHtml(user.goal ?? "")}" maxlength="120" autocomplete="off">
+        <label for="password">New password <span class="muted small">(leave blank to keep it)</span></label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password">
+        <button class="btn" type="submit">Save profile</button>
+      </form>
+      <p class="muted small">Member since ${escapeHtml(user.createdAt.slice(0, 10))}.</p>
+    </section>`,
+    user,
   );
 }
 
 export function createWeb(options: WebOptions): WebApp {
   const now = options.now ?? (() => new Date().toISOString());
-  const chatUrl = options.chatUrl ?? "";
   const server = createServer((request, response) => {
+    let requestUser: AuthUser | undefined;
     void (async (): Promise<void> => {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method ?? "GET";
-      const cookies = parseCookies(request);
-      const token = cookies["poc3"] ?? "";
-      const userId = options.tokens[token];
 
       if (url.pathname === "/static/app.css") {
-        const css = await import("./styles.ts");
         response.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "public, max-age=300" });
-        response.end(css.CSS);
+        response.end(CSS);
         return;
       }
       if (url.pathname === "/health") {
@@ -308,29 +421,111 @@ export function createWeb(options: WebOptions): WebApp {
         response.end(JSON.stringify({ status: "ok" }));
         return;
       }
+
+      requestUser = options.auth.read(request);
+
       if (url.pathname === "/login") {
         if (method === "GET") {
+          if (requestUser !== undefined) {
+            redirect(response, "/calendar");
+            return;
+          }
           sendHtml(response, 200, renderLogin(url.searchParams.get("error") ?? undefined));
           return;
         }
-        const form = await readForm(request);
-        const presented = (form.get("token") ?? "").trim();
-        if (options.tokens[presented] === undefined) {
-          redirect(response, "/login?error=" + encodeURIComponent("unknown token"));
+        if (method === "POST") {
+          const form = await readForm(request);
+          try {
+            const result = options.auth.login({
+              username: form.get("username") ?? "",
+              password: form.get("password") ?? "",
+            });
+            redirect(response, "/calendar", { "set-cookie": result.cookie });
+          } catch (error) {
+            const message = error instanceof AuthError ? error.message : "Could not sign in";
+            redirect(response, "/login?error=" + encodeURIComponent(message));
+          }
           return;
         }
-        redirect(response, "/calendar", { "set-cookie": `poc3=${encodeURIComponent(presented)}; Path=/; HttpOnly; SameSite=Lax` });
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, requestUser));
         return;
       }
+
+      if (url.pathname === "/signup") {
+        if (method === "GET") {
+          if (requestUser !== undefined) {
+            redirect(response, "/calendar");
+            return;
+          }
+          sendHtml(response, 200, renderSignup(url.searchParams.get("error") ?? undefined));
+          return;
+        }
+        if (method === "POST") {
+          const form = await readForm(request);
+          try {
+            const result = options.auth.signup({
+              username: form.get("username") ?? "",
+              displayName: form.get("displayName") ?? "",
+              password: form.get("password") ?? "",
+              timezone: (form.get("timezone") ?? "").trim() || "Asia/Hong_Kong",
+              goal: form.get("goal"),
+            });
+            redirect(response, "/calendar", { "set-cookie": result.cookie });
+          } catch (error) {
+            const message = error instanceof AuthError ? error.message : "Could not create the account";
+            redirect(response, "/signup?error=" + encodeURIComponent(message));
+          }
+          return;
+        }
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, requestUser));
+        return;
+      }
+
       if (url.pathname === "/logout") {
-        redirect(response, "/login", { "set-cookie": "poc3=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" });
+        if (method === "GET") {
+          redirect(response, "/login", { "set-cookie": options.auth.clearCookie() });
+          return;
+        }
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, requestUser));
         return;
       }
-      if (userId === undefined) {
+
+      if (requestUser === undefined) {
         redirect(response, "/login");
         return;
       }
+      const user = requestUser;
       const today = now().slice(0, 10);
+
+      if (url.pathname === "/profile") {
+        if (method === "GET") {
+          sendHtml(
+            response,
+            200,
+            renderProfile(user, url.searchParams.get("saved") === "1", url.searchParams.get("error") ?? undefined),
+          );
+          return;
+        }
+        if (method === "POST") {
+          const form = await readForm(request);
+          const password = form.get("password") ?? "";
+          const patch: ProfileUpdate = {};
+          if (form.has("displayName")) patch.displayName = form.get("displayName") ?? "";
+          if (form.has("timezone")) patch.timezone = form.get("timezone") ?? "";
+          if (form.has("goal")) patch.goal = form.get("goal");
+          if (password.length > 0) patch.password = password;
+          try {
+            options.auth.updateProfile(user.userId, patch);
+            redirect(response, "/profile?saved=1");
+          } catch (error) {
+            const message = error instanceof AuthError ? error.message : "Could not save the profile";
+            redirect(response, "/profile?error=" + encodeURIComponent(message));
+          }
+          return;
+        }
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, user));
+        return;
+      }
 
       if (url.pathname === "/chat" && method === "POST") {
         let body: unknown;
@@ -349,17 +544,23 @@ export function createWeb(options: WebOptions): WebApp {
           response.end(JSON.stringify({ error: { detail: "message must be 1..1000 characters" } }));
           return;
         }
-        const gatewayUrl = options.gatewayUrl ?? "http://127.0.0.1:8090";
-        const doFetch = options.fetchImpl ?? fetch;
+        const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
         try {
-          const upstream = await doFetch(`${gatewayUrl}/v1/chat/completions`, {
+          const upstream = await fetch(`${gatewayUrl}/v1/chat/completions`, {
             method: "POST",
-            headers: { "content-type": "application/json", "x-poc3-user": userId },
+            headers: { "content-type": "application/json", "x-poc3-user": user.userId },
             body: JSON.stringify({ model: options.modelId ?? "poc3-coach", stream: false, messages: [{ role: "user", content: message }] }),
           });
           const payload = (await upstream.json()) as {
             choices?: Array<{ message?: { content?: unknown } }>;
-            poc3?: { sessions?: number; changes?: unknown[] };
+            poc3?: {
+              sessions?: number;
+              memories?: number;
+              changes?: unknown[];
+              changeSetId?: string | null;
+              reverted?: boolean;
+              suggestions?: unknown[];
+            };
             error?: { detail?: string };
           };
           const reply = payload.choices?.[0]?.message?.content;
@@ -368,12 +569,36 @@ export function createWeb(options: WebOptions): WebApp {
             response.end(JSON.stringify({ error: { detail: payload.error?.detail ?? `coach answered ${upstream.status}` } }));
             return;
           }
+          const suggestions = Array.isArray(payload.poc3?.suggestions)
+            ? payload.poc3.suggestions.filter((suggestion): suggestion is string => typeof suggestion === "string")
+            : [];
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-          response.end(JSON.stringify({ reply, sessions: payload.poc3?.sessions ?? 0, changes: payload.poc3?.changes ?? [] }));
+          response.end(JSON.stringify({
+            reply,
+            sessions: payload.poc3?.sessions ?? 0,
+            changes: payload.poc3?.changes ?? [],
+            suggestions,
+            changeSetId: payload.poc3?.changeSetId ?? null,
+            reverted: payload.poc3?.reverted === true,
+            memories: payload.poc3?.memories ?? 0,
+          }));
         } catch (error) {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
           response.end(JSON.stringify({ error: { detail: error instanceof Error ? error.message : String(error) } }));
         }
+        return;
+      }
+
+      if (url.pathname === "/calendar/history" && method === "GET") {
+        const changes = options.store.listChangeSets(user.userId, 10).map((changeSet) => ({
+          changeSetId: changeSet.changeSetId,
+          summary: changeSet.summary,
+          createdAt: changeSet.createdAt,
+          revertedAt: changeSet.revertedAt,
+          entries: changeSet.entries,
+        }));
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        response.end(JSON.stringify({ changes }));
         return;
       }
 
@@ -386,8 +611,8 @@ export function createWeb(options: WebOptions): WebApp {
         }
         const start = monthStart(month);
         const end = addDays(start, daysInMonth(month) - 1);
-        const sessions = options.store.listSessions(userId, start, end);
-        const activities = options.store.listActivities(userId, 500).filter((activity) => activity.day >= start && activity.day <= end);
+        const sessions = options.store.listSessions(user.userId, start, end);
+        const activities = options.store.listActivities(user.userId, 500).filter((activity) => activity.day >= start && activity.day <= end);
         const days: Record<string, { sessions: Array<{ title: string; kind: string; distanceKm: number | null }>; activities: number }> = {};
         for (const session of sessions) {
           const entry = (days[session.day] ??= { sessions: [], activities: 0 });
@@ -406,8 +631,8 @@ export function createWeb(options: WebOptions): WebApp {
         const month = url.searchParams.get("month") ?? today.slice(0, 7);
         const start = monthStart(month);
         const end = addDays(start, daysInMonth(month) - 1);
-        const sessions = options.store.listSessions(userId, start, end);
-        const activities = options.store.listActivities(userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
+        const sessions = options.store.listSessions(user.userId, start, end);
+        const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         const firstWeekday = weekdayIndex(start);
         const cells: string[] = [];
         for (let pad = 0; pad < firstWeekday; pad += 1) cells.push(`<div class="cell pad"></div>`);
@@ -426,7 +651,7 @@ export function createWeb(options: WebOptions): WebApp {
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1>${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}</h1>
-          <p class="muted">Sessions booked by your AI coach. Activities come from Garmin.</p></header>
+          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a href="/calendar?month=${escapeHtml(today.slice(0, 7))}">This month</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
@@ -435,23 +660,23 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
             <form method="post" action="/sync" class="stack"><button class="btn" type="submit"${options.garmin === undefined ? " disabled" : ""}>Sync Garmin</button>${options.garmin === undefined ? `<span class="muted small">GARMIN_PERSONAL_API_KEY is not set</span>` : ""}</form>
           </section>`;
-        sendHtml(response, 200, layout("Calendar", body, chatUrl, true));
+        sendHtml(response, 200, layout("Calendar", body, user));
         return;
       }
 
       if (url.pathname.startsWith("/day/")) {
         const day = url.pathname.slice("/day/".length);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-          sendHtml(response, 404, layout("Not found", `<p>Not found</p>`, chatUrl, true));
+          sendHtml(response, 404, layout("Not found", `<p>Not found</p>`, user));
           return;
         }
-        const sessions = options.store.listSessions(userId, day, day);
-        const activities = options.store.listActivities(userId, 200).filter((activity) => activity.day === day);
-        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← Calendar</a></p><h1>${escapeHtml(day)}</h1></header>
+        const sessions = options.store.listSessions(user.userId, day, day);
+        const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day === day);
+        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← Calendar</a></p><h1>${escapeHtml(day)}</h1>
+          <p class="muted">${escapeHtml(user.displayName)} · <a href="/profile">Profile</a></p></header>
           <section class="card"><h2>Booked by the coach</h2>${sessions.length === 0 ? `<p class="muted">No session booked.</p>` : `<ul class="sessions">${sessions.map((session) => `<li><strong>${escapeHtml(session.title)}</strong> <span class="chip kind-${escapeHtml(session.kind)}">${escapeHtml(session.kind)}</span>${session.distanceKm === null ? "" : ` · ${session.distanceKm} km`}${session.durationMin === null ? "" : ` · ${session.durationMin} min`}${session.note === null ? "" : `<p class="note">${escapeHtml(session.note)}</p>`}</li>`).join("")}</ul>`}</section>
-          <section class="card"><h2>Done (Garmin / reported)</h2>${activities.length === 0 ? `<p class="muted">Nothing recorded yet.</p>` : `<ul class="sessions">${activities.map(activityLine).join("")}</ul>`}</section>
-          ${chatUrl.length === 0 ? "" : `<p><a class="btn" href="${escapeHtml(chatUrl)}">Ask the coach about this day →</a></p>`}`;
-        sendHtml(response, 200, layout(day, body, chatUrl, true));
+          <section class="card"><h2>Done (Garmin / reported)</h2>${activities.length === 0 ? `<p class="muted">Nothing recorded yet.</p>` : `<ul class="sessions">${activities.map(activityLine).join("")}</ul>`}</section>`;
+        sendHtml(response, 200, layout(day, body, user));
         return;
       }
 
@@ -464,7 +689,7 @@ export function createWeb(options: WebOptions): WebApp {
           const raw = await options.garmin.listActivities(30);
           let imported = 0;
           for (const item of raw) {
-            const mapped = mapGarminActivity(item, userId);
+            const mapped = mapGarminActivity(item, user.userId);
             if (mapped !== undefined) {
               options.store.appendActivity(mapped);
               imported += 1;
@@ -477,13 +702,11 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
-      sendHtml(response, 404, layout("Not found", `<p>Not found</p>`, chatUrl, true));
+      sendHtml(response, 404, layout("Not found", `<p>Not found</p>`, user));
     })().catch((error: unknown) => {
-      if (!response.headersSent) sendHtml(response, 500, layout("Error", `<p class="error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`, chatUrl, false));
+      if (!response.headersSent) sendHtml(response, 500, layout("Error", `<p class="error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`, requestUser));
       else response.end();
     });
   });
   return { server, close: () => new Promise<void>((resolve) => server.close(() => resolve())) };
 }
-
-export type { SessionKind };

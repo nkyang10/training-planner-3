@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createStore, type StoreHandle } from "../src/store";
-import type { Activity, Memory, Message, TrainingSession } from "../src/types";
+import type { Activity, ChangeEntry, ChangeSet, Memory, Message, TrainingSession, UserProfile } from "../src/types";
 
 const handles: StoreHandle[] = [];
 
@@ -63,6 +63,40 @@ function activity(activityId: string, userId: string, day: string, createdAt: st
     source: "garmin",
     createdAt,
   };
+}
+
+function profile(userId: string, username: string, createdAt = "2026-01-01T00:00:00.000Z"): UserProfile {
+  return {
+    userId,
+    username,
+    displayName: `Runner ${username}`,
+    passwordHash: "scrypt:fake",
+    timezone: "Asia/Taipei",
+    goal: null,
+    createdAt,
+  };
+}
+
+function entry(action: ChangeEntry["action"], before: TrainingSession | null, after: TrainingSession | null): ChangeEntry {
+  return {
+    action,
+    sessionId: before?.sessionId ?? after?.sessionId ?? "session:unknown",
+    before,
+    after,
+    fromDay: before?.day ?? null,
+    toDay: after?.day ?? null,
+    title: after?.title ?? before?.title ?? "unknown",
+    kind: after?.kind ?? before?.kind ?? "easy",
+  };
+}
+
+function changeSet(
+  changeSetId: string,
+  userId: string,
+  createdAt: string,
+  entries: ChangeEntry[] = [],
+): ChangeSet {
+  return { changeSetId, userId, createdAt, summary: `summary-${changeSetId}`, entries, revertedAt: null };
 }
 
 describe("messages", () => {
@@ -196,20 +230,28 @@ describe("persistence", () => {
     handles.push(handle);
 
     try {
+      handle.store.createUser(profile("u1", "alice"));
       handle.store.appendMessage(message("m1", "u1", "2026-01-01T08:00:00.000Z"));
       handle.store.appendMemory(memory("k1", "u1", "2026-01-01T08:30:00.000Z"));
       handle.store.upsertSession(session("s1", "u1", "2026-02-10", "2026-01-01T09:00:00.000Z"));
       handle.store.appendActivity(activity("a1", "u1", "2026-01-05", "2026-01-05T07:00:00.000Z"));
+      handle.store.appendChangeSet(
+        changeSet("change:1", "u1", "2026-01-01T10:00:00.000Z", [
+          entry("add", null, session("s1", "u1", "2026-02-10", "2026-01-01T09:00:00.000Z")),
+        ]),
+      );
       handle.close();
 
       const reopened = createStore(`sqlite:${dbPath}`);
       handles.push(reopened);
+      expect(reopened.store.getUserByUsername("ALICE")?.userId).toBe("u1");
       expect(reopened.store.listMessages("u1").map((m) => m.messageId)).toEqual(["m1"]);
       expect(reopened.store.listMemories("u1").map((m) => m.memoryId)).toEqual(["k1"]);
       expect(reopened.store.listSessions("u1", "2026-02-01", "2026-02-28").map((s) => s.sessionId)).toEqual([
         "s1",
       ]);
       expect(reopened.store.listActivities("u1").map((a) => a.activityId)).toEqual(["a1"]);
+      expect(reopened.store.listChangeSets("u1").map((set) => set.changeSetId)).toEqual(["change:1"]);
     } finally {
       while (handles.length > 0) {
         handles.pop()?.close();
@@ -265,6 +307,130 @@ describe("session CRUD for coach actions", () => {
     expect(store.getSession("u", "s1")).toBeUndefined();
     expect(store.deleteSession("u", "missing")).toBe(false);
     expect(store.listSessions("u", "2026-11-01", "2026-11-30")).toHaveLength(1);
+    close();
+  });
+});
+
+describe("users", () => {
+  it("creates a profile and reads it back by id and by username, case-insensitively", () => {
+    const { store, close } = createStore(":memory:");
+    store.createUser(profile("u1", "alice"));
+    store.createUser(profile("u2", "bob"));
+
+    expect(store.getUser("u1")).toEqual(profile("u1", "alice"));
+    expect(store.getUserByUsername("alice")?.userId).toBe("u1");
+    expect(store.getUserByUsername("ALICE")?.userId).toBe("u1");
+    expect(store.getUserByUsername("  Alice  ")?.userId).toBe("u1");
+    expect(store.getUserByUsername("bob")?.userId).toBe("u2");
+    expect(store.getUserByUsername("carol")).toBeUndefined();
+    expect(store.getUser("missing")).toBeUndefined();
+    close();
+  });
+
+  it("rejects a duplicate username regardless of case", () => {
+    const { store, close } = createStore(":memory:");
+    store.createUser(profile("u1", "alice"));
+    expect(() => store.createUser(profile("u2", "ALICE"))).toThrow(/username already taken/);
+    expect(store.getUser("u2")).toBeUndefined();
+    close();
+  });
+
+  it("updates only the mutable fields and keeps the login name", () => {
+    const { store, close } = createStore(":memory:");
+    store.createUser(profile("u1", "alice"));
+    const updated = store.updateUser("u1", {
+      displayName: "Alice",
+      timezone: "Europe/Berlin",
+      goal: "10k in 8 weeks",
+      passwordHash: "scrypt:new",
+    });
+
+    expect(updated).toMatchObject({
+      userId: "u1",
+      username: "alice",
+      displayName: "Alice",
+      timezone: "Europe/Berlin",
+      goal: "10k in 8 weeks",
+      passwordHash: "scrypt:new",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    expect(store.getUser("u1")?.displayName).toBe("Alice");
+    expect(store.getUserByUsername("alice")?.goal).toBe("10k in 8 weeks");
+    expect(store.updateUser("missing", { displayName: "x" })).toBeUndefined();
+    close();
+  });
+
+  it("can clear the goal back to null", () => {
+    const { store, close } = createStore(":memory:");
+    store.createUser(profile("u1", "alice"));
+    store.updateUser("u1", { goal: "10k in 8 weeks" });
+    store.updateUser("u1", { goal: null });
+    expect(store.getUser("u1")?.goal).toBeNull();
+    close();
+  });
+});
+
+describe("change sets", () => {
+  it("appends newest first and honours the limit", () => {
+    const { store, close } = createStore(":memory:");
+    store.appendChangeSet(changeSet("change:1", "u1", "2026-01-01T08:00:00.000Z"));
+    store.appendChangeSet(changeSet("change:2", "u1", "2026-01-02T08:00:00.000Z"));
+    store.appendChangeSet(changeSet("change:3", "u1", "2026-01-03T08:00:00.000Z"));
+
+    expect(store.listChangeSets("u1").map((set) => set.changeSetId)).toEqual([
+      "change:3",
+      "change:2",
+      "change:1",
+    ]);
+    expect(store.listChangeSets("u1", 2).map((set) => set.changeSetId)).toEqual(["change:3", "change:2"]);
+    expect(store.listChangeSets("u1", 0)).toEqual([]);
+    expect(store.listChangeSets("u2")).toEqual([]);
+    close();
+  });
+
+  it("keeps the before/after snapshots on every entry", () => {
+    const { store, close } = createStore(":memory:");
+    const before = session("s1", "u1", "2026-02-10", "2026-02-01T08:00:00.000Z");
+    const after = session("s1", "u1", "2026-02-11", "2026-02-02T08:00:00.000Z", { title: "Moved" });
+    store.appendChangeSet(changeSet("change:1", "u1", "2026-02-02T09:00:00.000Z", [entry("update", before, after)]));
+
+    const stored = store.getChangeSet("u1", "change:1");
+    expect(stored?.entries).toHaveLength(1);
+    expect(stored?.entries[0]).toMatchObject({
+      action: "update",
+      sessionId: "s1",
+      fromDay: "2026-02-10",
+      toDay: "2026-02-11",
+      title: "Moved",
+      kind: "easy",
+    });
+    expect(stored?.entries[0]?.before?.day).toBe("2026-02-10");
+    expect(stored?.entries[0]?.after?.day).toBe("2026-02-11");
+    expect(stored?.revertedAt).toBeNull();
+    close();
+  });
+
+  it("marks a change set reverted once and never twice", () => {
+    const { store, close } = createStore(":memory:");
+    store.appendChangeSet(changeSet("change:1", "u1", "2026-01-01T08:00:00.000Z"));
+
+    expect(store.markChangeSetReverted("u1", "change:1", "2026-01-02T08:00:00.000Z")).toBe(true);
+    expect(store.getChangeSet("u1", "change:1")?.revertedAt).toBe("2026-01-02T08:00:00.000Z");
+    expect(store.markChangeSetReverted("u1", "change:1", "2026-01-03T08:00:00.000Z")).toBe(false);
+    expect(store.getChangeSet("u1", "change:1")?.revertedAt).toBe("2026-01-02T08:00:00.000Z");
+    expect(store.markChangeSetReverted("u1", "change:missing", "2026-01-03T08:00:00.000Z")).toBe(false);
+    close();
+  });
+
+  it("never returns another user's change sets", () => {
+    const { store, close } = createStore(":memory:");
+    store.appendChangeSet(changeSet("change:1", "u1", "2026-01-01T08:00:00.000Z"));
+    store.appendChangeSet(changeSet("change:2", "u2", "2026-01-02T08:00:00.000Z"));
+
+    expect(store.listChangeSets("u2").map((set) => set.changeSetId)).toEqual(["change:2"]);
+    expect(store.getChangeSet("u2", "change:1")).toBeUndefined();
+    expect(store.markChangeSetReverted("u2", "change:1", "2026-01-03T08:00:00.000Z")).toBe(false);
+    expect(store.getChangeSet("u1", "change:1")?.revertedAt).toBeNull();
     close();
   });
 });

@@ -1,5 +1,14 @@
 import { createRequire } from "node:module";
-import type { Activity, Memory, Message, Store, TrainingSession } from "./types";
+import type {
+  Activity,
+  ChangeSet,
+  Memory,
+  Message,
+  Store,
+  TrainingSession,
+  UserProfile,
+  UserProfilePatch,
+} from "./types";
 
 /**
  * `node:sqlite` is loaded through `createRequire` instead of a static import.
@@ -29,6 +38,13 @@ export interface StoreHandle { store: Store; close(): void; }
  */
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  user_id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  created_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   message_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -62,8 +78,20 @@ CREATE TABLE IF NOT EXISTS activities (
   payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day);
+
+CREATE TABLE IF NOT EXISTS change_sets (
+  change_set_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  reverted_at TEXT,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS change_sets_user_created ON change_sets (user_id, created_at);
 `;
 
+const INSERT_USER =
+  "INSERT INTO users (user_id, username, created_at, payload) VALUES (?, ?, ?, ?)";
+const UPDATE_USER = "UPDATE users SET payload = ? WHERE user_id = ?";
 const INSERT_MESSAGE =
   "INSERT INTO messages (message_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
 const INSERT_MEMORY =
@@ -72,6 +100,10 @@ const INSERT_ACTIVITY =
   "INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
 const UPSERT_SESSION =
   "INSERT OR REPLACE INTO sessions (session_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
+const INSERT_CHANGE_SET =
+  "INSERT INTO change_sets (change_set_id, user_id, created_at, reverted_at, payload) VALUES (?, ?, ?, ?, ?)";
+const MARK_CHANGE_SET_REVERTED =
+  "UPDATE change_sets SET reverted_at = ?, payload = ? WHERE user_id = ? AND change_set_id = ?";
 
 /** `:memory:` opens an ephemeral database; `sqlite:<path>` opens/creates a file. */
 function resolveLocation(spec: string): string {
@@ -91,6 +123,10 @@ function normalizeLimit(limit: number, fallback: number): number {
   return floored > 0 ? floored : 0;
 }
 
+function usernameTaken(username: string): Error {
+  return new Error(`username already taken: ${username}`);
+}
+
 class SqliteStore implements Store {
   private readonly db: SqliteDatabase;
   private closed = false;
@@ -98,6 +134,44 @@ class SqliteStore implements Store {
   constructor(location: string) {
     this.db = new DatabaseSync(location);
     this.db.exec(SCHEMA);
+  }
+
+  getUser(userId: string): UserProfile | undefined {
+    const row = this.db.prepare("SELECT payload FROM users WHERE user_id = ?").get(userId);
+    return row === undefined ? undefined : decode<UserProfile>(String(row["payload"]));
+  }
+
+  getUserByUsername(username: string): UserProfile | undefined {
+    // The column is COLLATE NOCASE, so this comparison is case-insensitive without lower-casing the input.
+    const row = this.db.prepare("SELECT payload FROM users WHERE username = ?").get(username.trim());
+    return row === undefined ? undefined : decode<UserProfile>(String(row["payload"]));
+  }
+
+  createUser(profile: UserProfile): void {
+    if (this.getUserByUsername(profile.username) !== undefined) throw usernameTaken(profile.username);
+    try {
+      this.db
+        .prepare(INSERT_USER)
+        .run(profile.userId, profile.username, profile.createdAt, JSON.stringify(profile));
+    } catch (error) {
+      // A concurrent create can still lose the race between the lookup above and this insert.
+      if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) {
+        throw usernameTaken(profile.username);
+      }
+      throw error;
+    }
+  }
+
+  updateUser(userId: string, patch: UserProfilePatch): UserProfile | undefined {
+    const existing = this.getUser(userId);
+    if (existing === undefined) return undefined;
+    const next: UserProfile = { ...existing };
+    if (patch.displayName !== undefined) next.displayName = patch.displayName;
+    if (patch.passwordHash !== undefined) next.passwordHash = patch.passwordHash;
+    if (patch.timezone !== undefined) next.timezone = patch.timezone;
+    if (Object.hasOwn(patch, "goal")) next.goal = patch.goal ?? null;
+    this.db.prepare(UPDATE_USER).run(JSON.stringify(next), userId);
+    return next;
   }
 
   appendMessage(message: Message): void {
@@ -218,6 +292,47 @@ class SqliteStore implements Store {
         activity.createdAt,
         JSON.stringify(activity),
       );
+  }
+
+  appendChangeSet(changeSet: ChangeSet): void {
+    this.db
+      .prepare(INSERT_CHANGE_SET)
+      .run(
+        changeSet.changeSetId,
+        changeSet.userId,
+        changeSet.createdAt,
+        changeSet.revertedAt,
+        JSON.stringify(changeSet),
+      );
+  }
+
+  listChangeSets(userId: string, limit = 10): ChangeSet[] {
+    const take = normalizeLimit(limit, 10);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM change_sets
+          WHERE user_id = ?
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT ?`,
+      )
+      .all(userId, take);
+    return rows.map((row) => decode<ChangeSet>(String(row["payload"])));
+  }
+
+  getChangeSet(userId: string, changeSetId: string): ChangeSet | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM change_sets WHERE user_id = ? AND change_set_id = ?")
+      .get(userId, changeSetId);
+    return row === undefined ? undefined : decode<ChangeSet>(String(row["payload"]));
+  }
+
+  markChangeSetReverted(userId: string, changeSetId: string, at: string): boolean {
+    const existing = this.getChangeSet(userId, changeSetId);
+    if (existing === undefined || existing.revertedAt !== null) return false;
+    const next: ChangeSet = { ...existing, revertedAt: at };
+    this.db.prepare(MARK_CHANGE_SET_REVERTED).run(at, JSON.stringify(next), userId, changeSetId);
+    return true;
   }
 
   close(): void {
