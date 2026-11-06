@@ -47,8 +47,8 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
    - "Move Tuesday's run to Wednesday and delete Sunday's."
    - "I only have 30 minutes on weekdays."
 4. The coach replies in the bubble and books the plan. The month grid updates **in place**; changed days animate.
-5. The coach returns 1–3 tappable suggestions after every turn; the bubble also shows a read-only **Recent changes** list.
-   To undo, the runner simply asks the coach in conversation (for example "undo the last change").
+5. The coach returns 1–3 tappable suggestions after every turn. To undo, the runner simply asks the coach in conversation
+   (for example "undo the last change"); there is no history panel or Undo button.
 6. Later, Garmin activities appear on the same calendar after a sync. The coach can refer to them on the next turn.
 
 ---
@@ -70,7 +70,6 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 │   profile/cookie     │        │ - prompt + validate + apply CRUD    │
 │ - month/day render   │        │ - change sets + revert + suggestions│
 │ - /calendar/data     │        └───────────────┬─────────────────────┘
-│ - /calendar/history  │                        │
 │ - /sync (Garmin)     │                        │
 └──────────┬───────────┘                        ▼
            │                          ┌──────────────────────────────┐
@@ -107,7 +106,6 @@ Key properties:
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
 | Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
 | Profile | `/profile` | `src/web.ts` | display name, timezone, goal, optional password change |
-| Change history | `/calendar/history` | `src/web.ts` + `src/store.ts` | recent batches, before/after, reverted state |
 | Day detail | `/day/YYYY-MM-DD` | `src/web.ts` | one day's sessions and activities |
 | Garmin sync | `POST /sync` | `src/garmin.ts` | pull recent activities into the calendar |
 
@@ -249,9 +247,9 @@ order:
 - `update` → restore the `before` snapshot (including a move back to `fromDay`)
 
 The revert is itself appended as a new change set (`summary: "Undo: …"`), and the original set is marked `revertedAt`. This
-keeps the log append-only and auditable. `GET /calendar/history` returns the newest first; the bubble shows the recent
-changes as a read-only list. Undo is intentionally **not a button**: the runner orders it inside the conversation, and the
-coach uses the same validated revert path. There is no direct revert API shortcut.
+keeps the log append-only and auditable. The log is internal: there is no history panel and no `/calendar/history` route.
+Undo is intentionally **not a button**: the runner orders it inside the conversation, and the coach uses the same validated
+revert path. There is no direct revert API shortcut.
 
 ---
 
@@ -312,7 +310,6 @@ it directly. The web surface is the authenticated entry point.
 | `GET` | `/calendar?month=YYYY-MM` | month grid (authenticated, user-scoped) |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
 | `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh |
-| `GET` | `/calendar/history` | recent change sets (newest first, reverted marker) |
 | `POST` | `/chat` | bubble proxy → gateway; returns `{reply, sessions, changes, suggestions, changeSetId, reverted}` |
 | `POST` | `/sync` | Garmin pull |
 | `GET` | `/static/app.css` | styles |
@@ -379,7 +376,7 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **83 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
+Current state: **82 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
 streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.

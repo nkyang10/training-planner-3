@@ -33,7 +33,7 @@ pnpm dev
 | 💬 Coach bubble | self-implemented same-origin chat; add / move / delete / revert sessions |
 | Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing |
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |
-| Change history | every batch stored with before/after snapshots; undo via the coach |
+| Audit log | every batch stored with before/after snapshots; undo via the coach, no history panel |
 | Suggestions | the coach returns 1–3 tappable follow-ups after each turn |
 | Garmin sync | pulls recent activities into the calendar |
 
@@ -47,7 +47,7 @@ pnpm dev
 
 ## Status
 
-- 83 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 82 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh, page-wide CRUD
   animation, conversation recall, change history, LLM-driven undo, suggestions.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.
