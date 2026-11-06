@@ -135,7 +135,7 @@ function renderChatBubble(): string {
     const log = document.getElementById('coach-log');
     const suggestions = document.getElementById('coach-suggestions');
     if (!bubble || !panel || !close || !form || !input || !log || !suggestions) return;
-    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); };
+    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); void loadConversation(); };
     const hide = () => { panel.hidden = true; bubble.hidden = false; };
     const add = (role, text) => {
       const line = document.createElement('div');
@@ -144,6 +144,24 @@ function renderChatBubble(): string {
       log.appendChild(line);
       log.scrollTop = log.scrollHeight;
       return line;
+    };
+    let historyLoaded = false;
+    const loadConversation = async () => {
+      if (historyLoaded) return;
+      historyLoaded = true;
+      try {
+        const response = await fetch('/chat/history');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (log.childElementCount > 0) return;
+        for (const message of data.messages || []) {
+          if (message.role === 'user' || message.role === 'assistant') {
+            add(message.role === 'user' ? 'user' : 'coach', String(message.text || ''));
+          }
+        }
+      } catch {
+        // A failed history read leaves the bubble empty; the next turn still works.
+      }
     };
     const monthGrid = document.querySelector('.month[data-month]');
     const refreshCalendar = async () => {
@@ -533,6 +551,17 @@ export function createWeb(options: WebOptions): WebApp {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
           response.end(JSON.stringify({ error: { detail: error instanceof Error ? error.message : String(error) } }));
         }
+        return;
+      }
+
+      if (url.pathname === "/chat/history" && method === "GET") {
+        const messages = options.store.listMessages(user.userId, 40).map((message) => ({
+          role: message.role,
+          text: message.text,
+          createdAt: message.createdAt,
+        }));
+        response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        response.end(JSON.stringify({ messages }));
         return;
       }
 

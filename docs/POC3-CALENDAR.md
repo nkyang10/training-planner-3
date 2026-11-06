@@ -102,7 +102,7 @@ Key properties:
 | Surface | URL | Implementation | Purpose |
 |---|---|---|---|
 | Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid, day detail, Garmin badges |
-| Coach bubble | bottom-right of the calendar | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation |
+| Coach bubble | bottom-right of the calendar | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation; reloads the recent conversation on open |
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
 | Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
 | Profile | `/profile` | `src/web.ts` | display name, timezone, goal, optional password change |
@@ -311,6 +311,7 @@ it directly. The web surface is the authenticated entry point.
 | `GET` | `/day/YYYY-MM-DD` | day detail |
 | `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh |
 | `POST` | `/chat` | bubble proxy → gateway; returns `{reply, sessions, changes, suggestions, changeSetId, reverted}` |
+| `GET` | `/chat/history` | the signed-in runner's recent messages, oldest first (used to restore the bubble after refresh) |
 | `POST` | `/sync` | Garmin pull |
 | `GET` | `/static/app.css` | styles |
 
@@ -376,8 +377,8 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **82 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
-streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web.
+Current state: **83 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
+streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web + conversation reload.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
 
@@ -385,16 +386,14 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 
 ## 13. Honest limits
 
-1. **The bubble does not reload conversation history** after a page refresh. Messages are in SQLite and feed the coach, but the
-   panel starts empty.
-2. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming.
-3. **Auth is PoC-grade.** The default `POC3_AUTH_SECRET` must be replaced; there is no email verification, password reset,
+1. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming.
+2. **Auth is PoC-grade.** The default `POC3_AUTH_SECRET` must be replaced; there is no email verification, password reset,
    rate limit or session revocation list.
-4. **The gateway trusts `x-poc3-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
-5. **No manual edit form.** The coach is the only writer by design; the runner can only ask it.
-6. **No external calendar sync.** Google/Outlook/CalDAV are out of scope.
-7. **Single-process SQLite.** Fine for a PoC; not a multi-instance production store.
-8. **Animation is best-effort.** It is DOM/CSS/Web Animations; reduced-motion users get the grid update without the flourish.
+3. **The gateway trusts `x-poc3-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
+4. **No manual edit form.** The coach is the only writer by design; the runner can only ask it.
+5. **No external calendar sync.** Google/Outlook/CalDAV are out of scope.
+6. **Single-process SQLite.** Fine for a PoC; not a multi-instance production store.
+7. **Animation is best-effort.** It is DOM/CSS/Web Animations; reduced-motion users get the grid update without the flourish.
 
 ---
 
