@@ -39,7 +39,7 @@ product reason.
 | ID | Feature | Why it matters | Priority | Effort | Risk / dependency |
 |---|---|---|---|---|---|
 | A1 | **Bubble loads recent conversation** from SQLite on open | The bubble currently starts empty after refresh; the coach "remembers" but the runner cannot see the thread | **P0** | S | Needs a `GET /chat/history` route and message rendering; keep last N turns |
-| A2 | ~~Undo last coach change~~ | **Implemented** — change journal + LLM revert + read-only history | — | — | See change history section |
+| A2 | ~~Undo last coach change~~ | **Implemented** — change journal + LLM revert (no history UI) | — | — | See change history section |
 | A3 | **Diff preview / confirm before apply** | "Review original existing too" becomes visible: show add/move/delete diff before writing | **P1** | M | Two-phase turn: propose → confirm; gateway must not write on propose |
 | A4 | Streaming reply in the bubble | Long coach answers feel dead; streaming would keep the reply alive | **P1** | M | SSE parsing in bubble; gateway already emits one chunk, extend to token chunks |
 | A5 | Week / agenda view + "today" button | Month grid is good for planning; week/agenda is better for daily use | P1 | M | Reuse `/calendar/data`; new render path |

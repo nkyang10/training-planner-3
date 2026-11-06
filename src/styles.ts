@@ -68,14 +68,6 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 #coach-form { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 10px; border-top: 1px solid var(--line); background: #fff; }
 #coach-form textarea { resize: none; padding: 10px; border: 1px solid var(--line); border-radius: 12px; font: inherit; background: var(--wash); }
 #coach-form .btn { padding: 10px 14px; }
-#coach-history { border-top: 1px solid var(--line); padding: 9px 12px; background: #fffaf5; max-height: 132px; overflow-y: auto; overflow-x: hidden; }
-.coach-history-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 12px; }
-#coach-history-list { display: grid; gap: 3px; font-size: 11px; }
-.change-item { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 0; min-width: 0; }
-.change-summary { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.change-meta { flex: 0 0 auto; color: var(--muted); white-space: nowrap; }
-.change-item.reverted .change-summary { color: var(--muted); text-decoration: line-through; }
-.change-item .reverted { color: var(--danger); font-weight: 700; }
 #coach-suggestions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--line); background: var(--wash); }
 #coach-suggestions:empty { display: none; }
 .suggestion { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1.2; cursor: pointer; text-align: left; }

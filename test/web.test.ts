@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import type { GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { ChangeEntry, ChangeSet, SessionKind, Store, TrainingSession } from "../src/types";
+import type { SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -95,36 +95,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
   return { handle, auth, web, base: `http://127.0.0.1:${port}`, user, cookie: cookieFrom(login.cookie) };
 };
 
-const changeSetFor = (
-  userId: string,
-  changeSetId: string,
-  createdAt: string,
-  summary: string,
-  revertedAt: string | null,
-): ChangeSet => {
-  const session: TrainingSession = {
-    sessionId: `session:${changeSetId}`,
-    userId,
-    day: "2026-11-06",
-    title: "Easy 5 km",
-    kind: "easy",
-    distanceKm: 5,
-    durationMin: 35,
-    note: null,
-    createdAt,
-  };
-  const entry: ChangeEntry = {
-    action: "add",
-    sessionId: session.sessionId,
-    before: null,
-    after: session,
-    fromDay: null,
-    toDay: session.day,
-    title: session.title,
-    kind: session.kind,
-  };
-  return { changeSetId, userId, createdAt, summary, entries: [entry], revertedAt };
-};
+
 
 interface MockGateway {
   url: string;
@@ -173,7 +144,7 @@ const startMockGateway = async (): Promise<MockGateway> => {
 describe("authentication pages", () => {
   it("redirects unauthenticated requests and serves login and signup", async () => {
     const { base } = await start();
-    for (const path of ["/calendar", "/day/2026-11-06", "/profile", "/calendar/history", "/calendar/data?month=2026-11"]) {
+    for (const path of ["/calendar", "/day/2026-11-06", "/profile", "/calendar/data?month=2026-11"]) {
       const response = await fetch(`${base}${path}`, { redirect: "manual" });
       expect(response.status).toBe(303);
       expect(response.headers.get("location")).toBe("/login");
@@ -403,18 +374,14 @@ describe("private calendar", () => {
 });
 
 describe("in-calendar coach bubble", () => {
-  it("renders suggestion chips and recent-change hooks while keeping the animation", async () => {
+  it("renders suggestion chips while keeping the animation", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain('id="coach-bubble"');
     expect(html).toContain('id="coach-panel"');
     expect(html).toContain('id="coach-suggestions"');
-    expect(html).toContain('id="coach-history"');
     expect(html).not.toContain('id="coach-undo"');
-    expect(html).toContain("Recent changes");
-    expect(html).toContain("ask in chat");
     expect(html).not.toContain("undo the last change");
-    expect(html).toContain("fetch('/calendar/history'");
     expect(html).toContain("data.suggestions");
     expect(html).toContain("chip.className = 'suggestion'");
     expect(html).toContain("fetch('/chat'");
@@ -460,35 +427,4 @@ describe("in-calendar coach bubble", () => {
     expect(gateway.seenMessage()).toBe("Plan my week");
   });
 
-  it("returns the authenticated user's change history newest first", async () => {
-    const { base, auth, handle, user, cookie } = await start();
-    const other = auth.signup({
-      username: "history_other",
-      password: "other-password-123",
-      displayName: "History Other",
-      timezone: "UTC",
-    }).user;
-    handle.store.appendChangeSet(changeSetFor(user.userId, "change:older", `${TODAY}T07:00:00.000Z`, 'add "Easy 5 km" on 2026-11-06', null));
-    handle.store.appendChangeSet(changeSetFor(user.userId, "change:newer", `${TODAY}T09:00:00.000Z`, 'move "Long run" to 2026-11-08', `${TODAY}T10:00:00.000Z`));
-    handle.store.appendChangeSet(changeSetFor(other.userId, "change:foreign", `${TODAY}T11:00:00.000Z`, "other runner's change", null));
-
-    const response = await fetch(`${base}/calendar/history`, { headers: { cookie } });
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      changes: Array<{
-        changeSetId: string;
-        summary: string;
-        createdAt: string;
-        revertedAt: string | null;
-        entries: Array<{ title: string }>;
-      }>;
-    };
-    expect(body.changes.map((change) => change.changeSetId)).toEqual(["change:newer", "change:older"]);
-    expect(body.changes[0]?.summary).toContain("Long run");
-    expect(body.changes[0]?.createdAt).toBe(`${TODAY}T09:00:00.000Z`);
-    expect(body.changes[0]?.revertedAt).toBe(`${TODAY}T10:00:00.000Z`);
-    expect(body.changes[0]?.entries).toHaveLength(1);
-    expect(body.changes[1]?.revertedAt).toBeNull();
-    expect(body.changes.some((change) => change.changeSetId === "change:foreign")).toBe(false);
-  });
 });

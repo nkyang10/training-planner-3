@@ -116,16 +116,12 @@ function layout(title: string, body: string, user: AuthUser | undefined): string
   <body>${nav}<main>${body}</main>${bubble}</body></html>`;
 }
 
-/** The in-calendar coach bubble: suggestions are tappable, and recent changes are read-only; undo is requested in chat. */
+/** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
     <header><strong>AI Coach</strong><button id="coach-close" type="button" aria-label="Close chat">×</button></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
-    <section id="coach-history" aria-label="Recent changes">
-      <div class="coach-history-head"><strong>Recent changes</strong><span class="muted small">ask in chat</span></div>
-      <div id="coach-history-list"><p class="muted small">No changes yet.</p></div>
-    </section>
     <div id="coach-suggestions" aria-label="Suggested next messages"></div>
     <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>
   </section>
@@ -137,10 +133,9 @@ function renderChatBubble(): string {
     const form = document.getElementById('coach-form');
     const input = document.getElementById('coach-input');
     const log = document.getElementById('coach-log');
-    const historyList = document.getElementById('coach-history-list');
     const suggestions = document.getElementById('coach-suggestions');
-    if (!bubble || !panel || !close || !form || !input || !log || !historyList || !suggestions) return;
-    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); void refreshHistory(); };
+    if (!bubble || !panel || !close || !form || !input || !log || !suggestions) return;
+    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); };
     const hide = () => { panel.hidden = true; bubble.hidden = false; };
     const add = (role, text) => {
       const line = document.createElement('div');
@@ -241,45 +236,6 @@ function renderChatBubble(): string {
         document.body.classList.remove('calendar-fx-active');
       }, 1200 + before.length * 140);
     };
-    const refreshHistory = async () => {
-      try {
-        const response = await fetch('/calendar/history');
-        if (!response.ok) return;
-        const data = await response.json();
-        const changes = Array.isArray(data.changes) ? data.changes.slice() : [];
-        changes.sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
-        historyList.replaceChildren();
-        if (changes.length === 0) {
-          const empty = document.createElement('p');
-          empty.className = 'muted small';
-          empty.textContent = 'No changes yet.';
-          historyList.appendChild(empty);
-          return;
-        }
-        for (const change of changes) {
-          const item = document.createElement('div');
-          item.className = 'change-item' + (change.revertedAt ? ' reverted' : '');
-          const summary = document.createElement('span');
-          summary.className = 'change-summary';
-          summary.textContent = String(change.summary || change.changeSetId || 'Change');
-          const meta = document.createElement('span');
-          meta.className = 'change-meta';
-          meta.textContent = String(change.createdAt || '').replace('T', ' ').replace(/\\.\\d+Z$/, '');
-          if (change.revertedAt) {
-            const mark = document.createElement('span');
-            mark.className = 'reverted';
-            mark.textContent = 'reverted';
-            meta.appendChild(document.createTextNode(' · '));
-            meta.appendChild(mark);
-          }
-          item.appendChild(summary);
-          item.appendChild(meta);
-          historyList.appendChild(item);
-        }
-      } catch {
-        // Keep the last known history; a failed read must not break the chat.
-      }
-    };
     const setSuggestions = (items) => {
       suggestions.replaceChildren();
       if (!Array.isArray(items)) return;
@@ -311,11 +267,9 @@ function renderChatBubble(): string {
         }
         add('coach', data.reply);
         setSuggestions(data.suggestions);
-        await refreshHistory();
         if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
           await animateChanges(data.changes || []);
           add('system', 'Calendar updated · 日曆已更新');
-          await refreshHistory();
         }
       } catch {
         typing.remove();
@@ -579,19 +533,6 @@ export function createWeb(options: WebOptions): WebApp {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
           response.end(JSON.stringify({ error: { detail: error instanceof Error ? error.message : String(error) } }));
         }
-        return;
-      }
-
-      if (url.pathname === "/calendar/history" && method === "GET") {
-        const changes = options.store.listChangeSets(user.userId, 10).map((changeSet) => ({
-          changeSetId: changeSet.changeSetId,
-          summary: changeSet.summary,
-          createdAt: changeSet.createdAt,
-          revertedAt: changeSet.revertedAt,
-          entries: changeSet.entries,
-        }));
-        response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(JSON.stringify({ changes }));
         return;
       }
 
