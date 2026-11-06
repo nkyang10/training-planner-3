@@ -30,7 +30,7 @@ pnpm dev
 | Surface | What it does |
 |---|---|
 | Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail |
-| 💬 Coach bubble | self-implemented same-origin chat; add / move / delete / revert sessions |
+| 💬 Coach bubble | self-implemented same-origin chat; restores the recent conversation after refresh; add / move / delete / revert sessions |
 | Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing |
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |
 | Audit log | every batch stored with before/after snapshots; undo via the coach, no history panel |
@@ -47,14 +47,14 @@ pnpm dev
 
 ## Status
 
-- 82 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 83 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh, page-wide CRUD
-  animation, conversation recall, change history, LLM-driven undo, suggestions.
+  animation, conversation reload after refresh, LLM-driven undo, suggestions.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.
 
 ## Honest limits
 
-The bubble does not reload old messages after a refresh; there is no streaming in the bubble; the auth cookie is signed with
+There is no streaming in the bubble; the auth cookie is signed with
 `POC3_AUTH_SECRET` (set a strong secret); the gateway trusts the internal `x-poc3-user` header; SQLite is single-process. See
 the solution doc for the full list.
 

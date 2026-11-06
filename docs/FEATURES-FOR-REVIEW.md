@@ -21,7 +21,7 @@ product reason.
 | PoC1 | Admin console | No | A read-only admin/debug page: messages, memories, sessions, sync runs |
 | PoC1 | Uploads (plan files) | No | Upload a race plan/PDF and let the coach import it |
 | PoC1 | Auth / multi-user | **Yes** — signup/login/profile, per-user isolation | Email verification, password reset, SSO |
-| PoC1 | Coach conversation | Bubble | Conversation persistence in the bubble (currently reload loses it) |
+| PoC1 | Coach conversation | Bubble | **Yes** — reloads recent messages from SQLite; streaming still open |
 | PoC2 | Self-implemented bubble | Yes | Streaming, history reload, retry, error states |
 | PoC2 | CRUD + batch + animation | Yes | Diff preview, conflict detection |
 | POC3 | Change history + undo | **Yes** — change_sets, before/after, LLM revert | Audit viewer, redo, selective revert |
@@ -38,7 +38,7 @@ product reason.
 
 | ID | Feature | Why it matters | Priority | Effort | Risk / dependency |
 |---|---|---|---|---|---|
-| A1 | **Bubble loads recent conversation** from SQLite on open | The bubble currently starts empty after refresh; the coach "remembers" but the runner cannot see the thread | **P0** | S | Needs a `GET /chat/history` route and message rendering; keep last N turns |
+| A1 | ~~Bubble loads recent conversation~~ | **Implemented** — GET /chat/history + render on open | — | — | Streaming still open |
 | A2 | ~~Undo last coach change~~ | **Implemented** — change journal + LLM revert (no history UI) | — | — | See change history section |
 | A3 | **Diff preview / confirm before apply** | "Review original existing too" becomes visible: show add/move/delete diff before writing | **P1** | M | Two-phase turn: propose → confirm; gateway must not write on propose |
 | A4 | Streaming reply in the bubble | Long coach answers feel dead; streaming would keep the reply alive | **P1** | M | SSE parsing in bubble; gateway already emits one chunk, extend to token chunks |
@@ -97,9 +97,9 @@ product reason.
 
 If the owner wants the highest value for the least risk:
 
-1. **A1 — bubble conversation persistence** (P0, S). Makes the calendar surface feel like a real coach, not a one-shot widget.
-2. **B1 — post-run feedback loop** (P0, M). Connects Garmin to the coach; the calendar becomes a feedback loop, not just a plan.
-3. **B2 — deterministic fallback planner** (P0, M). Model outage or invalid JSON should not leave the runner with nothing.
+1. **B1 — post-run feedback loop** (P0, M). Connects Garmin to the coach; the calendar becomes a feedback loop, not just a plan.
+2. **B2 — deterministic fallback planner** (P0, M). Model outage or invalid JSON should not leave the runner with nothing.
+3. **A4 — streaming reply in the bubble** (P1, M). The last missing chat-UX primitive.
 
 A sensible second slice: **C1 auto-sync**, **A3 diff preview**, **B6 safety guardrails**, **A5 week/agenda view**.
 

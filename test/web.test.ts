@@ -144,7 +144,7 @@ const startMockGateway = async (): Promise<MockGateway> => {
 describe("authentication pages", () => {
   it("redirects unauthenticated requests and serves login and signup", async () => {
     const { base } = await start();
-    for (const path of ["/calendar", "/day/2026-11-06", "/profile", "/calendar/data?month=2026-11"]) {
+    for (const path of ["/calendar", "/day/2026-11-06", "/profile", "/chat/history", "/calendar/data?month=2026-11"]) {
       const response = await fetch(`${base}${path}`, { redirect: "manual" });
       expect(response.status).toBe(303);
       expect(response.headers.get("location")).toBe("/login");
@@ -385,6 +385,8 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("data.suggestions");
     expect(html).toContain("chip.className = 'suggestion'");
     expect(html).toContain("fetch('/chat'");
+    expect(html).toContain("fetch('/chat/history'");
+    expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
@@ -428,3 +430,25 @@ describe("in-calendar coach bubble", () => {
   });
 
 });
+
+describe("conversation history after refresh", () => {
+  it("returns the user's recent messages oldest first and never another runner's", async () => {
+    const { base, handle, user, cookie, auth } = await start();
+    const other = auth.signup({
+      username: "history_other",
+      password: "other-password-123",
+      displayName: "History Other",
+      timezone: "UTC",
+    }).user;
+    handle.store.appendMessage({ messageId: "m1", userId: user.userId, role: "user", text: "first", createdAt: `${TODAY}T01:00:00.000Z` });
+    handle.store.appendMessage({ messageId: "m2", userId: user.userId, role: "assistant", text: "second", createdAt: `${TODAY}T02:00:00.000Z` });
+    handle.store.appendMessage({ messageId: "m3", userId: other.userId, role: "user", text: "foreign", createdAt: `${TODAY}T03:00:00.000Z` });
+
+    const response = await fetch(`${base}/chat/history`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { messages: Array<{ role: string; text: string }> };
+    expect(body.messages.map((message) => message.text)).toEqual(["first", "second"]);
+    expect(body.messages.some((message) => message.text === "foreign")).toBe(false);
+  });
+});
+
