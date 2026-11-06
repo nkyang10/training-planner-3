@@ -116,14 +116,14 @@ function layout(title: string, body: string, user: AuthUser | undefined): string
   <body>${nav}<main>${body}</main>${bubble}</body></html>`;
 }
 
-/** The in-calendar coach bubble: suggestions are tappable, and recent changes are visible with an LLM-driven undo. */
+/** The in-calendar coach bubble: suggestions are tappable, and recent changes are read-only; undo is requested in chat. */
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
     <header><strong>AI Coach</strong><button id="coach-close" type="button" aria-label="Close chat">×</button></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
     <section id="coach-history" aria-label="Recent changes">
-      <div class="coach-history-head"><strong>Recent changes</strong><button id="coach-undo" type="button" disabled>Undo</button></div>
+      <div class="coach-history-head"><strong>Recent changes</strong><span class="muted small">ask in chat</span></div>
       <div id="coach-history-list"><p class="muted small">No changes yet.</p></div>
     </section>
     <div id="coach-suggestions" aria-label="Suggested next messages"></div>
@@ -138,9 +138,8 @@ function renderChatBubble(): string {
     const input = document.getElementById('coach-input');
     const log = document.getElementById('coach-log');
     const historyList = document.getElementById('coach-history-list');
-    const undo = document.getElementById('coach-undo');
     const suggestions = document.getElementById('coach-suggestions');
-    if (!bubble || !panel || !close || !form || !input || !log || !historyList || !undo || !suggestions) return;
+    if (!bubble || !panel || !close || !form || !input || !log || !historyList || !suggestions) return;
     const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); void refreshHistory(); };
     const hide = () => { panel.hidden = true; bubble.hidden = false; };
     const add = (role, text) => {
@@ -255,10 +254,8 @@ function renderChatBubble(): string {
           empty.className = 'muted small';
           empty.textContent = 'No changes yet.';
           historyList.appendChild(empty);
-          undo.disabled = true;
           return;
         }
-        let hasActive = false;
         for (const change of changes) {
           const item = document.createElement('div');
           item.className = 'change-item' + (change.revertedAt ? ' reverted' : '');
@@ -274,14 +271,11 @@ function renderChatBubble(): string {
             mark.textContent = 'reverted';
             meta.appendChild(document.createTextNode(' · '));
             meta.appendChild(mark);
-          } else {
-            hasActive = true;
           }
           item.appendChild(summary);
           item.appendChild(meta);
           historyList.appendChild(item);
         }
-        undo.disabled = !hasActive;
       } catch {
         // Keep the last known history; a failed read must not break the chat.
       }
@@ -330,7 +324,6 @@ function renderChatBubble(): string {
     };
     bubble.addEventListener('click', show);
     close.addEventListener('click', hide);
-    undo.addEventListener('click', () => { void send('undo the last change'); });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const text = input.value.trim();

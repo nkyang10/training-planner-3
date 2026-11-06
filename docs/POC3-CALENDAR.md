@@ -47,8 +47,8 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
    - "Move Tuesday's run to Wednesday and delete Sunday's."
    - "I only have 30 minutes on weekdays."
 4. The coach replies in the bubble and books the plan. The month grid updates **in place**; changed days animate.
-5. The coach returns 1–3 tappable suggestions after every turn; the bubble also shows **Recent changes** with an Undo
-   button that sends "undo the last change" back through the coach.
+5. The coach returns 1–3 tappable suggestions after every turn; the bubble also shows a read-only **Recent changes** list.
+   To undo, the runner simply asks the coach in conversation (for example "undo the last change").
 6. Later, Garmin activities appear on the same calendar after a sync. The coach can refer to them on the next turn.
 
 ---
@@ -250,7 +250,8 @@ order:
 
 The revert is itself appended as a new change set (`summary: "Undo: …"`), and the original set is marked `revertedAt`. This
 keeps the log append-only and auditable. `GET /calendar/history` returns the newest first; the bubble shows the recent
-changes and an **Undo** button that sends "undo the last change" through the coach — there is no direct revert API shortcut.
+changes as a read-only list. Undo is intentionally **not a button**: the runner orders it inside the conversation, and the
+coach uses the same validated revert path. There is no direct revert API shortcut.
 
 ---
 
@@ -259,7 +260,8 @@ changes and an **Undo** button that sends "undo the last change" through the coa
 - **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month.
 - **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`).
 - **Garmin badge** `✓ n` on days with activities.
-- **Bubble** is a floating panel: messages, typing indicator, input, Send; mobile becomes full height.
+- **Bubble** is a full-height floating panel: the log fills the available height and scrolls, with suggestions and the input
+  pinned below; desktop and mobile both use the viewport height.
 - **CRUD animation** (verified in headless Chrome):
   - `update`: the chip leaves the old cell, flies in an arc to the new day, scales up and rotates; the target cell pulses green.
   - `remove`: the chip flies into a bin at the bottom centre, shrinks and fades; the old cell pulses red and the bin pops.
