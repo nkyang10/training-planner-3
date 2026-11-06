@@ -1,0 +1,28 @@
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+dist/
+build/
+coverage/
+.cache/
+.next/
+.turbo/
+
+# Local data and secrets
+data/
+.env
+.env.*
+*.local
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.db
+
+# Logs and editor noise
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
