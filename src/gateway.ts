@@ -8,7 +8,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { buildCoachHistory, buildCoachPrompt, parseCoachTurn } from "./coach";
+import { HORIZON_DAYS, buildCoachHistory, buildCoachPrompt, parseCoachTurn } from "./coach";
 import { applyRevert } from "./history";
 import type { ChangeEntry, ChangeSet, Store, TrainingSession } from "./types";
 
@@ -95,6 +95,11 @@ function extractJson(content: string): unknown {
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("no JSON object in the model answer");
   return JSON.parse(candidate.slice(start, end + 1)) as unknown;
+}
+
+function looksLikeSchemaEcho(raw: unknown): boolean {
+  const text = JSON.stringify(raw);
+  return text.includes("YYYY-MM-DD") || text.includes("string | null") || text.includes("\\\"string\\\"");
 }
 
 async function askModel(
@@ -228,7 +233,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const prompt = buildCoachPrompt({
         today,
         memories: options.store.listMemories(userId, 100),
-        sessions: options.store.listSessions(userId, today, addDays(today, 56)),
+        sessions: options.store.listSessions(userId, today, addDays(today, HORIZON_DAYS)),
         activities: options.store.listActivities(userId, 10),
         history,
         recentChanges,
@@ -255,7 +260,17 @@ export function createGateway(options: GatewayOptions): Gateway {
         sendJson(response, 502, { error: { code: "model-failed", detail: error instanceof Error ? error.message : String(error) } });
         return;
       }
-      const parsed = parseCoachTurn(raw, today);
+      let parsed = parseCoachTurn(raw, today);
+      if (!parsed.ok && looksLikeSchemaEcho(raw)) {
+        // Some models echo the prompt's JSON schema when a request is hard. Ask once, explicitly, for real values.
+        const repairPrompt = `${prompt}\n\nIMPORTANT: your previous answer was the schema template, not a real answer. Return ONE JSON object with real values for this runner now. Never output YYYY-MM-DD, string, 0 or other placeholders from the schema. If a month/day has no year and has passed this year, use the next occurrence.`;
+        try {
+          raw = await askModel(options, repairPrompt, [], question);
+          parsed = parseCoachTurn(raw, today);
+        } catch {
+          // Keep the original fallback when the repair call fails.
+        }
+      }
       let reply = FALLBACK_REPLY;
       const meta = emptyMeta();
       const failures: string[] = [];

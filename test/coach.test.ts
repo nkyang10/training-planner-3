@@ -239,3 +239,32 @@ describe("coach revert", () => {
     expect(prompt).toContain("revertChangeSetId");
   });
 });
+
+describe("extended race horizon", () => {
+  it("accepts a racewalk race on 2027-01-15 and keeps a far date rejected", () => {
+    const race = parseCoachTurn(
+      {
+        reply: "Booked the race walk.",
+        suggestions: ["Book the race-week plan"],
+        revertChangeSetId: null,
+        sessions: [
+          {
+            action: "add",
+            day: "2027-01-15",
+            title: "10K Race Walk",
+            kind: "racewalk",
+            distanceKm: 10,
+            durationMin: 90,
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(race.ok).toBe(true);
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], sessions: [{ day: "2027-06-01", title: "Run", kind: "easy" }] }, TODAY)).toMatchObject({
+      ok: false,
+      code: "session-too-far",
+    });
+  });
+});
+

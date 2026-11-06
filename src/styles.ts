@@ -39,6 +39,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .session { display: block; font-size: 11px; line-height: 1.25; padding: 3px 6px; border-radius: 7px; background: #fff; border: 1px solid var(--line); }
 .session.kind-interval, .session.kind-tempo { border-color: var(--ember); color: var(--ember); }
 .session.kind-long { border-color: var(--solar); }
+.session.kind-racewalk { border-color: #7a4fd6; color: #5b34b0; }
 .session.kind-rest { color: var(--muted); }
 .done { font-size: 11px; color: var(--success); font-weight: 700; }
 .sessions { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }

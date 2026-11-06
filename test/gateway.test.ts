@@ -535,3 +535,25 @@ describe("change history and revert", () => {
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
   });
 });
+
+describe("schema echo repair", () => {
+  it("asks once more when the model repeats the JSON schema", async () => {
+    const model = queueModel();
+    model.answers.push({
+      reply: "string",
+      memories: ["string"],
+      sessions: [{ action: "add", sessionId: null, day: "YYYY-MM-DD", title: "string", kind: "easy", distanceKm: 0, durationMin: null, note: "string" }],
+      suggestions: ["string"],
+      revertChangeSetId: null,
+    });
+    model.answers.push(VALID);
+    const { handle, url } = await base(model.fetchImpl);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Race on Jan 15" }] });
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toContain("schema template");
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+  });
+});
+
