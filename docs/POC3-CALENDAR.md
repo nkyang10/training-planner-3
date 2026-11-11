@@ -272,6 +272,21 @@ revert path. There is no direct revert API shortcut.
 
 ![Calendar CRUD animation — a session chip flying into the bin while the deleted day pulses](design/calendar-crud-animation.png)
 
+### Day actions
+
+Clicking a day cell opens a small menu anchored to that day:
+
+| Choice | What it does |
+|---|---|
+| Add a session here | Opens the coach bubble with `Add a session on YYYY-MM-DD: ` prefilled; the runner completes the request |
+| Move a session here | Prefills `Move a session to YYYY-MM-DD: ` so the runner names the source |
+| Delete a session here | Sends `Delete the session on YYYY-MM-DD.`; disabled when the day has no session |
+| Ask coach about this day | Sends `What is planned on YYYY-MM-DD? Review it and suggest changes.` |
+| View day details | Navigates to `/day/YYYY-MM-DD` |
+
+All write choices go through the coach; there is no direct edit API. The menu closes on Escape, outside click, or after a
+choice, and is keyboard reachable (Enter/Space on a focused day).
+
 ---
 
 ## 9. Garmin

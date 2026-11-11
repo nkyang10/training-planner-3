@@ -300,6 +300,99 @@ function renderChatBubble(): string {
         add('error', 'Network error. Try again.');
       }
     };
+    const dayMenu = document.createElement('div');
+    dayMenu.id = 'day-menu';
+    dayMenu.hidden = true;
+    dayMenu.setAttribute('role', 'menu');
+    dayMenu.setAttribute('aria-label', 'Day actions');
+    document.body.appendChild(dayMenu);
+    let menuDay = '';
+    const closeDayMenu = () => { dayMenu.hidden = true; };
+    const formatDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString('en-GB', {
+      weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+    });
+    const openCoach = (text, sendNow) => {
+      show();
+      if (sendNow) {
+        void send(text);
+      } else {
+        input.value = text;
+        input.focus();
+      }
+    };
+    const openDayMenu = (cell, day) => {
+      menuDay = day;
+      dayMenu.replaceChildren();
+      const header = document.createElement('div');
+      header.className = 'day-menu-head';
+      const title = document.createElement('strong');
+      title.textContent = formatDay(day);
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.textContent = '×';
+      closeButton.setAttribute('aria-label', 'Close day actions');
+      closeButton.addEventListener('click', closeDayMenu);
+      header.append(title, closeButton);
+      dayMenu.appendChild(header);
+      const hasSessions = cell.querySelectorAll('.session').length > 0;
+      const choices = [
+        ['add', 'Add a session here', false],
+        ['move', 'Move a session here', false],
+        ['delete', 'Delete a session here', true, !hasSessions],
+        ['ask', 'Ask coach about this day', true],
+        ['view', 'View day details', true],
+      ];
+      for (const [action, label, sendNow, disabled] of choices) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'menuitem');
+        button.dataset.action = action;
+        button.textContent = label;
+        button.disabled = disabled === true;
+        if (disabled === true) button.title = 'No session on this day';
+        dayMenu.appendChild(button);
+      }
+      dayMenu.hidden = false;
+      const rect = cell.getBoundingClientRect();
+      const width = Math.min(280, innerWidth - 16);
+      dayMenu.style.width = width + 'px';
+      dayMenu.style.left = Math.max(8, Math.min(rect.left, innerWidth - width - 8)) + 'px';
+      const menuHeight = dayMenu.offsetHeight || 260;
+      dayMenu.style.top = (rect.bottom + 6 + menuHeight > innerHeight ? Math.max(8, rect.top - menuHeight - 6) : rect.bottom + 6) + 'px';
+      dayMenu.querySelector('button[data-action="add"]')?.focus();
+    };
+    dayMenu.addEventListener('click', (event) => {
+      const button = event.target instanceof Element ? event.target.closest('button[data-action]') : null;
+      if (button === null) return;
+      const action = button.dataset.action;
+      closeDayMenu();
+      if (action === 'add') openCoach('Add a session on ' + menuDay + ': ', false);
+      if (action === 'move') openCoach('Move a session to ' + menuDay + ': ', false);
+      if (action === 'delete') openCoach('Delete the session on ' + menuDay + '.', true);
+      if (action === 'ask') openCoach('What is planned on ' + menuDay + '? Review it and suggest changes.', true);
+      if (action === 'view') location.href = '/day/' + menuDay;
+    });
+    document.addEventListener('click', (event) => {
+      if (dayMenu.hidden) return;
+      if (event.target instanceof Node && (dayMenu.contains(event.target) || (event.target instanceof Element && event.target.closest('.cell[data-day]') !== null))) return;
+      closeDayMenu();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeDayMenu();
+    });
+    for (const cell of document.querySelectorAll('.cell[data-day]')) {
+      cell.addEventListener('click', (event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        openDayMenu(cell, cell.dataset.day || '');
+      });
+      cell.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          openDayMenu(cell, cell.dataset.day || '');
+        }
+      });
+    }
     bubble.addEventListener('click', show);
     close.addEventListener('click', hide);
     form.addEventListener('submit', (event) => {
@@ -609,7 +702,7 @@ export function createWeb(options: WebOptions): WebApp {
           const day = `${month}-${String(dayNumber).padStart(2, "0")}`;
           const daySessions = sessions.filter((session) => session.day === day);
           const dayActivities = activities.filter((activity) => activity.day === day);
-          cells.push(`<a class="cell${day === today ? " today" : ""}" data-day="${escapeHtml(day)}" href="/day/${escapeHtml(day)}">
+          cells.push(`<a class="cell${day === today ? " today" : ""}" data-day="${escapeHtml(day)}" href="/day/${escapeHtml(day)}" aria-haspopup="menu" title="Day actions">
             <span class="date">${dayNumber}</span>
             ${daySessions.map(sessionChip).join("")}
             ${dayActivities.length === 0 ? "" : `<span class="done">✓ ${dayActivities.length}</span>`}
