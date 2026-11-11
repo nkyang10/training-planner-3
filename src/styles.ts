@@ -58,6 +58,14 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 }
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: #fff; background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
+#day-menu { position: fixed; z-index: 50; display: grid; gap: 2px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
+#day-menu[hidden] { display: none; }
+.day-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px 8px; font-size: 12px; }
+.day-menu-head button { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+#day-menu button[data-action] { border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; padding: 9px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+#day-menu button[data-action]:hover:not(:disabled), #day-menu button[data-action]:focus-visible:not(:disabled) { background: var(--wash); outline: 2px solid transparent; }
+#day-menu button[data-action]:disabled { color: var(--muted); opacity: .55; cursor: not-allowed; }
+
 #coach-panel[hidden] { display: none; }
 #coach-panel header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--wash); border-bottom: 1px solid var(--line); }
 #coach-panel header button { border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
