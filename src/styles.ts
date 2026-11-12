@@ -31,9 +31,6 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .month-nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; margin-bottom: 14px; }
 .month-nav a { text-decoration: none; color: var(--muted); font-weight: 600; }
 .month-nav .month-current { color: var(--ink); }
-.month-nav .month-this { color: var(--ember); }
-.month-nav .month-this.active { color: var(--muted); }
-.month-nav .month-current.active { color: var(--ember); }
 .dow, .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .dow span { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: center; padding-bottom: 4px; }
 .cell { min-height: 104px; border: 1px solid var(--line); border-radius: 12px; padding: 8px; background: var(--wash); text-decoration: none; display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
@@ -60,9 +57,6 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 }
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: #fff; background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
-.month-title { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
-.month-title:hover .month-caret, .month-title:focus-visible .month-caret { color: var(--ember); }
-.month-caret { color: var(--muted); font-size: 18px; }
 #month-picker { position: fixed; z-index: 55; display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
 #month-picker[hidden] { display: none; }
 .month-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

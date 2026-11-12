@@ -393,7 +393,6 @@ function renderChatBubble(): string {
         }
       });
     }
-    const monthTitle = document.getElementById('month-title');
     const monthCurrent = document.getElementById('month-current');
     const monthPicker = document.createElement('div');
     monthPicker.id = 'month-picker';
@@ -452,7 +451,7 @@ function renderChatBubble(): string {
       thisButton.type = 'button';
       thisButton.textContent = 'This month';
       thisButton.addEventListener('click', () => {
-        location.href = '/calendar?month=' + (anchor.dataset.currentMonth || monthTitle?.dataset.currentMonth || '');
+        location.href = '/calendar?month=' + (anchor.dataset.currentMonth || '');
       });
       footer.appendChild(thisButton);
       monthPicker.appendChild(footer);
@@ -464,11 +463,6 @@ function renderChatBubble(): string {
       monthPicker.style.top = (rect.bottom + 8 + monthPicker.offsetHeight > innerHeight ? Math.max(8, rect.top - monthPicker.offsetHeight - 8) : rect.bottom + 8) + 'px';
       yearSelect.focus();
     };
-    monthTitle?.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (monthPicker.hidden) openMonthPicker(monthTitle); else closeMonthPicker();
-    });
     monthCurrent?.addEventListener('click', (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault();
@@ -477,7 +471,7 @@ function renderChatBubble(): string {
     });
     document.addEventListener('click', (event) => {
       if (monthPicker.hidden) return;
-      if (event.target instanceof Node && (monthPicker.contains(event.target) || event.target === monthTitle || event.target === monthCurrent)) return;
+      if (event.target instanceof Node && (monthPicker.contains(event.target) || event.target === monthCurrent)) return;
       closeMonthPicker();
     });
     document.addEventListener('keydown', (event) => {
@@ -803,15 +797,13 @@ export function createWeb(options: WebOptions): WebApp {
         const prev = addDays(start, -1).slice(0, 7);
         const next = addDays(end, 1).slice(0, 7);
         const currentMonth = today.slice(0, 7);
-        const onCurrentMonth = month === currentMonth;
-        const currentLabel = `${MONTHS[Number(currentMonth.slice(5, 7)) - 1] ?? currentMonth} ${currentMonth.slice(0, 4)}`;
         const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
-        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1><button type="button" class="month-title" id="month-title" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" aria-haspopup="dialog">${escapeHtml(monthLabel)} <span class="month-caret" aria-hidden="true">▾</span></button></h1>
+        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1>${escapeHtml(monthLabel)}</h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
-            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a id="month-this" class="month-this${onCurrentMonth ? " active" : ""}" href="/calendar?month=${escapeHtml(currentMonth)}"${onCurrentMonth ? ' aria-current="page"' : ""} title="Jump to ${escapeHtml(currentLabel)}">This month</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
+            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
             ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
