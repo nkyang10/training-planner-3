@@ -101,11 +101,13 @@ interface MockGateway {
   url: string;
   seenUser(): string | undefined;
   seenMessage(): string | undefined;
+  seenRequestId(): string | undefined;
 }
 
 const startMockGateway = async (): Promise<MockGateway> => {
   let seenUser: string | undefined;
   let seenMessage: string | undefined;
+  let seenRequestId: string | undefined;
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const chunks: Buffer[] = [];
@@ -115,6 +117,8 @@ const startMockGateway = async (): Promise<MockGateway> => {
       };
       seenUser = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : undefined;
       seenMessage = body.messages?.[0]?.content;
+      seenRequestId =
+        typeof request.headers["x-poc3-request-id"] === "string" ? request.headers["x-poc3-request-id"] : undefined;
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
@@ -138,7 +142,12 @@ const startMockGateway = async (): Promise<MockGateway> => {
   const address = server.address();
   const port = typeof address === "object" && address !== null ? address.port : 0;
   cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-  return { url: `http://127.0.0.1:${port}`, seenUser: () => seenUser, seenMessage: () => seenMessage };
+  return {
+    url: `http://127.0.0.1:${port}`,
+    seenUser: () => seenUser,
+    seenMessage: () => seenMessage,
+    seenRequestId: () => seenRequestId,
+  };
 };
 
 describe("authentication pages", () => {
@@ -387,6 +396,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("chip.className = 'suggestion'");
     expect(html).toContain("fetch('/chat'");
     expect(html).toContain("fetch('/chat/history'");
+    expect(html).toContain("x-poc3-request-id");
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("scrollToLatest");
@@ -425,7 +435,7 @@ describe("in-calendar coach bubble", () => {
     const { base, cookie, user } = await start({ gatewayUrl: gateway.url });
     const response = await fetch(`${base}/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie },
+      headers: { "content-type": "application/json", cookie, "x-poc3-request-id": "req-web-1" },
       body: JSON.stringify({ message: "Plan my week" }),
     });
     expect(response.status).toBe(200);
@@ -436,6 +446,9 @@ describe("in-calendar coach bubble", () => {
       suggestions: string[];
       changeSetId: string | null;
       reverted: boolean;
+      attempts: number;
+      outcome: string;
+      validationCode: string | null;
     };
     expect(body.reply).toBe("Booked two runs.");
     expect(body.sessions).toBe(2);
@@ -444,8 +457,12 @@ describe("in-calendar coach bubble", () => {
     expect(body.suggestions).toEqual(["Book my long run for Sunday", "Move Thursday to Friday"]);
     expect(body.changeSetId).toBe("change:test");
     expect(body.reverted).toBe(false);
+    expect(body.attempts).toBe(1);
+    expect(body.outcome).toBe("committed");
+    expect(body.validationCode).toBeNull();
     expect(gateway.seenUser()).toBe(user.userId);
     expect(gateway.seenMessage()).toBe("Plan my week");
+    expect(gateway.seenRequestId()).toBe("req-web-1");
   });
 
 });

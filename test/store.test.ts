@@ -435,3 +435,81 @@ describe("change sets", () => {
   });
 });
 
+describe("transactions", () => {
+  it("commits a batch and rolls the whole batch back on failure", () => {
+    const { store, close } = createStore(":memory:");
+    const first = session("s1", "u1", "2026-02-10", "2026-02-01T08:00:00.000Z");
+    const second = session("s2", "u1", "2026-02-11", "2026-02-01T08:00:00.000Z");
+
+    store.transaction(() => {
+      store.upsertSession(first);
+      store.upsertSession(second);
+    });
+    expect(store.listSessions("u1", "2026-02-01", "2026-02-28")).toHaveLength(2);
+
+    expect(() =>
+      store.transaction(() => {
+        store.deleteSession("u1", "s1");
+        store.deleteSession("u1", "s2");
+        throw new Error("simulated mid-batch failure");
+      }),
+    ).toThrow("simulated mid-batch failure");
+    expect(store.listSessions("u1", "2026-02-01", "2026-02-28")).toHaveLength(2);
+    close();
+  });
+});
+
+describe("coach turn audit", () => {
+  const record = (requestId: string) => ({
+    requestId,
+    userId: "u1",
+    createdAt: "2026-02-01T08:00:00.000Z",
+    completedAt: null,
+    status: "in_progress" as const,
+    attempts: 0,
+    validationCode: null,
+    outcome: null,
+    responseJson: null,
+  });
+
+  it("claims a request once, completes it, and never reclaims a completed turn", () => {
+    const { store, close } = createStore(":memory:");
+    expect(store.claimCoachTurn(record("req-1"))).toBe(true);
+    expect(store.claimCoachTurn(record("req-1"))).toBe(false);
+    expect(store.getCoachTurn("u1", "req-1")?.status).toBe("in_progress");
+
+    store.completeCoachTurn("u1", "req-1", {
+      completedAt: "2026-02-01T08:00:01.000Z",
+      attempts: 2,
+      validationCode: "past-session",
+      outcome: "clarified",
+      responseJson: '{"ok":true}',
+    });
+    const completed = store.getCoachTurn("u1", "req-1");
+    expect(completed).toMatchObject({
+      status: "completed",
+      attempts: 2,
+      validationCode: "past-session",
+      outcome: "clarified",
+      responseJson: '{"ok":true}',
+    });
+    expect(store.claimCoachTurn(record("req-1"))).toBe(false);
+    expect(store.getCoachTurn("u2", "req-1")).toBeUndefined();
+    close();
+  });
+
+  it("allows a failed turn to be retried with the same request id", () => {
+    const { store, close } = createStore(":memory:");
+    expect(store.claimCoachTurn(record("req-2"))).toBe(true);
+    store.failCoachTurn("u1", "req-2", "2026-02-01T08:00:02.000Z");
+    expect(store.getCoachTurn("u1", "req-2")?.status).toBe("failed");
+    expect(store.claimCoachTurn(record("req-2"))).toBe(true);
+    expect(store.getCoachTurn("u1", "req-2")).toMatchObject({
+      status: "in_progress",
+      completedAt: null,
+      responseJson: null,
+    });
+    close();
+  });
+});
+

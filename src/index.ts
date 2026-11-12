@@ -16,6 +16,8 @@ const databaseSpec = process.env["POC3_DB"] ?? "sqlite:data/poc3.sqlite";
 const userId = process.env["POC3_USER_ID"] ?? "demo-runner";
 const authSecret = process.env["POC3_AUTH_SECRET"] ?? "poc3-dev-secret-change-me";
 const garminKey = process.env["GARMIN_PERSONAL_API_KEY"];
+const maxAttemptsValue = Number(process.env["POC3_MAX_ATTEMPTS"] ?? "2");
+const maxAttempts = Number.isFinite(maxAttemptsValue) ? Math.max(1, Math.floor(maxAttemptsValue)) : 2;
 
 if (databaseSpec.startsWith("sqlite:")) {
   const location = databaseSpec.slice("sqlite:".length);
@@ -34,6 +36,7 @@ const gateway = createGateway({
   modelName: process.env["POC3_MODEL_NAME"] ?? "dgx/general",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
   calendarUrl: process.env["POC3_CALENDAR_URL"] ?? "http://127.0.0.1:8091/calendar",
+  maxAttempts,
 });
 
 const web = createWeb({

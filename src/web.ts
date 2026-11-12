@@ -7,6 +7,7 @@ import { AuthError, type Auth, type AuthUser, type ProfileUpdate } from "./auth"
 import type { GarminClient } from "./garmin";
 import { mapGarminActivity } from "./garmin";
 import { CSS } from "./styles";
+import { localDay, safeTimeZone } from "./time";
 import type { Activity, Store, TrainingSession } from "./types";
 
 export interface WebOptions {
@@ -280,8 +281,27 @@ function renderChatBubble(): string {
       if (input.value.trim() === text) input.value = '';
       const typing = add('coach', '…');
       typing.classList.add('typing');
+      const makeRequestId = () => {
+        const bytes = new Uint8Array(16);
+        if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') crypto.getRandomValues(bytes);
+        else for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+        return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+      };
+      const requestId = makeRequestId();
+      const postChat = () => fetch('/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-poc3-request-id': requestId },
+        body: JSON.stringify({ message: text }),
+      });
       try {
-        const response = await fetch('/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ message: text }) });
+        let response;
+        try {
+          response = await postChat();
+        } catch {
+          // One retry with the same idempotency key: if the first request committed but the response was lost,
+          // the gateway replays the cached turn instead of booking it twice.
+          response = await postChat();
+        }
         const data = await response.json();
         typing.remove();
         if (!response.ok) {
@@ -645,7 +665,7 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
       const user = requestUser;
-      const today = now().slice(0, 10);
+      const today = localDay(now(), safeTimeZone(user.timezone));
 
       if (url.pathname === "/profile") {
         if (method === "GET") {
@@ -695,10 +715,15 @@ export function createWeb(options: WebOptions): WebApp {
           return;
         }
         const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
+        const requestId = request.headers["x-poc3-request-id"];
         try {
           const upstream = await fetch(`${gatewayUrl}/v1/chat/completions`, {
             method: "POST",
-            headers: { "content-type": "application/json", "x-poc3-user": user.userId },
+            headers: {
+              "content-type": "application/json",
+              "x-poc3-user": user.userId,
+              ...(typeof requestId === "string" ? { "x-poc3-request-id": requestId } : {}),
+            },
             body: JSON.stringify({ model: options.modelId ?? "poc3-coach", stream: false, messages: [{ role: "user", content: message }] }),
           });
           const payload = (await upstream.json()) as {
@@ -710,6 +735,9 @@ export function createWeb(options: WebOptions): WebApp {
               changeSetId?: string | null;
               reverted?: boolean;
               suggestions?: unknown[];
+              attempts?: number;
+              outcome?: string;
+              validationCode?: string | null;
             };
             error?: { detail?: string };
           };
@@ -731,6 +759,9 @@ export function createWeb(options: WebOptions): WebApp {
             changeSetId: payload.poc3?.changeSetId ?? null,
             reverted: payload.poc3?.reverted === true,
             memories: payload.poc3?.memories ?? 0,
+            attempts: payload.poc3?.attempts ?? 1,
+            outcome: payload.poc3?.outcome ?? "committed",
+            validationCode: payload.poc3?.validationCode ?? null,
           }));
         } catch (error) {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
