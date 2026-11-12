@@ -29,7 +29,7 @@ pnpm dev
 
 | Surface | What it does |
 |---|---|
-| Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions; month heading opens a year/month picker |
+| Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions; month heading and This month nav open a year/month picker |
 | 💬 Coach bubble | self-implemented same-origin chat; restores the recent conversation after refresh; add / move / delete / revert sessions |
 | Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing |
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |

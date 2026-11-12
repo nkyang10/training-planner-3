@@ -394,6 +394,7 @@ function renderChatBubble(): string {
       });
     }
     const monthTitle = document.getElementById('month-title');
+    const monthCurrent = document.getElementById('month-current');
     const monthPicker = document.createElement('div');
     monthPicker.id = 'month-picker';
     monthPicker.hidden = true;
@@ -401,8 +402,8 @@ function renderChatBubble(): string {
     monthPicker.setAttribute('aria-label', 'Choose month and year');
     const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     const closeMonthPicker = () => { monthPicker.hidden = true; };
-    const openMonthPicker = () => {
-      if (monthTitle === null) return;
+    const openMonthPicker = (anchor) => {
+      if (anchor === null || anchor === undefined) return;
       monthPicker.replaceChildren();
       const head = document.createElement('div');
       head.className = 'month-picker-head';
@@ -427,7 +428,7 @@ function renderChatBubble(): string {
         option.textContent = String(year);
         yearSelect.appendChild(option);
       }
-      yearSelect.value = (monthTitle.dataset.month || '').slice(0, 4) || String(new Date().getUTCFullYear());
+      yearSelect.value = (anchor.dataset.month || '').slice(0, 4) || String(new Date().getUTCFullYear());
       yearRow.append(yearLabel, yearSelect);
       monthPicker.appendChild(yearRow);
       const grid = document.createElement('div');
@@ -451,12 +452,12 @@ function renderChatBubble(): string {
       thisButton.type = 'button';
       thisButton.textContent = 'This month';
       thisButton.addEventListener('click', () => {
-        location.href = '/calendar?month=' + (monthTitle.dataset.currentMonth || '');
+        location.href = '/calendar?month=' + (anchor.dataset.currentMonth || monthTitle?.dataset.currentMonth || '');
       });
       footer.appendChild(thisButton);
       monthPicker.appendChild(footer);
       monthPicker.hidden = false;
-      const rect = monthTitle.getBoundingClientRect();
+      const rect = anchor.getBoundingClientRect();
       const width = Math.min(300, innerWidth - 16);
       monthPicker.style.width = width + 'px';
       monthPicker.style.left = Math.max(8, Math.min(rect.left, innerWidth - width - 8)) + 'px';
@@ -466,11 +467,17 @@ function renderChatBubble(): string {
     monthTitle?.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (monthPicker.hidden) openMonthPicker(); else closeMonthPicker();
+      if (monthPicker.hidden) openMonthPicker(monthTitle); else closeMonthPicker();
+    });
+    monthCurrent?.addEventListener('click', (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (monthPicker.hidden) openMonthPicker(monthCurrent); else closeMonthPicker();
     });
     document.addEventListener('click', (event) => {
       if (monthPicker.hidden) return;
-      if (event.target instanceof Node && (monthPicker.contains(event.target) || event.target === monthTitle)) return;
+      if (event.target instanceof Node && (monthPicker.contains(event.target) || event.target === monthTitle || event.target === monthCurrent)) return;
       closeMonthPicker();
     });
     document.addEventListener('keydown', (event) => {
@@ -804,7 +811,7 @@ export function createWeb(options: WebOptions): WebApp {
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1><button type="button" class="month-title" id="month-title" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" aria-haspopup="dialog">${escapeHtml(monthLabel)} <span class="month-caret" aria-hidden="true">▾</span></button></h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
-            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a class="month-current${onCurrentMonth ? " active" : ""}" href="/calendar?month=${escapeHtml(currentMonth)}"${onCurrentMonth ? ' aria-current="page"' : ""}>${onCurrentMonth ? "This month" : `Back to ${escapeHtml(currentLabel)}`}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
+            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current${onCurrentMonth ? " active" : ""}" data-month="${escapeHtml(currentMonth)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(currentMonth)}" aria-haspopup="dialog" title="Choose month"${onCurrentMonth ? ' aria-current="page"' : ""}>${onCurrentMonth ? "This month" : `Back to ${escapeHtml(currentLabel)}`}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
             ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
