@@ -401,6 +401,8 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("data-current-month");
     expect(html).toContain("month-picker");
     expect(html).toContain("month-year-select");
+    expect(html).toContain('id="month-current"');
+    expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     const css = await (await fetch(`${base}/static/app.css`)).text();
@@ -491,6 +493,7 @@ describe("month picker", () => {
     expect(html).toContain("month-picker");
     expect(html).toContain("month-year-select");
     expect(html).toContain("month-picker-grid");
+    expect(html).toContain('id="month-current"');
   });
 });
 
