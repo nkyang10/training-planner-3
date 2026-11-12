@@ -477,6 +477,7 @@ describe("month navigation label", () => {
     const current = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(current).toContain('id="month-current"');
     expect(current).toContain(">November 2026</a>");
+    expect(current).not.toContain("<h1>November 2026</h1>");
     expect(current).not.toContain('id="month-this"');
     const other = await (await fetch(`${base}/calendar?month=2026-12`, { headers: { cookie } })).text();
     expect(other).toContain(">December 2026</a>");
