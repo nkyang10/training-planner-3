@@ -803,15 +803,13 @@ export function createWeb(options: WebOptions): WebApp {
         const prev = addDays(start, -1).slice(0, 7);
         const next = addDays(end, 1).slice(0, 7);
         const currentMonth = today.slice(0, 7);
-        const onCurrentMonth = month === currentMonth;
-        const currentLabel = `${MONTHS[Number(currentMonth.slice(5, 7)) - 1] ?? currentMonth} ${currentMonth.slice(0, 4)}`;
         const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1><button type="button" class="month-title" id="month-title" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" aria-haspopup="dialog">${escapeHtml(monthLabel)} <span class="month-caret" aria-hidden="true">▾</span></button></h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
-            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current${onCurrentMonth ? " active" : ""}" data-month="${escapeHtml(currentMonth)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(currentMonth)}" aria-haspopup="dialog" title="Choose month"${onCurrentMonth ? ' aria-current="page"' : ""}>${onCurrentMonth ? "This month" : `Back to ${escapeHtml(currentLabel)}`}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
+            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current active" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
             ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>

@@ -472,14 +472,14 @@ describe("conversation history after refresh", () => {
 });
 
 describe("month navigation label", () => {
-  it("marks the current month and offers a way back from another month", async () => {
+  it("shows the viewed month in the middle nav", async () => {
     const { base, cookie } = await start();
     const current = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
-    expect(current).toContain("This month");
-    expect(current).toContain('aria-current="page"');
+    expect(current).toContain('id="month-current"');
+    expect(current).toContain(">November 2026</a>");
     const other = await (await fetch(`${base}/calendar?month=2026-12`, { headers: { cookie } })).text();
-    expect(other).toContain("Back to November 2026");
-    expect(other).not.toContain(">This month</a>");
+    expect(other).toContain(">December 2026</a>");
+    expect(other).not.toContain("Back to November 2026");
   });
 });
 

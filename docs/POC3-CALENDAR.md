@@ -256,10 +256,10 @@ revert path. There is no direct revert API shortcut.
 
 ## 8. Calendar UX and animation
 
-- **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month. The nav marks the current
-  month as **This month** and changes that label to **Back to <current month>** when viewing another month.
-  Clicking the month heading or the **This month / Back to <current month>** nav item opens the same **year/month
-  picker**: pick any year (2000–2100) and any month, or jump back with **This month**.
+- **Month grid** with Monday-first weeks, today ring, out-of-month dimming, previous/next month. The middle nav shows the
+  **month you are viewing** (for example December 2026), matching the heading. Clicking either the heading or that nav item
+  opens the same **year/month picker**: pick any year (2000–2100) and any month, or jump back with **This month** inside
+  the picker.
 - **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`).
 - **Garmin badge** `✓ n` on days with activities.
 - **Bubble** is a full-height floating panel: the log fills the available height and scrolls, with suggestions and the input
