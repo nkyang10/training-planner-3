@@ -419,7 +419,7 @@ $env:POC3_DB='sqlite:data/poc3.sqlite'
 $env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
 $env:POC3_MODEL_API_KEY='<model key>'
 $env:POC3_MODEL_NAME='dgx/general'
-$env:POC3_CALENDAR_URL='http://127.0.0.1:8091/calendar'
+$env:POC3_MAX_ATTEMPTS='2'
 $env:GARMIN_PERSONAL_API_KEY='<Garmin personal API key>'
 pnpm dev
 ```
@@ -446,7 +446,6 @@ Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`).
 | `POC3_MODEL_NAME` | `dgx/general` | model name |
 | `POC3_MODEL_ID` | `poc3-coach` | id exposed by the gateway |
 | `POC3_MAX_ATTEMPTS` | `2` | initial proposal + repair calls per turn |
-| `POC3_CALENDAR_URL` | `http://127.0.0.1:8091/calendar` | link appended to replies |
 | `POC3_GATEWAY_URL` | `http://127.0.0.1:8090` | web → gateway |
 | `GARMIN_PERSONAL_API_KEY` | empty | Garmin Personal API key |
 

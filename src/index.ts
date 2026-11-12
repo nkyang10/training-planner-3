@@ -35,7 +35,6 @@ const gateway = createGateway({
   modelApiKey: process.env["POC3_MODEL_API_KEY"] ?? "",
   modelName: process.env["POC3_MODEL_NAME"] ?? "dgx/general",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
-  calendarUrl: process.env["POC3_CALENDAR_URL"] ?? "http://127.0.0.1:8091/calendar",
   maxAttempts,
 });
 
