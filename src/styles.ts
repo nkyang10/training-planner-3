@@ -58,6 +58,21 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 }
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: #fff; background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
+.month-title { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; display: inline-flex; align-items: baseline; gap: 6px; }
+.month-title:hover .month-caret, .month-title:focus-visible .month-caret { color: var(--ember); }
+.month-caret { color: var(--muted); font-size: 18px; }
+#month-picker { position: fixed; z-index: 55; display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
+#month-picker[hidden] { display: none; }
+.month-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.month-picker-head button { border: 0; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.month-picker-year { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.month-picker-year select { flex: 1; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); padding: 7px 8px; font: inherit; }
+.month-picker-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.month-picker-grid button { border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); padding: 8px 4px; font: inherit; font-size: 12px; cursor: pointer; }
+.month-picker-grid button:hover, .month-picker-grid button:focus-visible { background: var(--wash); border-color: var(--ember); }
+.month-picker-foot { display: flex; justify-content: flex-end; }
+.month-picker-foot button { border: 0; border-radius: 999px; background: var(--wash); color: var(--ember); padding: 6px 10px; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+
 #day-menu { position: fixed; z-index: 50; display: grid; gap: 2px; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
 #day-menu[hidden] { display: none; }
 .day-menu-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 6px 8px; font-size: 12px; }
