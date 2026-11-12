@@ -800,7 +800,7 @@ export function createWeb(options: WebOptions): WebApp {
         const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
-        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1>${escapeHtml(monthLabel)}</h1>
+        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
