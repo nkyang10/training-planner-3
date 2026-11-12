@@ -397,6 +397,10 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("Delete a session here");
     expect(html).toContain("Ask coach about this day");
     expect(html).toContain("View day details");
+    expect(html).toContain("month-title");
+    expect(html).toContain("data-current-month");
+    expect(html).toContain("month-picker");
+    expect(html).toContain("month-year-select");
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     const css = await (await fetch(`${base}/static/app.css`)).text();
@@ -404,6 +408,7 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("min-height: 0");
     expect(css).toContain("max-height: 96px");
     expect(css).toContain("#day-menu");
+    expect(css).toContain("#month-picker");
     expect(css).not.toContain("#coach-undo");
     expect(html).toContain("Calendar updated · 日曆已更新");
     expect(html).toContain('data-month="2026-11"');
@@ -473,6 +478,19 @@ describe("month navigation label", () => {
     const other = await (await fetch(`${base}/calendar?month=2026-12`, { headers: { cookie } })).text();
     expect(other).toContain("Back to November 2026");
     expect(other).not.toContain(">This month</a>");
+  });
+});
+
+describe("month picker", () => {
+  it("renders the month heading as a year/month picker", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('id="month-title"');
+    expect(html).toContain('data-month="2026-11"');
+    expect(html).toContain('data-current-month="2026-11"');
+    expect(html).toContain("month-picker");
+    expect(html).toContain("month-year-select");
+    expect(html).toContain("month-picker-grid");
   });
 });
 

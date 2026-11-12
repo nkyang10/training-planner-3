@@ -29,7 +29,7 @@ pnpm dev
 
 | Surface | What it does |
 |---|---|
-| Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions |
+| Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions; month heading opens a year/month picker |
 | 💬 Coach bubble | self-implemented same-origin chat; restores the recent conversation after refresh; add / move / delete / revert sessions |
 | Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing |
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |
@@ -47,7 +47,7 @@ pnpm dev
 
 ## Status
 
-- 86 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 87 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh, page-wide CRUD
   animation, conversation reload after refresh, LLM-driven undo, suggestions.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.

@@ -393,6 +393,91 @@ function renderChatBubble(): string {
         }
       });
     }
+    const monthTitle = document.getElementById('month-title');
+    const monthPicker = document.createElement('div');
+    monthPicker.id = 'month-picker';
+    monthPicker.hidden = true;
+    monthPicker.setAttribute('role', 'dialog');
+    monthPicker.setAttribute('aria-label', 'Choose month and year');
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const closeMonthPicker = () => { monthPicker.hidden = true; };
+    const openMonthPicker = () => {
+      if (monthTitle === null) return;
+      monthPicker.replaceChildren();
+      const head = document.createElement('div');
+      head.className = 'month-picker-head';
+      const title = document.createElement('strong');
+      title.textContent = 'Choose month';
+      const closeButton = document.createElement('button');
+      closeButton.type = 'button';
+      closeButton.textContent = '×';
+      closeButton.setAttribute('aria-label', 'Close month picker');
+      closeButton.addEventListener('click', closeMonthPicker);
+      head.append(title, closeButton);
+      monthPicker.appendChild(head);
+      const yearRow = document.createElement('label');
+      yearRow.className = 'month-picker-year';
+      const yearLabel = document.createElement('span');
+      yearLabel.textContent = 'Year';
+      const yearSelect = document.createElement('select');
+      yearSelect.id = 'month-year-select';
+      for (let year = 2000; year <= 2100; year += 1) {
+        const option = document.createElement('option');
+        option.value = String(year);
+        option.textContent = String(year);
+        yearSelect.appendChild(option);
+      }
+      yearSelect.value = (monthTitle.dataset.month || '').slice(0, 4) || String(new Date().getUTCFullYear());
+      yearRow.append(yearLabel, yearSelect);
+      monthPicker.appendChild(yearRow);
+      const grid = document.createElement('div');
+      grid.className = 'month-picker-grid';
+      for (let index = 0; index < monthNames.length; index += 1) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.dataset.month = String(index + 1).padStart(2, '0');
+        button.textContent = monthNames[index].slice(0, 3);
+        button.setAttribute('aria-label', monthNames[index]);
+        button.addEventListener('click', () => {
+          const year = yearSelect.value || String(new Date().getUTCFullYear());
+          location.href = '/calendar?month=' + year + '-' + button.dataset.month;
+        });
+        grid.appendChild(button);
+      }
+      monthPicker.appendChild(grid);
+      const footer = document.createElement('div');
+      footer.className = 'month-picker-foot';
+      const thisButton = document.createElement('button');
+      thisButton.type = 'button';
+      thisButton.textContent = 'This month';
+      thisButton.addEventListener('click', () => {
+        location.href = '/calendar?month=' + (monthTitle.dataset.currentMonth || '');
+      });
+      footer.appendChild(thisButton);
+      monthPicker.appendChild(footer);
+      monthPicker.hidden = false;
+      const rect = monthTitle.getBoundingClientRect();
+      const width = Math.min(300, innerWidth - 16);
+      monthPicker.style.width = width + 'px';
+      monthPicker.style.left = Math.max(8, Math.min(rect.left, innerWidth - width - 8)) + 'px';
+      monthPicker.style.top = (rect.bottom + 8 + monthPicker.offsetHeight > innerHeight ? Math.max(8, rect.top - monthPicker.offsetHeight - 8) : rect.bottom + 8) + 'px';
+      yearSelect.focus();
+    };
+    monthTitle?.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (monthPicker.hidden) openMonthPicker(); else closeMonthPicker();
+    });
+    document.addEventListener('click', (event) => {
+      if (monthPicker.hidden) return;
+      if (event.target instanceof Node && (monthPicker.contains(event.target) || event.target === monthTitle)) return;
+      closeMonthPicker();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeMonthPicker();
+    });
+    document.body.appendChild(monthPicker);
+
     bubble.addEventListener('click', show);
     close.addEventListener('click', hide);
     form.addEventListener('submit', (event) => {
@@ -713,9 +798,10 @@ export function createWeb(options: WebOptions): WebApp {
         const currentMonth = today.slice(0, 7);
         const onCurrentMonth = month === currentMonth;
         const currentLabel = `${MONTHS[Number(currentMonth.slice(5, 7)) - 1] ?? currentMonth} ${currentMonth.slice(0, 4)}`;
+        const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
         const synced = url.searchParams.get("synced");
         const syncError = url.searchParams.get("syncError");
-        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1>${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}</h1>
+        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p><h1><button type="button" class="month-title" id="month-title" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" aria-haspopup="dialog">${escapeHtml(monthLabel)} <span class="month-caret" aria-hidden="true">▾</span></button></h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a class="month-current${onCurrentMonth ? " active" : ""}" href="/calendar?month=${escapeHtml(currentMonth)}"${onCurrentMonth ? ' aria-current="page"' : ""}>${onCurrentMonth ? "This month" : `Back to ${escapeHtml(currentLabel)}`}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
