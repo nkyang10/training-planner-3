@@ -36,8 +36,6 @@ export interface GatewayOptions {
   modelApiKey: string;
   modelName: string;
   modelId?: string;
-  /** Where the runner opens the calendar the coach writes into. */
-  calendarUrl?: string;
   now?: () => string;
   fetchImpl?: typeof fetch;
   /** Initial proposal plus at most this many repair calls. Default 2 (one repair). */
@@ -387,14 +385,11 @@ function applyParsedTurn(
       meta.reverted = true;
       meta.sessions = result.changes.length;
       meta.changeSetId = options.store.listChangeSets(userId, 1)[0]?.changeSetId ?? null;
-      let reply = turn.reply;
+      const reply = turn.reply;
       for (const text of turn.memories) {
         options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
       }
       meta.memories = turn.memories.length;
-      if (result.changes.length > 0 && options.calendarUrl !== undefined) {
-        reply = `${reply}\n\nYour calendar: ${options.calendarUrl}`;
-      }
       meta.outcome = "committed";
       appendAssistant(reply);
       return { reply, meta };
@@ -485,9 +480,6 @@ function applyParsedTurn(
       options.store.appendChangeSet(changeSet);
       meta.changeSetId = changeSet.changeSetId;
       meta.sessions = meta.changes.length;
-      if (options.calendarUrl !== undefined) {
-        reply = `${reply}\n\nYour calendar: ${options.calendarUrl}`;
-      }
     }
     meta.outcome = meta.changes.length > 0 ? "committed" : "clarified";
     appendAssistant(reply);

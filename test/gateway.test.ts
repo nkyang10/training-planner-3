@@ -137,7 +137,6 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
     modelBaseUrl: "http://model.test/v1",
     modelApiKey: "test",
     modelName: "test-model",
-    calendarUrl: "http://calendar.test",
     now: options.now ?? (() => `${TODAY}T08:00:00.000Z`),
     fetchImpl,
   });
@@ -264,14 +263,15 @@ describe("coach gateway", () => {
     expect(body.data[0]?.id).toBe("poc3-coach");
   });
 
-  it("does not duplicate the same booking across turns and tells the runner where the calendar is", async () => {
+  it("does not duplicate the same booking across turns and does not append the calendar url", async () => {
     const { handle, url } = await base(modelFetch(VALID));
     const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
     const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Same plan again" }] });
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     const body = (await second.json()) as Completion;
-    expect(body.choices[0]?.message.content).toContain("http://calendar.test");
+    expect(body.choices[0]?.message.content).not.toContain("http://calendar.test");
+    expect(body.choices[0]?.message.content).not.toContain("Your calendar");
     expect(handle.store.listSessions(USER, TODAY, "2026-11-30")).toHaveLength(1);
     expect(handle.store.listChangeSets(USER)).toHaveLength(2);
   });
@@ -439,7 +439,7 @@ describe("change history and revert", () => {
     expect(secondBody.poc3.changeSetId).not.toBeNull();
     expect(secondBody.poc3.changeSetId).not.toBe(originalId);
     expect(secondBody.choices[0]?.message.content).toContain("Put both back.");
-    expect(secondBody.choices[0]?.message.content).toContain("http://calendar.test");
+    expect(secondBody.choices[0]?.message.content).not.toContain("Your calendar");
 
     expect(daysOf(handle)).toEqual(["2026-11-06", "2026-11-07"]);
     expect(titlesOf(handle)).toEqual(["Easy 5 km", "Long 8 km"]);

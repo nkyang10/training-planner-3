@@ -17,7 +17,6 @@ $env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
 $env:POC3_MODEL_API_KEY='<model key>'
 $env:POC3_MODEL_NAME='dgx/general'
 $env:POC3_MAX_ATTEMPTS='2'
-$env:POC3_CALENDAR_URL='http://127.0.0.1:8091/calendar'
 $env:GARMIN_PERSONAL_API_KEY='<Garmin personal API key>'
 pnpm dev
 ```
