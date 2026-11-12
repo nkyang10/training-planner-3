@@ -32,18 +32,75 @@ const modelResponse = (content: unknown): Response =>
     headers: { "content-type": "application/json" },
   });
 
+/** A response whose content is plain assistant text, not a JSON proposal. */
+const textResponse = (text: string): Response =>
+  new Response(JSON.stringify({ choices: [{ message: { content: text } }] }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+/** A native OpenAI tool-call response. */
+const toolResponse = (args: unknown, id = "call_1", name = "propose_calendar_turn"): Response =>
+  new Response(
+    JSON.stringify({
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [{ id, type: "function", function: { name, arguments: JSON.stringify(args) } }],
+          },
+        },
+      ],
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+
 /** A model stub with one fixed answer, used when a turn's answer does not depend on earlier results. */
 const modelFetch = (content: unknown): typeof fetch =>
   (async () => modelResponse(content)) as unknown as typeof fetch;
 
-/** A model stub whose answers are queued by the test, one per request, and which captures each system prompt. */
+interface QueuedResponses {
+  fetchImpl: typeof fetch;
+  prompts: string[];
+  responses: Response[];
+}
+
+/** A model stub whose responses are queued by the test, one per request. */
+const queueResponses = (): QueuedResponses => {
+  const prompts: string[] = [];
+  const responses: Response[] = [];
+  const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const rawBody = typeof init?.body === "string" ? init.body : "{}";
+    const request = JSON.parse(rawBody) as {
+      messages?: Array<{ role: string; content?: unknown; tool_calls?: unknown }>;
+    };
+    prompts.push(
+      (request.messages ?? [])
+        .map((message) => `${message.role}: ${typeof message.content === "string" ? message.content : JSON.stringify(message)}`)
+        .join("\n"),
+    );
+    const response = responses.shift();
+    if (response === undefined) throw new Error("no queued model response");
+    return response;
+  }) as unknown as typeof fetch;
+  return { fetchImpl, prompts, responses };
+};
+
+/** A model stub whose answers are queued by the test, one per request, and which captures each request's messages. */
 const queueModel = (): { fetchImpl: typeof fetch; prompts: string[]; answers: unknown[] } => {
   const prompts: string[] = [];
   const answers: unknown[] = [];
   const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) => {
     const rawBody = typeof init?.body === "string" ? init.body : "{}";
-    const request = JSON.parse(rawBody) as { messages?: Array<{ role: string; content: string }> };
-    prompts.push(request.messages?.[0]?.content ?? "");
+    const request = JSON.parse(rawBody) as {
+      messages?: Array<{ role: string; content?: unknown; tool_calls?: unknown }>;
+    };
+    prompts.push(
+      (request.messages ?? [])
+        .map((message) => `${message.role}: ${typeof message.content === "string" ? message.content : JSON.stringify(message)}`)
+        .join("\n"),
+    );
     const answer = answers.shift();
     if (answer === undefined) throw new Error("no queued model answer");
     return modelResponse(answer);
@@ -56,8 +113,24 @@ afterEach(async () => {
   for (const stop of started.splice(0).reverse()) await stop();
 });
 
-const base = async (fetchImpl: typeof fetch) => {
+interface BaseOptions {
+  now?: () => string;
+  timezone?: string;
+}
+
+const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
   const handle = createStore(":memory:");
+  if (options.timezone !== undefined) {
+    handle.store.createUser({
+      userId: USER,
+      username: "demo-runner",
+      displayName: "Demo Runner",
+      passwordHash: "not-used",
+      timezone: options.timezone,
+      goal: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    });
+  }
   const gateway = createGateway({
     store: handle.store,
     userId: USER,
@@ -65,7 +138,7 @@ const base = async (fetchImpl: typeof fetch) => {
     modelApiKey: "test",
     modelName: "test-model",
     calendarUrl: "http://calendar.test",
-    now: () => `${TODAY}T08:00:00.000Z`,
+    now: options.now ?? (() => `${TODAY}T08:00:00.000Z`),
     fetchImpl,
   });
   await new Promise<void>((resolve) => gateway.server.listen(0, "127.0.0.1", resolve));
@@ -554,6 +627,237 @@ describe("schema echo repair", () => {
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("schema template");
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+  });
+});
+
+describe("validation feedback loop", () => {
+  it("repairs a past-session proposal once and commits the corrected day", async () => {
+    const model = queueResponses();
+    model.responses.push(
+      modelResponse(
+        turn({ sessions: [{ day: "2026-11-04", title: "Past", kind: "easy", distanceKm: 5, durationMin: 30 }] }),
+      ),
+    );
+    model.responses.push(modelResponse(VALID));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Change yesterday" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
+    expect(body.poc3).toMatchObject({
+      attempts: 2,
+      outcome: "committed",
+      validationCode: null,
+      sessions: 1,
+    });
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[1]).toContain("past-session");
+    expect(model.prompts[1]).toContain("policy");
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+  });
+
+  it("lets the model ask a clarifying question instead of booking a rejected date", async () => {
+    const model = queueResponses();
+    model.responses.push(
+      modelResponse(
+        turn({ sessions: [{ day: "2026-11-04", title: "Past", kind: "easy", distanceKm: 5, durationMin: 30 }] }),
+      ),
+    );
+    model.responses.push(textResponse("Do you want me to book the drill today, 12 Nov, or keep it unbooked?"));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.choices[0]?.message.content).toContain("12 Nov");
+    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "clarified", validationCode: null, sessions: 0 });
+    expect(body.poc3.changeSetId).toBeNull();
+    expect(body.poc3.changes).toEqual([]);
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(0);
+    expect(handle.store.listMessages(USER)).toHaveLength(2);
+    expect(handle.store.listMessages(USER)[1]?.text).toContain("12 Nov");
+    expect(model.prompts[1]).toContain("past-session");
+  });
+
+  it("falls back only after both attempts are rejected, and writes nothing", async () => {
+    const invalid = turn({
+      sessions: [{ day: "2026-11-04", title: "Past", kind: "easy", distanceKm: 5, durationMin: 30 }],
+    });
+    const model = queueResponses();
+    model.responses.push(modelResponse(invalid));
+    model.responses.push(modelResponse(invalid));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.choices[0]?.message.content).toContain("nothing was changed");
+    expect(body.choices[0]?.message.content).toContain("already passed");
+    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "fallback", validationCode: "past-session", sessions: 0 });
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(0);
+    expect(handle.store.listMessages(USER)).toHaveLength(2);
+  });
+
+  it("accepts a native propose_calendar_turn tool call", async () => {
+    const model = queueResponses();
+    model.responses.push(toolResponse(VALID));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
+    expect(body.poc3).toMatchObject({ attempts: 1, outcome: "committed", sessions: 1 });
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+    expect(model.prompts[0]).toContain("propose_calendar_turn");
+  });
+
+  it("feeds a native tool validation result back and accepts the corrected call", async () => {
+    const model = queueResponses();
+    model.responses.push(
+      toolResponse(
+        turn({ sessions: [{ day: "2026-11-04", title: "Past", kind: "easy", distanceKm: 5, durationMin: 30 }] }),
+        "call_1",
+      ),
+    );
+    model.responses.push(toolResponse(VALID, "call_2"));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
+    expect(model.prompts[1]).toContain("past-session");
+    expect(model.prompts[1]).toContain("tool:");
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+  });
+
+  it("uses the runner's timezone for today instead of the UTC day", async () => {
+    const model = queueResponses();
+    model.responses.push(
+      modelResponse(
+        turn({ sessions: [{ day: "2026-11-11", title: "Wrong day", kind: "easy", distanceKm: 5, durationMin: 30 }] }),
+      ),
+    );
+    model.responses.push(
+      modelResponse(
+        turn({ sessions: [{ day: "2026-11-12", title: "Right day", kind: "easy", distanceKm: 5, durationMin: 30 }] }),
+      ),
+    );
+    const { handle, url } = await base(model.fetchImpl, {
+      now: () => "2026-11-11T16:30:00.000Z",
+      timezone: "Asia/Hong_Kong",
+    });
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book today" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
+    expect(model.prompts[0]).toContain('"today":"2026-11-12"');
+    expect(model.prompts[0]).toContain('"timezone":"Asia/Hong_Kong"');
+    expect(handle.store.listSessions(USER, "2026-11-12", "2026-11-30")).toHaveLength(1);
+    expect(handle.store.listSessions(USER, "2026-11-12", "2026-11-30")[0]?.day).toBe("2026-11-12");
+  });
+
+  it("date-stamps stale history and keeps the current day authoritative", async () => {
+    const model = queueResponses();
+    model.responses.push(
+      modelResponse(
+        turn({ sessions: [{ day: "2026-11-12", title: "Today drill", kind: "cross", distanceKm: null, durationMin: 15 }] }),
+      ),
+    );
+    const { handle, url } = await base(model.fetchImpl, {
+      now: () => "2026-11-12T07:50:00.000Z",
+      timezone: "Asia/Hong_Kong",
+    });
+    handle.store.appendMessage({
+      messageId: "old-assistant",
+      userId: USER,
+      role: "assistant",
+      text: "今日（11月6日，星期五）做 15 分鐘 drill。",
+      createdAt: "2026-11-06T07:49:58.000Z",
+    });
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    expect(response.status).toBe(200);
+
+    expect(model.prompts[0]).toContain("[2026-11-06 15:49] Coach:");
+    expect(model.prompts[0]).toContain('"today":"2026-11-12"');
+    expect(model.prompts[0]).toContain("bare follow-up");
+  });
+
+  it("treats plain assistant text as a clarification without calling the validator", async () => {
+    const model = queueResponses();
+    model.responses.push(textResponse("Do you want the drill booked today, or just the drill instructions?"));
+    const { handle, url } = await base(model.fetchImpl);
+
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const body = (await response.json()) as Completion;
+
+    expect(body.poc3).toMatchObject({ attempts: 1, outcome: "clarified", sessions: 0, validationCode: null });
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listMessages(USER)).toHaveLength(2);
+  });
+});
+
+describe("idempotent coach turns", () => {
+  it("replays a completed request id without calling the model or writing twice", async () => {
+    const model = queueResponses();
+    model.responses.push(modelResponse(VALID));
+    const { handle, url } = await base(model.fetchImpl);
+    const request = {
+      model: "poc3-coach",
+      request_id: "req-1",
+      messages: [{ role: "user", content: "Plan my week" }],
+    };
+
+    const first = await post(url, request);
+    const firstBody = (await first.json()) as Completion;
+    const second = await post(url, request);
+    const secondBody = (await second.json()) as Completion;
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-poc3-idempotent-replay")).toBe("true");
+    expect(secondBody).toEqual(firstBody);
+    expect(model.prompts).toHaveLength(1);
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+    expect(handle.store.getCoachTurn(USER, "req-1")).toMatchObject({
+      status: "completed",
+      attempts: 1,
+      outcome: "committed",
+    });
+  });
+
+  it("refuses a request id that is already running", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.claimCoachTurn({
+      requestId: "req-busy",
+      userId: USER,
+      createdAt: `${TODAY}T08:00:00.000Z`,
+      completedAt: null,
+      status: "in_progress",
+      attempts: 0,
+      validationCode: null,
+      outcome: null,
+      responseJson: null,
+    });
+
+    const response = await post(url, {
+      model: "poc3-coach",
+      request_id: "req-busy",
+      messages: [{ role: "user", content: "Plan my week" }],
+    });
+
+    expect(response.status).toBe(409);
+    expect(model.prompts).toHaveLength(0);
   });
 });
 

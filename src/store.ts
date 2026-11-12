@@ -2,6 +2,8 @@ import { createRequire } from "node:module";
 import type {
   Activity,
   ChangeSet,
+  CoachTurnCompletion,
+  CoachTurnRecord,
   Memory,
   Message,
   Store,
@@ -87,6 +89,20 @@ CREATE TABLE IF NOT EXISTS change_sets (
   payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS change_sets_user_created ON change_sets (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS coach_turns (
+  request_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  completed_at TEXT,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  validation_code TEXT,
+  outcome TEXT,
+  response_json TEXT,
+  PRIMARY KEY (user_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS coach_turns_user_created ON coach_turns (user_id, created_at);
 `;
 
 const INSERT_USER =
@@ -104,6 +120,26 @@ const INSERT_CHANGE_SET =
   "INSERT INTO change_sets (change_set_id, user_id, created_at, reverted_at, payload) VALUES (?, ?, ?, ?, ?)";
 const MARK_CHANGE_SET_REVERTED =
   "UPDATE change_sets SET reverted_at = ?, payload = ? WHERE user_id = ? AND change_set_id = ?";
+const CLAIM_COACH_TURN = `
+  INSERT INTO coach_turns (request_id, user_id, created_at, completed_at, status, attempts, validation_code, outcome, response_json)
+  VALUES (?, ?, ?, NULL, 'in_progress', 0, NULL, NULL, NULL)
+  ON CONFLICT(user_id, request_id) DO UPDATE SET
+    created_at = excluded.created_at,
+    completed_at = NULL,
+    status = 'in_progress',
+    attempts = 0,
+    validation_code = NULL,
+    outcome = NULL,
+    response_json = NULL
+  WHERE coach_turns.status = 'failed'
+`;
+const COMPLETE_COACH_TURN = `
+  UPDATE coach_turns
+  SET completed_at = ?, status = 'completed', attempts = ?, validation_code = ?, outcome = ?, response_json = ?
+  WHERE user_id = ? AND request_id = ?
+`;
+const FAIL_COACH_TURN =
+  "UPDATE coach_turns SET completed_at = ?, status = 'failed' WHERE user_id = ? AND request_id = ?";
 
 /** `:memory:` opens an ephemeral database; `sqlite:<path>` opens/creates a file. */
 function resolveLocation(spec: string): string {
@@ -333,6 +369,61 @@ class SqliteStore implements Store {
     const next: ChangeSet = { ...existing, revertedAt: at };
     this.db.prepare(MARK_CHANGE_SET_REVERTED).run(at, JSON.stringify(next), userId, changeSetId);
     return true;
+  }
+
+  claimCoachTurn(record: CoachTurnRecord): boolean {
+    const result = this.db
+      .prepare(CLAIM_COACH_TURN)
+      .run(record.requestId, record.userId, record.createdAt);
+    return Number(result.changes) > 0;
+  }
+
+  completeCoachTurn(userId: string, requestId: string, completion: CoachTurnCompletion): void {
+    this.db
+      .prepare(COMPLETE_COACH_TURN)
+      .run(
+        completion.completedAt,
+        completion.attempts,
+        completion.validationCode,
+        completion.outcome,
+        completion.responseJson,
+        userId,
+        requestId,
+      );
+  }
+
+  failCoachTurn(userId: string, requestId: string, completedAt: string): void {
+    this.db.prepare(FAIL_COACH_TURN).run(completedAt, userId, requestId);
+  }
+
+  getCoachTurn(userId: string, requestId: string): CoachTurnRecord | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM coach_turns WHERE user_id = ? AND request_id = ?")
+      .get(userId, requestId);
+    if (row === undefined) return undefined;
+    return {
+      requestId: String(row["request_id"]),
+      userId: String(row["user_id"]),
+      createdAt: String(row["created_at"]),
+      completedAt: row["completed_at"] === null ? null : String(row["completed_at"]),
+      status: String(row["status"]) as CoachTurnRecord["status"],
+      attempts: Number(row["attempts"]),
+      validationCode: row["validation_code"] === null ? null : String(row["validation_code"]),
+      outcome: row["outcome"] === null ? null : String(row["outcome"]),
+      responseJson: row["response_json"] === null ? null : String(row["response_json"]),
+    };
+  }
+
+  transaction<T>(work: () => T): T {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = work();
+      this.db.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   close(): void {

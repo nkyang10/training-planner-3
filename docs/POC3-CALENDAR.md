@@ -154,7 +154,8 @@ A revert is itself recorded as a new change set, so the history remains append-o
 
 ## 7. The coach contract
 
-The model is asked for exactly one JSON object:
+The model proposes one `propose_calendar_turn` tool call. The tool's JSON Schema mirrors the object below; the gateway
+still validates every field itself, so the schema is a contract, not a substitute for server checks.
 
 ```json
 {
@@ -177,6 +178,9 @@ The model is asked for exactly one JSON object:
 }
 ```
 
+A plain assistant message with no tool call is a valid **clarification** turn. It writes nothing; it is how the coach asks
+which day the runner meant instead of guessing.
+
 Rules enforced by `src/coach.ts`:
 
 - `add` and `update` need a day in `[today, today + 180]`; a past day is rejected. A month/day without a year resolves to the next occurrence on or after today.
@@ -186,9 +190,67 @@ Rules enforced by `src/coach.ts`:
 - `revertChangeSetId` is optional: an existing change-set id, or `"last"` for the newest non-reverted batch. A turn cannot
   combine a revert with `sessions`; that is rejected with zero writes.
 - Unknown keys, wrong types, invalid kinds and malformed days reject the whole turn.
-- A rejected turn writes **nothing**; the reply is a deterministic fallback. If the model echoes the JSON schema itself, the gateway asks once more with an explicit repair instruction before falling back.
-- The prompt includes the last 10 turns as "Conversation so far", the upcoming schedule with session ids, and the recent
-  change sets (id, summary, createdAt, revertedAt), and asks the coach to review the existing plan before editing.
+- A rejected turn writes **nothing**; the reply is a deterministic fallback only after the repair budget is exhausted.
+- The prompt includes the last 10 turns as date-stamped "Conversation so far", the upcoming schedule with session ids,
+  the recent change sets (id, summary, createdAt, revertedAt), and the authoritative `today`, `timezone`, `weekday`,
+  `tomorrow` and `horizonEnd`.
+
+### Validation feedback loop
+
+A proposal that fails validation is not immediately converted into a fallback. The gateway returns a structured tool
+result to the model:
+
+```json
+{
+  "ok": false,
+  "code": "past-session",
+  "issues": [
+    { "path": "sessions[0].day", "code": "past-session", "message": "2026-11-06 is before today 2026-11-12." }
+  ],
+  "context": {
+    "today": "2026-11-12",
+    "timezone": "Asia/Hong_Kong",
+    "weekday": "Thursday",
+    "tomorrow": "2026-11-13",
+    "horizonEnd": "2027-05-11"
+  },
+  "attempt": 1,
+  "maxAttempts": 2,
+  "policy": "ask-user"
+}
+```
+
+The model gets one repair attempt (`POC3_MAX_ATTEMPTS`, default `2` total). It may correct the proposal or ask one short
+clarifying question. The fallback is used only when the budget is exhausted or the model transport fails.
+
+The policy is intentionally conservative:
+
+| Code | Policy | What the model should do |
+|---|---|---|
+| `invalid-json`, `schema-echo`, `extra-keys`, `invalid-suggestions` | `repair-format` | Correct the format silently |
+| `past-session` | `ask-user` | Do not silently move the date; ask or use a date the runner explicitly gave |
+| `session-too-far` | `explain-limit` | Explain the 180-day limit; remember the goal; book nothing beyond it |
+| `missing-session-id`, `invalid-action`, `invalid-session-kind` | `ask-user` | Re-read the facts and ask rather than inventing a session |
+
+### Idempotent turns and audit
+
+The browser sends an `x-poc3-request-id`; the web proxy forwards it to the gateway. The gateway records one
+`coach_turns` row per request:
+
+- `in_progress` — claimed before the first model call;
+- `completed` — cached response, attempts, validation code and outcome;
+- `failed` — transport/model failure; a retry with the same id may claim it again.
+
+A repeated completed id returns the cached response with `x-poc3-idempotent-replay: true`; an in-flight duplicate returns
+`409`. The `poc3` response block includes `attempts`, `outcome` (`committed`, `clarified` or `fallback`) and
+`validationCode`.
+
+### Timezone and dated history
+
+`today` is computed in the runner's IANA timezone, not in server UTC. Conversation history is rendered as
+`[YYYY-MM-DD HH:mm] Runner:` / `Coach:` in the same zone. The prompt states that those dates are historical, and a bare
+follow-up such as “go” does not carry a date. This prevents a stale “today is 6 November” message from being reused on
+12 November.
 
 ### CRUD, in one turn or many
 
@@ -313,10 +375,13 @@ Environment: `GARMIN_PERSONAL_API_KEY`.
 |---|---|---|
 | `GET` | `/health` | liveness + model name |
 | `GET` | `/v1/models` | OpenAI-compatible model list (`poc3-coach`) |
-| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE) |
+| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE); optional `x-poc3-request-id` for idempotency |
 
 The gateway binds `127.0.0.1` and trusts the internal `x-poc3-user` header set by the web server; the browser never talks to
 it directly. The web surface is the authenticated entry point.
+
+A completed request id is replayed from `coach_turns` with `x-poc3-idempotent-replay: true`; a duplicate while the first
+request is still running gets `409 turn-in-progress`.
 
 ### Calendar web (`:8091`)
 
@@ -329,7 +394,7 @@ it directly. The web surface is the authenticated entry point.
 | `GET` | `/calendar?month=YYYY-MM` | month grid (authenticated, user-scoped) |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
 | `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh |
-| `POST` | `/chat` | bubble proxy → gateway; returns `{reply, sessions, changes, suggestions, changeSetId, reverted}` |
+| `POST` | `/chat` | bubble proxy → gateway; forwards `x-poc3-request-id`; returns `{reply, sessions, changes, suggestions, changeSetId, reverted}` |
 | `GET` | `/chat/history` | the signed-in runner's recent messages, oldest first (used to restore the bubble after refresh) |
 | `POST` | `/sync` | Garmin pull |
 | `GET` | `/static/app.css` | styles |
@@ -380,6 +445,7 @@ Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`).
 | `POC3_MODEL_API_KEY` | empty | model bearer |
 | `POC3_MODEL_NAME` | `dgx/general` | model name |
 | `POC3_MODEL_ID` | `poc3-coach` | id exposed by the gateway |
+| `POC3_MAX_ATTEMPTS` | `2` | initial proposal + repair calls per turn |
 | `POC3_CALENDAR_URL` | `http://127.0.0.1:8091/calendar` | link appended to replies |
 | `POC3_GATEWAY_URL` | `http://127.0.0.1:8090` | web → gateway |
 | `GARMIN_PERSONAL_API_KEY` | empty | Garmin Personal API key |
@@ -396,8 +462,9 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **87 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert, gateway
-streaming + CRUD + batch + change sets + revert, store users/change sets, Garmin mapping/token quirks, calendar web + conversation reload.
+Current state: **100 tests in 6 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
+gateway streaming + CRUD + batch + change sets + revert + repair loop + native tool calls + timezone + idempotency,
+store users/change sets/coach turns/transactions, Garmin mapping/token quirks, calendar web + conversation reload.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
 
@@ -405,14 +472,17 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 
 ## 13. Honest limits
 
-1. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming.
+1. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming, but idempotency is
+   applied only to non-streaming completions.
 2. **Auth is PoC-grade.** The default `POC3_AUTH_SECRET` must be replaced; there is no email verification, password reset,
    rate limit or session revocation list.
 3. **The gateway trusts `x-poc3-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
 4. **No manual edit form.** The coach is the only writer by design; the runner can only ask it.
 5. **No external calendar sync.** Google/Outlook/CalDAV are out of scope.
-6. **Single-process SQLite.** Fine for a PoC; not a multi-instance production store.
+6. **Single-process SQLite.** Fine for a PoC; not a multi-instance production store. `coach_turns` has no lease timeout, so
+   an in-flight request left by a process crash needs manual cleanup.
 7. **Animation is best-effort.** It is DOM/CSS/Web Animations; reduced-motion users get the grid update without the flourish.
+8. **One repair, not an agent loop.** The model gets one bounded repair call; it is not allowed to iterate indefinitely.
 
 ---
 
@@ -421,6 +491,7 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 - [`FEATURES-FOR-REVIEW.md`](FEATURES-FOR-REVIEW.md) — candidate features from PoC1/PoC2, prioritised for review.
 - [`adr/0001-server-validated-coach.md`](adr/0001-server-validated-coach.md)
 - [`adr/0002-calendar-first-bubble.md`](adr/0002-calendar-first-bubble.md)
+- [`adr/0003-validation-feedback-loop.md`](adr/0003-validation-feedback-loop.md)
 - [`design/calendar-crud-animation.png`](design/calendar-crud-animation.png)
 
 POC3 is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog.

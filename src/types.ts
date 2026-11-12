@@ -99,6 +99,32 @@ export interface ChangeSet {
   revertedAt: string | null;
 }
 
+export type CoachTurnStatus = "in_progress" | "completed" | "failed";
+
+/**
+ * Durable idempotency and audit record for one gateway request. The response is cached only after the turn is
+ * committed, so a network retry cannot write the same booking twice.
+ */
+export interface CoachTurnRecord {
+  requestId: string;
+  userId: string;
+  createdAt: string;
+  completedAt: string | null;
+  status: CoachTurnStatus;
+  attempts: number;
+  validationCode: string | null;
+  outcome: string | null;
+  responseJson: string | null;
+}
+
+export interface CoachTurnCompletion {
+  completedAt: string;
+  attempts: number;
+  validationCode: string | null;
+  outcome: string;
+  responseJson: string;
+}
+
 export interface Store {
   /** One account by id, or undefined when no such account exists. */
   getUser(userId: string): UserProfile | undefined;
@@ -128,5 +154,15 @@ export interface Store {
   getChangeSet(userId: string, changeSetId: string): ChangeSet | undefined;
   /** Mark a batch as undone; returns false when it is missing, foreign, or already marked. */
   markChangeSetReverted(userId: string, changeSetId: string, at: string): boolean;
+  /** Claim a request id for one in-flight turn. False means it is already running or completed. */
+  claimCoachTurn(record: CoachTurnRecord): boolean;
+  /** Cache the completed response and audit metadata for a request id. */
+  completeCoachTurn(userId: string, requestId: string, completion: CoachTurnCompletion): void;
+  /** Mark a claimed request as failed so a later retry with the same id can start a new attempt. */
+  failCoachTurn(userId: string, requestId: string, completedAt: string): void;
+  /** Read a turn audit record, scoped to one user. */
+  getCoachTurn(userId: string, requestId: string): CoachTurnRecord | undefined;
+  /** Run a write batch atomically. The callback must not perform HTTP or model calls. */
+  transaction<T>(work: () => T): T;
   close(): void;
 }

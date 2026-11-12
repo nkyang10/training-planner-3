@@ -16,6 +16,7 @@ $env:POC3_DB='sqlite:data/poc3.sqlite'
 $env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
 $env:POC3_MODEL_API_KEY='<model key>'
 $env:POC3_MODEL_NAME='dgx/general'
+$env:POC3_MAX_ATTEMPTS='2'
 $env:POC3_CALENDAR_URL='http://127.0.0.1:8091/calendar'
 $env:GARMIN_PERSONAL_API_KEY='<Garmin personal API key>'
 pnpm dev
@@ -31,9 +32,9 @@ pnpm dev
 |---|---|
 | Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions; middle nav (viewed month, no separate heading) opens a year/month picker |
 | 💬 Coach bubble | self-implemented same-origin chat; restores the recent conversation after refresh; add / move / delete / revert sessions |
-| Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing |
+| Coach gateway | OpenAI-compatible `poc3-coach`; validates every proposal before writing; one bounded repair/clarification loop |
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |
-| Audit log | every batch stored with before/after snapshots; undo via the coach, no history panel |
+| Audit log | every batch stored with before/after snapshots; idempotent `coach_turns` records; undo via the coach, no history panel |
 | Suggestions | the coach returns 1–3 tappable follow-ups after each turn |
 | Garmin sync | pulls recent activities into the calendar |
 
@@ -43,20 +44,23 @@ pnpm dev
   contract, CRUD/batch, change history/revert, suggestions, animation, Garmin, API, runbook, limits.
 - **[docs/FEATURES-FOR-REVIEW.md](docs/FEATURES-FOR-REVIEW.md)** — remaining candidate features, prioritised and waiting
   for owner review.
-- ADRs: [0001](docs/adr/0001-server-validated-coach.md), [0002](docs/adr/0002-calendar-first-bubble.md).
+- ADRs: [0001](docs/adr/0001-server-validated-coach.md), [0002](docs/adr/0002-calendar-first-bubble.md),
+  [0003](docs/adr/0003-validation-feedback-loop.md).
 
 ## Status
 
-- 87 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 100 tests in 6 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh, page-wide CRUD
-  animation, conversation reload after refresh, LLM-driven undo, suggestions.
+  animation, conversation reload after refresh, LLM-driven undo, suggestions, timezone-correct "today", native tool
+  calls, validation feedback, clarification instead of a dead-end fallback, and idempotent request replay.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.
 
 ## Honest limits
 
-The coach accepts bookings up to **180 days ahead** (shown in the bubble header). There is no streaming in the bubble; the auth cookie is signed with
-`POC3_AUTH_SECRET` (set a strong secret); the gateway trusts the internal `x-poc3-user` header; SQLite is single-process. See
-the solution doc for the full list.
+The coach accepts bookings up to **180 days ahead** (shown in the bubble header). The model gets one bounded repair attempt;
+there is no open-ended agent loop. There is no streaming in the bubble; the auth cookie is signed with
+`POC3_AUTH_SECRET` (set a strong secret); the gateway trusts the internal `x-poc3-user` header; SQLite is single-process.
+See the solution doc for the full list.
 
 ## License
 
