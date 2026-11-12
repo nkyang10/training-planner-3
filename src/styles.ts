@@ -28,9 +28,11 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .error { color: var(--danger); font-weight: 600; }
 .ok { color: var(--success); font-weight: 600; }
-.month-nav { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.month-nav { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 10px; margin-bottom: 14px; }
 .month-nav a { text-decoration: none; color: var(--muted); font-weight: 600; }
 .month-nav .month-current { color: var(--ink); }
+.month-nav .month-this { color: var(--ember); }
+.month-nav .month-this.active { color: var(--muted); }
 .month-nav .month-current.active { color: var(--ember); }
 .dow, .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .dow span { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); text-align: center; padding-bottom: 4px; }

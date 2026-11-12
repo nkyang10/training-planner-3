@@ -477,8 +477,12 @@ describe("month navigation label", () => {
     const current = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(current).toContain('id="month-current"');
     expect(current).toContain(">November 2026</a>");
+    expect(current).toContain('id="month-this"');
+    expect(current).toContain('aria-current="page"');
     const other = await (await fetch(`${base}/calendar?month=2026-12`, { headers: { cookie } })).text();
     expect(other).toContain(">December 2026</a>");
+    expect(other).toContain('id="month-this"');
+    expect(other).not.toContain('aria-current="page"');
     expect(other).not.toContain("Back to November 2026");
   });
 });
