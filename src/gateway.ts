@@ -49,6 +49,17 @@ export interface Gateway {
 
 export type TurnOutcome = "committed" | "clarified" | "fallback";
 
+export type TurnFailureReason = "session-not-found" | "missing-session-id";
+
+/** A proposed schedule action the gateway could not apply because its target session was missing. */
+export interface TurnFailure {
+  action: "add" | "update" | "remove";
+  sessionId: string | null;
+  title: string;
+  day: string;
+  reason: TurnFailureReason;
+}
+
 /** The `poc3` block the calendar UI reads from a completion. */
 export interface GatewayMeta {
   /** How many sessions the turn wrote (a batch) or restored/deleted (a revert). */
@@ -59,6 +70,8 @@ export interface GatewayMeta {
   changeSetId: string | null;
   reverted: boolean;
   suggestions: string[];
+  /** Actions that could not be applied; the UI renders them as a structured card. */
+  failures: TurnFailure[];
   /** How many model attempts were spent (1 = accepted first time, 2 = one repair). */
   attempts: number;
   outcome: TurnOutcome;
@@ -302,6 +315,7 @@ function emptyMeta(): GatewayMeta {
     changeSetId: null,
     reverted: false,
     suggestions: [],
+    failures: [],
     attempts: 0,
     outcome: "fallback",
     validationCode: null,
@@ -317,6 +331,14 @@ function summarizeChanges(changes: readonly ChangeEntry[]): string {
   });
   const summary = parts.join("; ");
   return summary.length > 280 ? `${summary.slice(0, 279)}…` : summary;
+}
+
+/** Persist a short note so a partial failure survives a history reload; the live UI renders a structured card. */
+function failureNote(failures: readonly TurnFailure[], reply: string): string {
+  const count = failures.length;
+  const chinese = /[\u3400-\u9fff]/.test(reply);
+  if (chinese) return `註：有 ${count} 個項目找不到，該部分未有套用。`;
+  return `Note: ${count} item${count === 1 ? "" : "s"} could not be found, so that part was not applied.`;
 }
 
 /** "last" means the newest change set that still stands, so an undo cannot pick an already undone batch. */
@@ -395,8 +417,8 @@ function applyParsedTurn(
       return { reply, meta };
     }
 
-    let reply = turn.reply;
-    const failures: string[] = [];
+    const reply = turn.reply;
+    const failures: TurnFailure[] = [];
     for (const text of turn.memories) {
       options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
     }
@@ -424,7 +446,13 @@ function applyParsedTurn(
 
       const existing = draft.sessionId === null ? undefined : options.store.getSession(userId, draft.sessionId);
       if (existing === undefined) {
-        failures.push(draft.title.length === 0 ? (draft.sessionId ?? "unknown session") : draft.title);
+        failures.push({
+          action: draft.action,
+          sessionId: draft.sessionId,
+          title: draft.title.length === 0 ? "session" : draft.title,
+          day: draft.day,
+          reason: draft.sessionId === null ? "missing-session-id" : "session-not-found",
+        });
         continue;
       }
       if (draft.action === "remove") {
@@ -465,9 +493,7 @@ function applyParsedTurn(
       });
     }
 
-    if (failures.length > 0) {
-      reply = `${reply}\n\nNote: I could not find ${failures.length === 1 ? "one session" : `${failures.length} sessions`} you asked me to change, so that part was not applied.`;
-    }
+    meta.failures = failures;
     if (meta.changes.length > 0) {
       const changeSet: ChangeSet = {
         changeSetId: `change:${randomUUID()}`,
@@ -482,7 +508,8 @@ function applyParsedTurn(
       meta.sessions = meta.changes.length;
     }
     meta.outcome = meta.changes.length > 0 ? "committed" : "clarified";
-    appendAssistant(reply);
+    const persistedReply = failures.length === 0 ? reply : `${reply}\n\n${failureNote(failures, reply)}`;
+    appendAssistant(persistedReply);
     return { reply, meta };
   });
 }
@@ -585,7 +612,8 @@ export function createGateway(options: GatewayOptions): Gateway {
         now: nowIso,
         memories: options.store.listMemories(userId, 100),
         sessions: options.store.listSessions(userId, today, addDays(today, HORIZON_DAYS)),
-        activities: options.store.listActivities(userId, 10),
+        pastSessions: options.store.listSessions(userId, addDays(today, -30), today),
+        activities: options.store.listActivities(userId, 30),
         history,
         recentChanges,
         question,

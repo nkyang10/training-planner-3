@@ -66,6 +66,51 @@ export interface Activity {
   avgHr: number | null;
   source: "garmin" | "chat";
   createdAt: string;
+  /** Optional Garmin metrics; old rows and chat-created activities leave them undefined. */
+  elevationGainM?: number | null;
+  elevationLossM?: number | null;
+  calories?: number | null;
+  maxHr?: number | null;
+  cadenceSpm?: number | null;
+  strideLengthCm?: number | null;
+  groundContactMs?: number | null;
+  aerobicTrainingEffect?: number | null;
+  anaerobicTrainingEffect?: number | null;
+  trainingLoad?: number | null;
+  trainingEffectLabel?: string | null;
+  fastest1kSec?: number | null;
+  fastest1miSec?: number | null;
+  fastest5kSec?: number | null;
+  /** Garmin HR-zone seconds; optional because not every activity has zones. */
+  hrZone1Sec?: number | null;
+  hrZone2Sec?: number | null;
+  hrZone3Sec?: number | null;
+  hrZone4Sec?: number | null;
+  hrZone5Sec?: number | null;
+}
+
+export type NotificationSource = "garmin";
+export type NotificationStatus = "success" | "error";
+
+/** One result worth keeping in the top-bar notification tray. */
+export interface AppNotification {
+  notificationId: string;
+  userId: string;
+  source: NotificationSource;
+  status: NotificationStatus;
+  title: string;
+  body: string;
+  /** Internal path to open from the tray. */
+  href: string;
+  createdAt: string;
+  readAt: string | null;
+}
+
+/** A runner's own Garmin Personal API key; never shared across accounts. */
+export interface GarminKey {
+  userId: string;
+  apiKey: string;
+  savedAt: string;
 }
 
 /**
@@ -146,7 +191,25 @@ export interface Store {
   /** Replace future sessions only; past sessions are never touched. */
   replaceFutureSessions(userId: string, fromDay: string, sessions: readonly TrainingSession[]): void;
   listActivities(userId: string, limit?: number): Activity[];
+  /** One activity by id, scoped to its owner. */
+  getActivity(userId: string, activityId: string): Activity | undefined;
+  /** Insert or replace one activity by activityId; a repeated Garmin sync updates the row instead of throwing. */
   appendActivity(activity: Activity): void;
+  /** ISO timestamp of the last completed Garmin sync for this runner, or null. */
+  getLastSync(userId: string): string | null;
+  /** Record a completed or attempted sync so automatic sync can back off. */
+  recordSync(userId: string, at: string): void;
+  /** The runner's saved Garmin key, or undefined when Garmin is not connected. */
+  getGarminKey(userId: string): GarminKey | undefined;
+  /** Insert or replace the runner's Garmin key. */
+  saveGarminKey(key: GarminKey): void;
+  /** Newest first. */
+  listNotifications(userId: string, limit?: number): AppNotification[];
+  countUnreadNotifications(userId: string): number;
+  /** Mark every unread notification for one runner as read. */
+  markNotificationsRead(userId: string, at: string): void;
+  /** Append one sync result to the runner's notification tray. */
+  appendNotification(notification: AppNotification): void;
   /** Record one batch of calendar writes; a revert is recorded as its own change set. */
   appendChangeSet(changeSet: ChangeSet): void;
   /** Newest first. */

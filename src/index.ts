@@ -5,7 +5,6 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createAuth } from "./auth";
-import { createGarminClient } from "./garmin";
 import { createGateway } from "./gateway";
 import { createStore } from "./store";
 import { createWeb } from "./web";
@@ -15,7 +14,6 @@ const webPort = Number(process.env["POC3_WEB_PORT"] ?? "8091");
 const databaseSpec = process.env["POC3_DB"] ?? "sqlite:data/poc3.sqlite";
 const userId = process.env["POC3_USER_ID"] ?? "demo-runner";
 const authSecret = process.env["POC3_AUTH_SECRET"] ?? "poc3-dev-secret-change-me";
-const garminKey = process.env["GARMIN_PERSONAL_API_KEY"];
 const maxAttemptsValue = Number(process.env["POC3_MAX_ATTEMPTS"] ?? "2");
 const maxAttempts = Number.isFinite(maxAttemptsValue) ? Math.max(1, Math.floor(maxAttemptsValue)) : 2;
 
@@ -26,7 +24,6 @@ if (databaseSpec.startsWith("sqlite:")) {
 
 const handle = createStore(databaseSpec);
 const auth = createAuth({ store: handle.store, secret: authSecret });
-const garmin = garminKey === undefined || garminKey.length === 0 ? undefined : createGarminClient({ apiKey: garminKey });
 
 const gateway = createGateway({
   store: handle.store,
@@ -43,7 +40,6 @@ const web = createWeb({
   auth,
   gatewayUrl: process.env["POC3_GATEWAY_URL"] ?? "http://127.0.0.1:8090",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
-  ...(garmin === undefined ? {} : { garmin }),
 });
 
 gateway.server.listen(gatewayPort, "127.0.0.1", () => {

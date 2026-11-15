@@ -220,7 +220,8 @@ describe("coach revert", () => {
       today: TODAY,
       memories: [],
       sessions: [],
-      activities: [],
+      pastSessions: [session("2026-11-03")],
+      activities: [activity],
       history: [],
       recentChanges: [
         changeSet("change:9", "move \"Long 8 km\" 2026-11-07 → 2026-11-09"),
@@ -234,8 +235,15 @@ describe("coach revert", () => {
     expect(prompt).toContain("move \\\"Long 8 km\\\"");
     expect(prompt).toContain("\"revertedAt\":null");
     expect(prompt).toContain("2026-11-05T09:00:00.000Z");
+    expect(prompt).toContain("recentPlannedSessions");
+    expect(prompt).toContain("2026-11-03");
+    expect(prompt).toContain("recentActivities");
+    expect(prompt).toContain("Morning run");
+    expect(prompt).toContain("never invent splits");
     expect(prompt).toContain("suggestions");
     expect(prompt).toContain("1-3");
+    expect(prompt).toContain("must not repeat");
+    expect(prompt).toContain("more than one booked session");
     expect(prompt).toContain("revertChangeSetId");
   });
 });

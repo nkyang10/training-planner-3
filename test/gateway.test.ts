@@ -292,6 +292,32 @@ describe("coach gateway", () => {
     expect(model.prompts[1]).toContain("suggestions");
     expect(handle.store.listChangeSets(USER)).toHaveLength(2);
   });
+
+  it("puts the last 30 activities into the coach prompt", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    for (let index = 1; index <= 12; index += 1) {
+      handle.store.appendActivity({
+        activityId: `garmin:${index}`,
+        userId: USER,
+        day: `2026-11-${String(index).padStart(2, "0")}`,
+        title: `activity-${String(index).padStart(2, "0")}`,
+        distanceKm: 5,
+        durationMin: 30,
+        paceSecPerKm: 360,
+        avgHr: 140,
+        source: "garmin",
+        createdAt: `${TODAY}T00:00:00.000Z`,
+      });
+    }
+    model.answers.push(turn({ reply: "Reviewed.", memories: [], sessions: [] }));
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Review my month" }] });
+    expect(response.status).toBe(200);
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("recentActivities");
+    expect(model.prompts[0]).toContain("activity-01");
+    expect(model.prompts[0]).toContain("activity-12");
+  });
 });
 
 describe("coach schedule CRUD", () => {
@@ -332,10 +358,56 @@ describe("coach schedule CRUD", () => {
     const { handle, url } = await base(modelFetch(answer));
     const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Change it" }] });
     const body = (await response.json()) as Completion;
-    expect(body.choices[0]?.message.content).toContain("could not find");
+    expect(body.choices[0]?.message.content).toBe("Changed it.");
+    expect(body.poc3.failures).toEqual([
+      { action: "update", sessionId: "session:missing", title: "Easy 4 km", day: "2026-11-07", reason: "session-not-found" },
+    ]);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
     expect(body.poc3).toMatchObject({ sessions: 0, changeSetId: null, reverted: false });
+    const stored = handle.store.listMessages(USER, 10);
+    expect(stored.some((message) => message.role === "assistant" && message.text.includes("Note: 1 item could not be found"))).toBe(true);
+  });
+
+  it("applies the valid part of a batch and reports the missing session structurally", async () => {
+    const answer = turn({
+      reply: "Deleted the easy run.",
+      memories: [],
+      sessions: [
+        { action: "remove", sessionId: "session:a", day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35 },
+        { action: "remove", sessionId: "session:missing", day: "2026-11-13", title: "15 min drill", kind: "interval", distanceKm: null, durationMin: 15 },
+      ],
+    });
+    const { handle, url } = await base(modelFetch(answer));
+    seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Delete the drill" }] });
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).not.toContain("Note:");
+    expect(body.poc3.sessions).toBe(1);
+    expect(body.poc3.failures).toEqual([
+      { action: "remove", sessionId: "session:missing", title: "15 min drill", day: "2026-11-13", reason: "session-not-found" },
+    ]);
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+    const stored = handle.store.listMessages(USER, 10);
+    expect(stored.some((message) => message.role === "assistant" && message.text.includes("Note: 1 item could not be found"))).toBe(true);
+  });
+
+  it("stores the failure note in the reply's language", async () => {
+    const answer = turn({
+      reply: "好，我幫你刪咗個 drill。",
+      memories: [],
+      sessions: [
+        { action: "remove", sessionId: "session:missing", day: "2026-11-13", title: "15 min drill", kind: "interval", distanceKm: null, durationMin: 15 },
+      ],
+    });
+    const { handle, url } = await base(modelFetch(answer));
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Delete the session on 2026-11-13." }] });
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toBe("好，我幫你刪咗個 drill。");
+    expect(body.poc3.failures).toHaveLength(1);
+    const stored = handle.store.listMessages(USER, 10);
+    expect(stored.some((message) => message.role === "assistant" && message.text.includes("註：有 1 個項目找不到"))).toBe(true);
   });
 });
 

@@ -1,9 +1,11 @@
 import { createRequire } from "node:module";
 import type {
   Activity,
+  AppNotification,
   ChangeSet,
   CoachTurnCompletion,
   CoachTurnRecord,
+  GarminKey,
   Memory,
   Message,
   Store,
@@ -81,6 +83,26 @@ CREATE TABLE IF NOT EXISTS activities (
 );
 CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day);
 
+CREATE TABLE IF NOT EXISTS sync_state (
+  user_id TEXT PRIMARY KEY,
+  last_synced_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS garmin_keys (
+  user_id TEXT PRIMARY KEY,
+  saved_at TEXT NOT NULL,
+  api_key TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  notification_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS notifications_user_created ON notifications (user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS change_sets (
   change_set_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -113,7 +135,24 @@ const INSERT_MESSAGE =
 const INSERT_MEMORY =
   "INSERT INTO memories (memory_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
 const INSERT_ACTIVITY =
-  "INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
+  `INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)
+   ON CONFLICT(activity_id) DO UPDATE SET
+     day = excluded.day,
+     created_at = excluded.created_at,
+     payload = excluded.payload
+   WHERE activities.user_id = excluded.user_id`;
+const UPSERT_SYNC_STATE = `
+  INSERT INTO sync_state (user_id, last_synced_at) VALUES (?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET last_synced_at = excluded.last_synced_at
+`;
+const UPSERT_GARMIN_KEY = `
+  INSERT INTO garmin_keys (user_id, saved_at, api_key) VALUES (?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET saved_at = excluded.saved_at, api_key = excluded.api_key
+`;
+const INSERT_NOTIFICATION =
+  "INSERT INTO notifications (notification_id, user_id, created_at, read_at, payload) VALUES (?, ?, ?, ?, ?)";
+const MARK_NOTIFICATIONS_READ =
+  "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL";
 const UPSERT_SESSION =
   "INSERT OR REPLACE INTO sessions (session_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
 const INSERT_CHANGE_SET =
@@ -328,6 +367,77 @@ class SqliteStore implements Store {
         activity.createdAt,
         JSON.stringify(activity),
       );
+  }
+
+  getActivity(userId: string, activityId: string): Activity | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM activities WHERE user_id = ? AND activity_id = ?")
+      .get(userId, activityId);
+    return row === undefined ? undefined : decode<Activity>(String(row["payload"]));
+  }
+
+  getLastSync(userId: string): string | null {
+    const row = this.db
+      .prepare("SELECT last_synced_at FROM sync_state WHERE user_id = ?")
+      .get(userId);
+    return row === undefined ? null : String(row["last_synced_at"]);
+  }
+
+  recordSync(userId: string, at: string): void {
+    this.db.prepare(UPSERT_SYNC_STATE).run(userId, at);
+  }
+
+  getGarminKey(userId: string): GarminKey | undefined {
+    const row = this.db
+      .prepare("SELECT api_key, saved_at FROM garmin_keys WHERE user_id = ?")
+      .get(userId);
+    if (row === undefined) return undefined;
+    return { userId, apiKey: String(row["api_key"]), savedAt: String(row["saved_at"]) };
+  }
+
+  saveGarminKey(key: GarminKey): void {
+    this.db.prepare(UPSERT_GARMIN_KEY).run(key.userId, key.savedAt, key.apiKey);
+  }
+
+  appendNotification(notification: AppNotification): void {
+    this.db
+      .prepare(INSERT_NOTIFICATION)
+      .run(
+        notification.notificationId,
+        notification.userId,
+        notification.createdAt,
+        notification.readAt,
+        JSON.stringify(notification),
+      );
+  }
+
+  listNotifications(userId: string, limit = 20): AppNotification[] {
+    const take = normalizeLimit(limit, 20);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT payload, read_at FROM notifications
+          WHERE user_id = ?
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT ?`,
+      )
+      .all(userId, take);
+    return rows.map((row) => {
+      const notification = decode<AppNotification>(String(row["payload"]));
+      notification.readAt = row["read_at"] === null ? null : String(row["read_at"]);
+      return notification;
+    });
+  }
+
+  countUnreadNotifications(userId: string): number {
+    const row = this.db
+      .prepare("SELECT COUNT(*) AS n FROM notifications WHERE user_id = ? AND read_at IS NULL")
+      .get(userId);
+    return row === undefined ? 0 : Number(row["n"]);
+  }
+
+  markNotificationsRead(userId: string, at: string): void {
+    this.db.prepare(MARK_NOTIFICATIONS_READ).run(at, userId);
   }
 
   appendChangeSet(changeSet: ChangeSet): void {

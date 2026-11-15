@@ -88,6 +88,8 @@ export interface CoachPromptInput {
   now?: string;
   memories: readonly Memory[];
   sessions: readonly TrainingSession[];
+  /** The last 30 days of booked sessions, so the coach can compare plan with what actually happened. */
+  pastSessions?: readonly TrainingSession[];
   activities: readonly Activity[];
   history: readonly Message[];
   /** Recent batches, newest first, so the coach knows what changed and what was already undone. */
@@ -180,11 +182,14 @@ export const COACH_RULES: readonly string[] = [
   "When the runner gives a month and day without a year and that date has already passed this year, use the next occurrence on or after today; never call the runner's date past without checking. For example, with today 2026-11-06, \"Jan 15\" means 2027-01-15.",
   "The calendar accepts bookings up to 180 days ahead. If the runner asks for a date beyond that, say the 180-day limit explicitly in the reply, remember the goal, and book nothing beyond the limit. The bubble also shows this limit to the runner.",
   "Before editing, review the existing upcomingSessions (each has a sessionId) and recentChanges (each has a changeSetId, summary, createdAt and revertedAt) so the new plan is coherent with what is already booked and you never undo what was already undone.",
+  "When the runner asks about a past run or a period, use recentActivities and recentPlannedSessions. Compare what was planned with what was recorded, and never invent splits, heart-rate zones, distances or sessions that are not in the facts.",
   "Use action=add for a new booking, action=update with the existing sessionId to change or move a booking, action=remove with the existing sessionId to delete one. You may emit several actions in one answer (for example move two runs, remove one, add one); do not limit yourself to a single action when the plan needs a batch.",
   "Only say you changed the schedule when you emitted update or remove; adding a session is not a change. In the reply, say what changed and what stayed.",
+  "If the runner names a day but not a specific session, and that day has more than one booked session, ask which session they mean and emit no sessions in that turn. Never guess a target and partially apply a batch.",
   "Only book sessions for today or later, never a past day, never more than 180 days ahead. Keep it realistic: at most 14 actions in one answer.",
   "Never diagnose, prescribe calories or weight, or guarantee a result. Pain or medical topics end with a clinician referral.",
   "End every answer with 1-3 follow-up suggestions the runner can tap next: short, concrete, imperative next steps of 1..120 characters each, in the runner's language, for example \"Book my long run for Sunday\" or \"Move Thursday to Friday\". No questions, no numbering, no duplicates.",
+  "The reply must not repeat or paraphrase the suggestions. State what happened (or ask one short clarifying question) in the reply; the suggestions are the only place for next steps.",
   "If the runner asks to undo a change, set revertChangeSetId to a recentChanges changeSetId, or to \"last\" for the newest change that is not reverted yet, and emit no sessions in that turn. Never mix a revert with add/update/remove actions.",
   `When you want to change the calendar, call the ${COACH_TOOL_NAME} tool with exactly one JSON object matching its schema. If you need to ask the runner something, reply in plain text and do not call the tool.`,
   "Answer with exactly one JSON object: {\"reply\": string, \"memories\": string[], \"sessions\": [{\"action\": \"add\"|\"update\"|\"remove\", \"sessionId\": string|null, \"day\": \"YYYY-MM-DD\", \"title\": string, \"kind\": \"easy\"|\"long\"|\"interval\"|\"tempo\"|\"rest\"|\"cross\"|\"race\"|\"racewalk\", \"distanceKm\": number|null, \"durationMin\": number|null, \"note\": string|null}], \"suggestions\": string[], \"revertChangeSetId\": string|null}",
@@ -205,6 +210,13 @@ export function buildCoachPrompt(input: CoachPromptInput): string {
     remembered: input.memories.map((memory) => memory.text),
     upcomingSessions: input.sessions.map((session) => ({
       sessionId: session.sessionId,
+      day: session.day,
+      title: session.title,
+      kind: session.kind,
+      distanceKm: session.distanceKm,
+      durationMin: session.durationMin,
+    })),
+    recentPlannedSessions: (input.pastSessions ?? []).map((session) => ({
       day: session.day,
       title: session.title,
       kind: session.kind,

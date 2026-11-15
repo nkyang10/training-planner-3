@@ -25,7 +25,7 @@ product reason.
 | PoC2 | Self-implemented bubble | Yes | Streaming, history reload, retry, error states |
 | PoC2 | CRUD + batch + animation | Yes | Diff preview, conflict detection |
 | POC3 | Change history + undo | **Yes** — change_sets, before/after, LLM revert | Audit viewer, redo, selective revert |
-| POC3 | Coach suggestions | **Yes** — 1–3 tappable follow-ups | Suggestion ranking, feedback loop |
+| POC3 | Coach suggestions | **Yes** — starter prompts, 1–3 tappable follow-ups, structured "Not applied" card | Suggestion ranking, feedback loop |
 | PoC2 | Prompt history + memory | Yes | Memory management ("forget that"), summarisation |
 | PoC2 | Garmin Personal API quirks | Yes | Background sync, dedupe, post-run feedback |
 | **POC3** | Calendar-first UX | Yes | Make it mobile/PWA, add week/agenda views, reminders |
@@ -42,20 +42,22 @@ product reason.
 | A2 | ~~Undo last coach change~~ | **Implemented** — change journal + LLM revert (no history UI) | — | — | See change history section |
 | A3 | **Diff preview / confirm before apply** | "Review original existing too" becomes visible: show add/move/delete diff before writing | **P1** | M | Two-phase turn: propose → confirm; gateway must not write on propose |
 | A4 | Streaming reply in the bubble | Long coach answers feel dead; streaming would keep the reply alive | **P1** | M | SSE parsing in bubble; gateway already emits one chunk, extend to token chunks |
-| A5 | Week / agenda view + "today" button | Month grid is good for planning; week/agenda is better for daily use | P1 | M | Reuse `/calendar/data`; new render path |
+| A5 | Week / agenda view + "today" button | Month grid is good for planning; week/agenda is better for daily use | P1 | M | **Partially implemented** — Training log Week view + current-period shortcut; the Plan calendar is still month-only |
 | A6 | Drag-and-drop reschedule with confirm | Direct manipulation is faster than typing "move Tuesday" | P2 | L | Needs drag targets, conflict rules, coach re-validation |
 | A7 | Reminders / notifications | A plan is only useful if the runner is nudged | P1 | M | Browser notifications or email; per-session reminder time |
-| A8 | Weekly load / volume summary | Runners care about weekly km and hard/easy balance | P1 | M | Sum sessions by week; warn on ramp > 10–15% |
+| A8 | Weekly load / volume summary | Runners care about weekly km and hard/easy balance | P1 | M | **Implemented (week view)** — Garmin load, coupled 7/28-day ACWR, week-over-week change, hard/easy split and a weekly coach review prompt; month/year load summaries still open |
 | A9 | iCal export | The system calendar is private; runners may want it elsewhere | P2 | S | Read-only `.ics` endpoint; no external sync |
 | A10 | Mobile PWA / installable | Calendar-first is a phone product | P1 | M | Manifest, service worker, offline shell |
 | A11 | Reduced-motion / accessibility pass | The animation is intentionally loud; some users need it off | P1 | S | `prefers-reduced-motion`; keyboard focus, aria labels |
 | A12 | Multi-month / year heatmap | Training history and consistency | P2 | M | Aggregate activities/sessions by month |
+| A13 | ~~Training log / history view~~ | **Implemented (all training-log slices)** — Week/Month/Year selector with prev/next/current and pickers; week day cards, month week rows, year month rows; plan-match badges, load/ramp card, weekly review prompt, rich run metrics, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, period best efforts, trends, Ask coach; `/activity/<id>` detail | — | — | Dedicated records page and zone charts still open |
+| A14 | ~~Run execution depth~~ | Runners want more than distance and average pace | — | — | **Implemented** — Garmin laps/intervals, HR-zone time, period best efforts and PR badges; FIT parsing and all-time records page later |
 
 ### B. Coach and planning
 
 | ID | Feature | Why it matters | Priority | Effort | Risk / dependency |
 |---|---|---|---|---|---|
-| B1 | **Post-run feedback loop** | After Garmin sync, the coach should say "you ran 5.2 km at easy pace; keep Sunday long" | **P0** | M | Needs activity context in prompt + a "review my week" turn |
+| B1 | **Post-run feedback loop** | After Garmin sync, the coach should say "you ran 5.2 km at easy pace; keep Sunday long" | **P0** | M | **Partially implemented** — Ask coach, last-30 context and post-sync review prompt; unsolicited automatic review still open |
 | B2 | **Deterministic fallback planner** | Model outage or invalid JSON should not leave the runner with nothing | **P0** | M | Reuse PoC1 planner ideas; gateway fallback when `parseCoachTurn` fails |
 | B3 | **Memory manager** | Let the runner see/delete what the coach remembers | P1 | S | `GET/DELETE /memories`; UI list in bubble/settings |
 | B4 | **Goal / race countdown** | "10k in 8 weeks" should become a visible target and a plan end date | P1 | M | Session kind `race`; countdown card; plan horizon |
@@ -70,9 +72,9 @@ product reason.
 
 | ID | Feature | Why it matters | Priority | Effort | Risk / dependency |
 |---|---|---|---|---|---|
-| C1 | **Auto-sync Garmin after an activity** | Manual `/sync` is easy to forget | **P0** | M | Poll every N minutes or on calendar open; dedupe by activity id |
-| C2 | **Activity detail + pace/HR charts** | The calendar badge is only a count; runners want the story | P1 | L | Garmin detail endpoint; chart in day view |
-| C3 | **Dedupe / reconcile activities** | Re-sync must not duplicate | P1 | S | Unique activity id; upsert |
+| C1 | ~~Auto-sync Garmin after an activity~~ | **Implemented (session-start + page-load)** — per-runner key saved from the popup, one pull on login/resumed cookie, 10-minute page-load backoff, upsert by activity id, notification bell for success/error | — | — | Background scheduler still open |
+| C2 | ~~Activity detail + pace/HR charts~~ | **Implemented (aggregate + execution depth)** — `/activity/<id>` detail with rich Garmin metrics, fastest efforts with PR badges, computed per-kilometre splits, Garmin laps/intervals, HR-zone time, adaptive volume, pace and HR trends | — | — | Zone charts, FIT parsing and a dedicated records page still open |
+| C3 | ~~Dedupe / reconcile activities~~ | **Implemented** — unique activity id + upsert; repeated sync updates instead of throwing | — | — | Garmin detail sync still open |
 | C4 | **Strava as second source** (PoC1) | Some runners only use Strava | P2 | M | OAuth, mapping; unify with Garmin |
 | C5 | **Manual activity entry** | Treadmill/commute not on Garmin | P2 | S | Form or coach "log my run" |
 | C6 | **Backup / export SQLite** | A private plan should be recoverable | **P0** | S | Copy/export endpoint; documented backup |

@@ -5,7 +5,17 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createStore, type StoreHandle } from "../src/store";
-import type { Activity, ChangeEntry, ChangeSet, Memory, Message, TrainingSession, UserProfile } from "../src/types";
+import type {
+  Activity,
+  AppNotification,
+  ChangeEntry,
+  ChangeSet,
+  GarminKey,
+  Memory,
+  Message,
+  TrainingSession,
+  UserProfile,
+} from "../src/types";
 
 const handles: StoreHandle[] = [];
 
@@ -62,6 +72,30 @@ function activity(activityId: string, userId: string, day: string, createdAt: st
     avgHr: 140,
     source: "garmin",
     createdAt,
+  };
+}
+
+function garminKey(userId: string, apiKey: string, savedAt: string): GarminKey {
+  return { userId, apiKey, savedAt };
+}
+
+function notification(
+  notificationId: string,
+  userId: string,
+  createdAt: string,
+  overrides: Partial<AppNotification> = {},
+): AppNotification {
+  return {
+    notificationId,
+    userId,
+    source: "garmin",
+    status: "success",
+    title: `title-${notificationId}`,
+    body: `body-${notificationId}`,
+    href: "/calendar",
+    createdAt,
+    readAt: null,
+    ...overrides,
   };
 }
 
@@ -220,6 +254,97 @@ describe("activities", () => {
     expect(store.listActivities("u1").map((a) => a.activityId)).toEqual(["a2", "a3", "a1"]);
     expect(store.listActivities("u1", 2).map((a) => a.activityId)).toEqual(["a2", "a3"]);
   });
+
+  it("upserts a repeated activity id instead of throwing", () => {
+    const { store } = memoryStore();
+    store.appendActivity(activity("a1", "u1", "2026-02-01", "2026-02-01T07:00:00.000Z"));
+    store.appendActivity({
+      ...activity("a1", "u1", "2026-02-02", "2026-02-02T07:00:00.000Z"),
+      title: "Updated activity",
+    });
+
+    const rows = store.listActivities("u1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.title).toBe("Updated activity");
+    expect(rows[0]?.day).toBe("2026-02-02");
+  });
+
+  it("does not let another runner overwrite an activity id", () => {
+    const { store } = memoryStore();
+    store.appendActivity(activity("a1", "u1", "2026-02-01", "2026-02-01T07:00:00.000Z"));
+    store.appendActivity(activity("a1", "u2", "2026-02-02", "2026-02-02T07:00:00.000Z"));
+
+    expect(store.listActivities("u1")[0]?.title).toBe("activity-a1");
+    expect(store.listActivities("u2")).toHaveLength(0);
+  });
+
+  it("gets one activity only for its owner", () => {
+    const { store } = memoryStore();
+    store.appendActivity(activity("a1", "u1", "2026-02-01", "2026-02-01T07:00:00.000Z"));
+
+    expect(store.getActivity("u1", "a1")?.title).toBe("activity-a1");
+    expect(store.getActivity("u2", "a1")).toBeUndefined();
+    expect(store.getActivity("u1", "missing")).toBeUndefined();
+  });
+});
+
+describe("sync state", () => {
+  it("records the last sync per runner", () => {
+    const { store } = memoryStore();
+    expect(store.getLastSync("u1")).toBeNull();
+    store.recordSync("u1", "2026-02-01T07:00:00.000Z");
+    store.recordSync("u2", "2026-02-01T08:00:00.000Z");
+    expect(store.getLastSync("u1")).toBe("2026-02-01T07:00:00.000Z");
+    store.recordSync("u1", "2026-02-02T07:00:00.000Z");
+    expect(store.getLastSync("u1")).toBe("2026-02-02T07:00:00.000Z");
+    expect(store.getLastSync("u2")).toBe("2026-02-01T08:00:00.000Z");
+  });
+});
+
+describe("Garmin keys", () => {
+  it("saves, replaces and isolates a runner's key", () => {
+    const { store } = memoryStore();
+    expect(store.getGarminKey("u1")).toBeUndefined();
+    store.saveGarminKey(garminKey("u1", "first-key", "2026-02-01T07:00:00.000Z"));
+    expect(store.getGarminKey("u1")).toEqual(garminKey("u1", "first-key", "2026-02-01T07:00:00.000Z"));
+    store.saveGarminKey(garminKey("u1", "second-key", "2026-02-02T07:00:00.000Z"));
+    expect(store.getGarminKey("u1")?.apiKey).toBe("second-key");
+    expect(store.getGarminKey("u2")).toBeUndefined();
+    store.saveGarminKey(garminKey("u2", "other-key", "2026-02-03T07:00:00.000Z"));
+    expect(store.getGarminKey("u1")?.apiKey).toBe("second-key");
+    expect(store.getGarminKey("u2")?.apiKey).toBe("other-key");
+  });
+});
+
+describe("notifications", () => {
+  it("lists newest first, counts unread and marks every unread as read", () => {
+    const { store } = memoryStore();
+    store.appendNotification(notification("n1", "u1", "2026-02-01T07:00:00.000Z"));
+    store.appendNotification(notification("n2", "u1", "2026-02-02T07:00:00.000Z", { status: "error" }));
+    store.appendNotification(notification("n3", "u1", "2026-02-03T07:00:00.000Z"));
+
+    expect(store.listNotifications("u1").map((n) => n.notificationId)).toEqual(["n3", "n2", "n1"]);
+    expect(store.listNotifications("u1", 2).map((n) => n.notificationId)).toEqual(["n3", "n2"]);
+    expect(store.countUnreadNotifications("u1")).toBe(3);
+
+    store.markNotificationsRead("u1", "2026-02-04T07:00:00.000Z");
+    expect(store.countUnreadNotifications("u1")).toBe(0);
+    expect(store.listNotifications("u1").every((n) => n.readAt === "2026-02-04T07:00:00.000Z")).toBe(true);
+  });
+
+  it("isolates notifications per runner", () => {
+    const { store } = memoryStore();
+    store.appendNotification(notification("n1", "u1", "2026-02-01T07:00:00.000Z"));
+    store.appendNotification(notification("n2", "u2", "2026-02-01T08:00:00.000Z"));
+
+    expect(store.listNotifications("u1").map((n) => n.notificationId)).toEqual(["n1"]);
+    expect(store.listNotifications("u2").map((n) => n.notificationId)).toEqual(["n2"]);
+    expect(store.listNotifications("u3")).toEqual([]);
+    expect(store.countUnreadNotifications("u3")).toBe(0);
+    store.markNotificationsRead("u2", "2026-02-02T00:00:00.000Z");
+    expect(store.countUnreadNotifications("u1")).toBe(1);
+    expect(store.countUnreadNotifications("u2")).toBe(0);
+  });
 });
 
 describe("persistence", () => {
@@ -252,6 +377,34 @@ describe("persistence", () => {
       ]);
       expect(reopened.store.listActivities("u1").map((a) => a.activityId)).toEqual(["a1"]);
       expect(reopened.store.listChangeSets("u1").map((set) => set.changeSetId)).toEqual(["change:1"]);
+    } finally {
+      while (handles.length > 0) {
+        handles.pop()?.close();
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("persistence of Garmin connection data", () => {
+  it("keeps keys and notifications across close and reopen", () => {
+    const dir = mkdtempSync(join(tmpdir(), "training-planner-garmin-store-"));
+    const dbPath = join(dir, "store.db");
+    const handle = createStore(`sqlite:${dbPath}`);
+    handles.push(handle);
+
+    try {
+      handle.store.saveGarminKey(garminKey("u1", "saved-key", "2026-02-01T07:00:00.000Z"));
+      handle.store.appendNotification(
+        notification("n1", "u1", "2026-02-01T07:01:00.000Z", { body: "Morning run was added." }),
+      );
+      handle.close();
+
+      const reopened = createStore(`sqlite:${dbPath}`);
+      handles.push(reopened);
+      expect(reopened.store.getGarminKey("u1")).toEqual(garminKey("u1", "saved-key", "2026-02-01T07:00:00.000Z"));
+      expect(reopened.store.listNotifications("u1")[0]?.body).toBe("Morning run was added.");
+      expect(reopened.store.countUnreadNotifications("u1")).toBe(1);
     } finally {
       while (handles.length > 0) {
         handles.pop()?.close();
