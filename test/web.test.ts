@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
-import { GarminError, type GarminClient } from "../src/garmin";
+import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
 import type { SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
@@ -476,7 +476,10 @@ describe("private calendar", () => {
     const { base, handle, user, cookie } = await start({ garmin });
     const response = await fetch(`${base}/sync`, { method: "POST", headers: { cookie }, redirect: "manual" });
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/calendar?synced=1");
+    const location = response.headers.get("location") ?? "";
+    const params = new URL(location, "http://localhost").searchParams;
+    expect(params.get("synced")).toBe("1");
+    expect(params.get("newest")).toBe("garmin:900001");
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(handle.store.listActivities(user.userId)[0]?.title).toBe("Morning run");
   });
@@ -509,15 +512,27 @@ describe("private calendar", () => {
     });
     const first = await sync();
     expect(first.status).toBe(303);
-    expect(first.headers.get("location")).toBe("/history?synced=1");
+    const firstLocation = first.headers.get("location") ?? "";
+    const firstParams = new URL(firstLocation, "http://localhost").searchParams;
+    expect(firstParams.get("synced")).toBe("1");
+    expect(firstParams.get("newest")).toBe("garmin:900002");
     const second = await sync();
     expect(second.status).toBe(303);
-    expect(second.headers.get("location")).toBe("/history?synced=1");
+    const secondLocation = second.headers.get("location") ?? "";
+    const secondParams = new URL(secondLocation, "http://localhost").searchParams;
+    expect(secondParams.get("synced")).toBe("1");
+    expect(secondParams.get("newest")).toBeNull();
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
 
-    const historyHtml = await (await fetch(`${base}/history?synced=1`, { headers: { cookie } })).text();
+    const historyHtml = await (await fetch(`${base}${firstLocation}`, { headers: { cookie } })).text();
     expect(historyHtml).toContain("Review this run with the coach");
     expect(historyHtml).toContain("Morning run");
+    const secondHtml = await (await fetch(`${base}${secondLocation}`, { headers: { cookie } })).text();
+    expect(secondHtml).not.toContain("New run synced");
+    expect(secondHtml).not.toContain("Garmin sync: 1 imported");
+    const notes = handle.store.listNotifications(user.userId);
+    expect(notes.filter((note) => note.title === "Garmin sync: no new activities")).toHaveLength(1);
+    expect(notes.filter((note) => note.title === "Garmin sync: 1 new activity")).toHaveLength(1);
   });
 });
 
@@ -558,7 +573,10 @@ describe("Garmin connection, notifications and session sync", () => {
       redirect: "manual",
     });
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/calendar?month=2026-11&synced=1");
+    const location = response.headers.get("location") ?? "";
+    const params = new URL(location, "http://localhost").searchParams;
+    expect(params.get("synced")).toBe("1");
+    expect(params.get("newest")).toBe("garmin:900001");
     expect(handle.store.getGarminKey(user.userId)?.apiKey).toBe("valid-key-123");
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(handle.store.countUnreadNotifications(user.userId)).toBe(1);
@@ -570,6 +588,34 @@ describe("Garmin connection, notifications and session sync", () => {
     expect(html).toContain('data-sync-form');
     expect(html).not.toContain('class="garmin-bar"');
     expect(html).not.toContain("Change key");
+    expect(html).not.toContain("Garmin sync: 1 imported");
+  });
+
+  it("confirms a key save when Garmin has no new activities", async () => {
+    const { base, handle, user, cookie } = await start({
+      garminFactory: fakeGarminFactory({ activities: [garminActivity] }),
+      seed: (store, runner) => {
+        const mapped = mapGarminActivity(garminActivity, runner.userId);
+        if (!mapped) throw new Error("fixture did not map");
+        store.appendActivity(mapped);
+      },
+    });
+    const response = await fetch(`${base}/garmin/key`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ key: "valid-key-123", next: "/calendar?month=2026-11" }),
+      redirect: "manual",
+    });
+    expect(response.status).toBe(303);
+    const location = response.headers.get("location") ?? "";
+    const params = new URL(location, "http://localhost").searchParams;
+    expect(params.get("synced")).toBe("1");
+    expect(params.get("newest")).toBeNull();
+    expect(handle.store.getGarminKey(user.userId)?.apiKey).toBe("valid-key-123");
+    const notes = handle.store.listNotifications(user.userId);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.title).toBe("Garmin sync: no new activities");
+    expect(notes[0]?.body).toContain("1 activity checked; nothing new.");
   });
 
   it("rejects a key Garmin refuses, saves nothing and shows the 401 guidance", async () => {
@@ -1181,19 +1227,39 @@ describe("training log", () => {
       },
     });
     const first = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
-    expect(first).toContain("Auto-synced 1 Garmin activity");
+    expect(first).not.toContain("Auto-synced");
     expect(first).toContain("Auto run");
     expect(first).toContain("Review this run with the coach");
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
+    expect(handle.store.countUnreadNotifications(user.userId)).toBe(1);
+    expect(handle.store.listNotifications(user.userId)[0]?.title).toBe("Garmin sync: 1 new activity");
     expect(calls).toBe(1);
     expect(seenLimit).toBe(100);
 
     const second = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
     expect(second).not.toContain("Auto-synced");
+    expect(handle.store.countUnreadNotifications(user.userId)).toBe(1);
     expect(calls).toBe(1);
   });
 
-  it("shows an auto-sync failure and backs off", async () => {
+  it("keeps a no-change auto-sync out of the page and bell", async () => {
+    const garmin = fakeGarminClient({ activities: [garminActivity] });
+    const { base, handle, user, cookie } = await start({
+      garmin,
+      seed: (store, runner) => {
+        const mapped = mapGarminActivity(garminActivity, runner.userId);
+        if (!mapped) throw new Error("fixture did not map");
+        store.appendActivity(mapped);
+        store.recordSync(runner.userId, "2026-11-05T06:00:00.000Z");
+      },
+    });
+    const html = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
+    expect(html).not.toContain("Auto-synced");
+    expect(html).not.toContain("New run synced");
+    expect(handle.store.listNotifications(user.userId)).toHaveLength(0);
+  });
+
+  it("records an auto-sync failure in the bell without a page banner", async () => {
     let calls = 0;
     const garmin: GarminClient = {
       async token() {
@@ -1204,14 +1270,18 @@ describe("training log", () => {
         throw new Error("Garmin down");
       },
     };
-    const { base, cookie } = await start({
+    const { base, handle, user, cookie } = await start({
       garmin,
       seed: (store, runner) => {
         store.recordSync(runner.userId, "2026-11-05T06:00:00.000Z");
       },
     });
     const first = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
-    expect(first).toContain("Auto-sync failed: Garmin down");
+    expect(first).not.toContain("Auto-sync failed");
+    const notes = handle.store.listNotifications(user.userId);
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.status).toBe("error");
+    expect(notes[0]?.body).toContain("Garmin down");
     expect(calls).toBe(1);
     await fetch(`${base}/history`, { headers: { cookie } });
     expect(calls).toBe(1);

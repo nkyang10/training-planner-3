@@ -17,12 +17,18 @@ export interface GarminSyncOutcome {
   imported: number;
   /** Activities that did not exist before this sync; drives success notifications. */
   created: number;
+  /** Newest newly created activity, or null when the sync found nothing new. */
   newest: Activity | null;
   error: string | null;
 }
 
+export interface GarminSyncCallOptions {
+  /** Explicit manual/key syncs confirm "no new activities"; automatic checks stay silent. */
+  notifyWhenUnchanged?: boolean;
+}
+
 export interface GarminSync {
-  sync(userId: string, today: string): Promise<GarminSyncOutcome>;
+  sync(userId: string, today: string, options?: GarminSyncCallOptions): Promise<GarminSyncOutcome>;
   syncInBackground(userId: string, today: string): void;
   idle(): Promise<void>;
 }
@@ -65,6 +71,14 @@ function errorHref(error: unknown): string {
     : "/history";
 }
 
+function unchangedNotification(userId: string, imported: number, createdAt: string): AppNotification {
+  const body =
+    imported === 0
+      ? "No Garmin activities found in the last 90 days."
+      : `${imported} ${imported === 1 ? "activity" : "activities"} checked; nothing new.`;
+  return notification(userId, "success", "Garmin sync: no new activities", body, "/history", createdAt);
+}
+
 export function createGarminSync(options: GarminSyncOptions): GarminSync {
   const now = options.now ?? (() => new Date().toISOString());
   const limit =
@@ -91,13 +105,15 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
         const isNew = options.store.getActivity(userId, mapped.activityId) === undefined;
         options.store.appendActivity(mapped);
         imported += 1;
-        if (isNew) created += 1;
-        if (
-          newest === null ||
-          mapped.day > newest.day ||
-          (mapped.day === newest.day && mapped.createdAt > newest.createdAt)
-        ) {
-          newest = mapped;
+        if (isNew) {
+          created += 1;
+          if (
+            newest === null ||
+            mapped.day > newest.day ||
+            (mapped.day === newest.day && mapped.createdAt > newest.createdAt)
+          ) {
+            newest = mapped;
+          }
         }
       }
 
@@ -105,10 +121,11 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
       options.store.recordSync(userId, at);
       if (created > 0 && newest !== null) {
         const title = `Garmin sync: ${created} new ${created === 1 ? "activity" : "activities"}`;
+        const checked = `${imported} ${imported === 1 ? "activity" : "activities"} checked`;
         const body =
           created === 1
-            ? `${newest.title} was added to your calendar.`
-            : `${created} new activities were added, including ${newest.title}.`;
+            ? `${newest.title} was added to your calendar (${checked}).`
+            : `${created} new activities were added, including ${newest.title} (${checked}).`;
         options.store.appendNotification(
           notification(userId, "success", title, body, `/calendar?month=${newest.day.slice(0, 7)}`, at),
         );
@@ -125,9 +142,21 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
     }
   };
 
-  const sync = (userId: string, today: string): Promise<GarminSyncOutcome> => {
+  const sync = async (
+    userId: string,
+    today: string,
+    callOptions: GarminSyncCallOptions = {},
+  ): Promise<GarminSyncOutcome> => {
+    const confirmUnchanged = callOptions.notifyWhenUnchanged === true;
     const existing = inFlight.get(userId);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      const outcome = await existing;
+      if (confirmUnchanged && outcome.error === null && outcome.created === 0) {
+        options.store.appendNotification(unchangedNotification(userId, outcome.imported, now()));
+      }
+      return outcome;
+    }
+
     const task = run(userId, today);
     inFlight.set(userId, task);
     tasks.add(task);
@@ -135,7 +164,13 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
       if (inFlight.get(userId) === task) inFlight.delete(userId);
       tasks.delete(task);
     });
-    return task;
+
+    if (!confirmUnchanged) return task;
+    const outcome = await task;
+    if (outcome.error === null && outcome.created === 0) {
+      options.store.appendNotification(unchangedNotification(userId, outcome.imported, now()));
+    }
+    return outcome;
   };
 
   const syncInBackground = (userId: string, today: string): void => {

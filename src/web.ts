@@ -178,10 +178,18 @@ function withParams(path: string, params: Record<string, string | number>): stri
 /** The page to return to after a key save/sync, without transient result params. */
 function cleanNext(url: URL): string {
   const params = new URLSearchParams(url.search);
-  for (const name of ["synced", "syncError", "garmin", "keyError"]) params.delete(name);
+  for (const name of ["synced", "syncError", "newest", "garmin", "keyError"]) params.delete(name);
   const query = params.toString();
   const path = url.pathname === "/" ? "/calendar" : url.pathname;
   return `${path}${query.length === 0 ? "" : `?${query}`}`;
+}
+
+/** Redirect params for a completed sync; `newest` lets the training log review only a genuinely new run. */
+function syncResultParams(result: GarminSyncOutcome): Record<string, string> {
+  if (result.error !== null) return { syncError: result.error };
+  const params: Record<string, string> = { synced: String(result.imported) };
+  if (result.created > 0 && result.newest !== null) params.newest = result.newest.activityId;
+  return params;
 }
 
 function addDays(day: string, days: number): string {
@@ -684,7 +692,7 @@ function renderNotificationScript(): string {
         const next = syncForm.querySelector('input[name="next"]');
         if (!next) return;
         const params = new URLSearchParams(location.search);
-        for (const name of ['synced', 'syncError', 'garmin', 'keyError']) params.delete(name);
+        for (const name of ['synced', 'syncError', 'newest', 'garmin', 'keyError']) params.delete(name);
         const query = params.toString();
         const path = location.pathname === '/' ? '/calendar' : location.pathname;
         next.value = path + (query.length === 0 ? '' : '?' + query);
@@ -1748,8 +1756,8 @@ export function createWeb(options: WebOptions): WebApp {
         const activities = allActivities.filter((activity) => activity.day >= periodStart && activity.day <= periodEnd);
         const sessions = options.store.listSessions(user.userId, periodStart, periodEnd);
         const lastImport = allActivities.reduce((latest, activity) => activity.createdAt > latest ? activity.createdAt : latest, "");
-        const synced = url.searchParams.get("synced");
-        const syncError = url.searchParams.get("syncError");
+        const newestId = url.searchParams.get("newest");
+        const newestActivity = newestId === null ? undefined : options.store.getActivity(user.userId, newestId);
 
         const modePeriod = (target: HistoryView): string => {
           if (target === "week") {
@@ -1879,12 +1887,7 @@ export function createWeb(options: WebOptions): WebApp {
           bestEffortsCard = periodBestsCard(periodLabel, personalBestsForPeriod(allActivities, periodStart, periodEnd));
         }
 
-        const autoBanner = auto.error !== null
-          ? `<p class="error" role="alert">Auto-sync failed: ${escapeHtml(auto.error)}</p>`
-          : auto.imported > 0
-            ? `<p class="ok" role="status">Auto-synced ${auto.imported} Garmin ${auto.imported === 1 ? "activity" : "activities"}.</p>`
-            : "";
-        const latestForReview = auto.newest ?? (synced !== null && Number(synced) > 0 ? allActivities[0] ?? null : null);
+        const latestForReview = auto.newest ?? newestActivity ?? null;
         const reviewSessions = latestForReview === null ? [] : options.store.listSessions(user.userId, latestForReview.day, latestForReview.day);
         const reviewCard = latestForReview === null
           ? ""
@@ -1905,9 +1908,6 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="stat"><strong>${formatMinutes(sumDuration(activities))}</strong><span>time</span></div>
             <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>longest</span></div>
           </section>
-          ${autoBanner}
-          ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
-          ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
           <p class="muted small">${escapeHtml(lastImportText)}</p>
           ${reviewCard}
           ${loadCard}
@@ -1923,7 +1923,7 @@ export function createWeb(options: WebOptions): WebApp {
         const month = url.searchParams.get("month") ?? today.slice(0, 7);
         const start = monthStart(month);
         const end = addDays(start, daysInMonth(month) - 1);
-        const auto = await autoSync(user.userId, today);
+        await autoSync(user.userId, today);
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         const firstWeekday = weekdayIndex(start);
@@ -1943,22 +1943,12 @@ export function createWeb(options: WebOptions): WebApp {
         const next = addDays(end, 1).slice(0, 7);
         const currentMonth = today.slice(0, 7);
         const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
-        const synced = url.searchParams.get("synced");
-        const syncError = url.searchParams.get("syncError");
-        const autoBanner = auto.error !== null
-          ? `<p class="error" role="alert">Auto-sync failed: ${escapeHtml(auto.error)}</p>`
-          : auto.imported > 0
-            ? `<p class="ok" role="status">Auto-synced ${auto.imported} Garmin ${auto.imported === 1 ? "activity" : "activities"}.</p>`
-            : "";
         const savedKey = options.store.getGarminKey(user.userId);
         const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
-            ${autoBanner}
-            ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
-            ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
@@ -2087,9 +2077,8 @@ export function createWeb(options: WebOptions): WebApp {
         options.store.saveGarminKey({ userId: user.userId, apiKey: key, savedAt: now() });
         garminClients.set(user.userId, client);
         try {
-          const result = await syncService.sync(user.userId, today);
-          if (result.error !== null) redirect(response, withParams(next, { syncError: result.error }));
-          else redirect(response, withParams(next, { synced: result.imported }));
+          const result = await syncService.sync(user.userId, today, { notifyWhenUnchanged: true });
+          redirect(response, withParams(next, syncResultParams(result)));
         } catch (error) {
           redirect(response, withParams(next, { syncError: describeGarminError(error, "sync") }));
         }
@@ -2104,9 +2093,8 @@ export function createWeb(options: WebOptions): WebApp {
           return;
         }
         try {
-          const result = await syncService.sync(user.userId, today);
-          if (result.error !== null) redirect(response, withParams(next, { syncError: result.error }));
-          else redirect(response, withParams(next, { synced: result.imported }));
+          const result = await syncService.sync(user.userId, today, { notifyWhenUnchanged: true });
+          redirect(response, withParams(next, syncResultParams(result)));
         } catch (error) {
           redirect(response, withParams(next, { syncError: describeGarminError(error, "sync") }));
         }

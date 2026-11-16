@@ -38,7 +38,7 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
 | Accounts | signup, login, profile (display name, timezone, goal, password), per-user isolation |
 | Audit log | every batch stored with before/after snapshots; idempotent `coach_turns` records; undo via the coach, no history panel |
 | Suggestions | the coach returns 1–3 tappable follow-ups after each turn; the rail shows starter prompts when there are none, and a missing target renders a structured "Not applied" card |
-| Garmin sync | per-runner Personal API key saved from the key popup; a top-bar sync icon next to the notification bell is always available and opens the key guide when none is saved; automatic on every new browser session (login or resumed auth cookie) plus page-load backoff; pulls the last 90 days; repeated sync upserts by `(user_id, activity_id)`, so two runners can store the same Garmin activity independently and repeated syncs enrich load/cadence/elevation/effect/HR-zone fields; the bell records successes and errors and links to the key popup; run detail fetches per-kilometre samples and lap summaries on demand |
+| Garmin sync | per-runner Personal API key saved from the key popup; a top-bar sync icon next to the notification bell is always available and opens the key guide when none is saved; automatic on every new browser session (login or resumed auth cookie) plus page-load backoff; pulls the last 90 days; repeated sync upserts by `(user_id, activity_id)`, so two runners can store the same Garmin activity independently and repeated syncs enrich load/cadence/elevation/effect/HR-zone fields; the bell is the sync feed — manual/key syncs confirm even when nothing is new, automatic no-change checks stay silent, and errors always appear; run detail fetches per-kilometre samples and lap summaries on demand |
 
 ## Docs
 
@@ -54,7 +54,7 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
 
 ## Status
 
-- 166 tests in 9 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 170 tests in 9 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh (including delete
   without reload), page-wide CRUD animation, conversation reload after refresh, LLM-driven undo, starter and follow-up
   suggestions, non-scrolling suggestion rail, minimize-to-bubble, structured failure cards, Plan/Training log switcher,
@@ -66,6 +66,9 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
   prompt, and the week/month/year selector against the live database.
 - Live-verified cross-account Garmin ID collision: two accounts can store the same Garmin activity independently; the
   calendar shows the day's `✓ 2` tick, and a repeated sync leaves the notification count unchanged.
+- Live-verified notification feed: automatic no-change page loads leave both the page and the bell silent; the existing
+  new-activity notification and 2026-11-15 tick remain. Manual/key no-new confirmations and newest-new targeting are
+  test-covered.
 - Fixture/mock-verified: populated week, month and year training-log views plus the load card, weekly review prompt, period
   best efforts and activity detail with rich metrics, per-kilometre splits, laps, HR zones and PR badges (headless Chrome,
   [docs/design/training-log.png](docs/design/training-log.png),
@@ -77,8 +80,10 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
 - Each runner saves their own Garmin Personal API key through the top-bar sync icon or the bell's **Garmin key** link; the
   key is verified before it is stored and is never shown again in full. The key is per-runner, not deployment-wide, and
   activity IDs are per-runner too, so the same Garmin activity can be synced independently by multiple accounts. The
-  notification bell records sync successes and errors; a new browser session (login or a resumed auth cookie) triggers one
-  pull when a key is saved.
+  notification bell is the single sync feed: manual/key syncs confirm even when nothing is new, automatic no-change checks
+  stay silent, and errors always appear. The page no longer shows routine "Auto-synced N" or "Garmin sync: N imported"
+  banners; the training-log review card appears only for a genuinely new activity. A new browser session (login or a resumed
+  auth cookie) triggers one pull when a key is saved.
 - Not in scope: admin console, Strava, payments, external calendar sync, production multi-tenant deployment.
 
 ## Honest limits
