@@ -15,14 +15,16 @@ and training-log behavior. The [training-log plan](TRAINING-LOG-PLAN.md) goes de
 
 ## Design screenshots
 
+All screenshots use a fake demo runner (`Demo Runner`) and synthetic training data.
+
 | Screenshot | Shows |
 |---|---|
-| [Calendar pills](design/calendar-pills.png) | Plan pills and green recorded-run pills in the month grid |
-| [Calendar CRUD animation](design/calendar-crud-animation.png) | A session pill flying into the bin while the deleted day pulses |
-| [Coach starter suggestions](design/coach-starter-suggestions.png) | Starter prompts on first open |
-| [Coach Not applied card](design/coach-not-applied-card.png) | Structured failure card above the suggestion rail |
-| [Coach delete in place](design/coach-delete-in-place.png) | Delete applied in place |
-| [Training log month](design/training-log.png) | Period selector, weekly volume, best efforts and week rows |
-| [Training log week](design/training-log-week.png) | Load card, daily volume and plan-match badges |
-| [Training log year](design/training-log-year.png) | Monthly volume, best efforts and month rows |
-| [Activity detail](design/activity-detail.png) | Rich metrics, fastest efforts, per-kilometre splits, laps and HR zones |
+| [Calendar pills](design/calendar-demo.png) | Plan pills and green recorded-run pills in the month grid |
+| [Calendar CRUD animation](design/calendar-crud-demo.png) | A session pill flying into the bin while the deleted day pulses |
+| [Coach starter suggestions](design/coach-starter-demo.png) | Starter prompts on first open |
+| [Coach Not applied card](design/coach-not-applied-demo.png) | Structured failure card above the suggestion rail |
+| [Coach delete in place](design/coach-delete-demo.png) | Delete applied in place |
+| [Training log month](design/training-log-month-demo.png) | Period selector, weekly volume, best efforts and week rows |
+| [Training log week](design/training-log-week-demo.png) | Load card, daily volume and plan-match badges |
+| [Training log year](design/training-log-year-demo.png) | Monthly volume, best efforts and month rows |
+| [Activity detail](design/activity-detail-demo.png) | Rich metrics, fastest efforts, per-kilometre splits, laps and HR zones |

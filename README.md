@@ -25,10 +25,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/design/calendar-pills.png" alt="POC3 November calendar with colored plan pills and green recorded-run pills" width="900">
+  <img src="docs/design/calendar-demo.png" alt="POC3 November calendar with fake demo data, colored plan pills and green recorded-run pills" width="900">
 </p>
 
-<p align="center"><em>Plan pills are colored by kind; green ✓ pills are recorded runs.</em></p>
+<p align="center"><em>Plan pills are colored by kind; green ✓ pills are recorded runs. All screenshots use a fake demo runner and synthetic training data.</em></p>
 
 > **POC3** is a proof of concept: a private training calendar owned by the system, with an LLM coach behind a validating
 > gateway. Accounts are independent; every runner keeps their own profile, plan, training log and coach conversation.
@@ -164,11 +164,14 @@ One SQLite file, two processes:
 | [ADR-0002](docs/adr/0002-calendar-first-bubble.md) | The calendar is the product; the bubble is same-origin, not an iframe. |
 | [ADR-0003](docs/adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back for one repair/clarification; turns are idempotent. |
 
-More screenshots: [calendar CRUD animation](docs/design/calendar-crud-animation.png) ·
-[coach starter suggestions](docs/design/coach-starter-suggestions.png) ·
-[delete in place](docs/design/coach-delete-in-place.png) ·
-[training log week](docs/design/training-log-week.png) ·
-[activity detail](docs/design/activity-detail.png).
+Fake-data screenshots: [calendar CRUD animation](docs/design/calendar-crud-demo.png) ·
+[coach starter suggestions](docs/design/coach-starter-demo.png) ·
+[coach Not applied card](docs/design/coach-not-applied-demo.png) ·
+[delete in place](docs/design/coach-delete-demo.png) ·
+[training log month](docs/design/training-log-month-demo.png) ·
+[training log week](docs/design/training-log-week-demo.png) ·
+[training log year](docs/design/training-log-year-demo.png) ·
+[activity detail](docs/design/activity-detail-demo.png).
 
 ## Deploy the live process
 
@@ -211,15 +214,15 @@ notification and the 2026-11-15 recorded run remain. Manual/key no-new confirmat
 test-covered.
 
 **Fixture-verified:** populated week, month and year training-log views plus the load card, weekly review prompt, period
-best efforts and activity detail with rich metrics, per-kilometre splits, laps, HR zones and PR badges (headless Chrome:
-[training log](docs/design/training-log.png), [week](docs/design/training-log-week.png),
-[year](docs/design/training-log-year.png), [activity detail](docs/design/activity-detail.png)); plan-vs-actual matcher;
-adaptive volume and pace/HR charts; load/ramp and hard/easy classification; split parsing; lap mapping; HR zones; personal
-bests; auto-sync backoff.
+best efforts and activity detail with rich metrics, per-kilometre splits, laps, HR zones and PR badges (headless Chrome,
+fake demo data: [training log month](docs/design/training-log-month-demo.png),
+[week](docs/design/training-log-week-demo.png), [year](docs/design/training-log-year-demo.png),
+[activity detail](docs/design/activity-detail-demo.png)); plan-vs-actual matcher; adaptive volume and pace/HR charts;
+load/ramp and hard/easy classification; split parsing; lap mapping; HR zones; personal bests; auto-sync backoff.
 
 **Calendar pills:** planned sessions and recorded runs render as colored descriptions in each day cell, with the full
-kind/metrics/note in the hover tooltip and a `+n more` hint when a day has more than four items (headless Chrome:
-[calendar-pills.png](docs/design/calendar-pills.png)).
+kind/metrics/note in the hover tooltip and a `+n more` hint when a day has more than four items (headless Chrome, fake
+demo data: [calendar-demo.png](docs/design/calendar-demo.png)).
 
 **Not in scope:** admin console, Strava, payments, external calendar sync, production multi-tenant deployment.
 

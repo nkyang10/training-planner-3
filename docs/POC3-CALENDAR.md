@@ -473,23 +473,24 @@ revert path. There is no direct revert API shortcut.
   and reason, with `Show {day}` and `Try again`. A short localized note is stored with the message so the failure survives
   a history reload.
 
-The states below were rendered in headless Chrome from a live fixture:
+The states below were rendered in headless Chrome from a fake demo fixture with synthetic training data. No real runner
+name, activity title or coach conversation is used.
 
-![Calendar month with plan pills and green recorded-run pills; hover shows the full description](design/calendar-pills.png)
+![Calendar month with plan pills and green recorded-run pills; hover shows the full description](design/calendar-demo.png)
 
-![Starter suggestions on first open](design/coach-starter-suggestions.png)
+![Starter suggestions on first open](design/coach-starter-demo.png)
 
-![Structured Not applied card above the suggestion rail](design/coach-not-applied-card.png)
+![Structured Not applied card above the suggestion rail](design/coach-not-applied-demo.png)
 
-![Delete applied in place: 15 Nov is empty while 16, 19 and 21 keep their sessions](design/coach-delete-in-place.png)
+![Delete applied in place: the deleted day is empty while the rest of the week keeps its sessions](design/coach-delete-demo.png)
 
-![Training log month view: period selector, weekly volume, best efforts and week rows](design/training-log.png)
+![Training log month view: period selector, weekly volume, best efforts and week rows](design/training-log-month-demo.png)
 
-![Training log week view: load card, daily volume and plan-match badges](design/training-log-week.png)
+![Training log week view: load card, daily volume and plan-match badges](design/training-log-week-demo.png)
 
-![Training log year view: monthly volume, best efforts and month rows](design/training-log-year.png)
+![Training log year view: monthly volume, best efforts and month rows](design/training-log-year-demo.png)
 
-![Activity detail: rich metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps and HR zones](design/activity-detail.png)
+![Activity detail: rich metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps and HR zones](design/activity-detail-demo.png)
 
 - **CRUD animation** (verified in headless Chrome):
   - `update`: the pill leaves the old cell, flies in an arc to the new day, scales up and rotates; the target cell pulses green.
@@ -499,7 +500,7 @@ The states below were rendered in headless Chrome from a live fixture:
   - A full-page warm flash + short shake runs behind the animation. The grid is refreshed **before** the animation, so the
     end state is correct even if the animation is interrupted.
 
-![Calendar CRUD animation — a session pill flying into the bin while the deleted day pulses](design/calendar-crud-animation.png)
+![Calendar CRUD animation — a session pill flying into the bin while the deleted day pulses](design/calendar-crud-demo.png)
 
 ### Day actions
 
@@ -742,11 +743,15 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 - [`adr/0001-server-validated-coach.md`](adr/0001-server-validated-coach.md)
 - [`adr/0002-calendar-first-bubble.md`](adr/0002-calendar-first-bubble.md)
 - [`adr/0003-validation-feedback-loop.md`](adr/0003-validation-feedback-loop.md)
-- [`design/calendar-crud-animation.png`](design/calendar-crud-animation.png)
-- [`design/training-log.png`](design/training-log.png)
-- [`design/training-log-week.png`](design/training-log-week.png)
-- [`design/training-log-year.png`](design/training-log-year.png)
-- [`design/activity-detail.png`](design/activity-detail.png)
+- [`design/calendar-demo.png`](design/calendar-demo.png)
+- [`design/calendar-crud-demo.png`](design/calendar-crud-demo.png)
+- [`design/coach-starter-demo.png`](design/coach-starter-demo.png)
+- [`design/coach-not-applied-demo.png`](design/coach-not-applied-demo.png)
+- [`design/coach-delete-demo.png`](design/coach-delete-demo.png)
+- [`design/training-log-month-demo.png`](design/training-log-month-demo.png)
+- [`design/training-log-week-demo.png`](design/training-log-week-demo.png)
+- [`design/training-log-year-demo.png`](design/training-log-year-demo.png)
+- [`design/activity-detail-demo.png`](design/activity-detail-demo.png)
 
 POC3 is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog and the
 training-log plan.
