@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -18,6 +19,14 @@ import type {
 } from "../src/types";
 
 const handles: StoreHandle[] = [];
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require("node:sqlite") as {
+  DatabaseSync: new (path: string) => {
+    exec(sql: string): void;
+    prepare(sql: string): { run(...params: unknown[]): unknown };
+    close(): void;
+  };
+};
 
 function memoryStore(): StoreHandle {
   const handle = createStore(":memory:");
@@ -269,13 +278,54 @@ describe("activities", () => {
     expect(rows[0]?.day).toBe("2026-02-02");
   });
 
-  it("does not let another runner overwrite an activity id", () => {
+  it("keeps the same activity id independent for different runners", () => {
     const { store } = memoryStore();
     store.appendActivity(activity("a1", "u1", "2026-02-01", "2026-02-01T07:00:00.000Z"));
-    store.appendActivity(activity("a1", "u2", "2026-02-02", "2026-02-02T07:00:00.000Z"));
+    store.appendActivity({
+      ...activity("a1", "u2", "2026-02-02", "2026-02-02T07:00:00.000Z"),
+      title: "u2 activity",
+    });
 
+    expect(store.listActivities("u1")).toHaveLength(1);
     expect(store.listActivities("u1")[0]?.title).toBe("activity-a1");
-    expect(store.listActivities("u2")).toHaveLength(0);
+    expect(store.listActivities("u2")).toHaveLength(1);
+    expect(store.listActivities("u2")[0]?.title).toBe("u2 activity");
+    expect(store.getActivity("u1", "a1")?.title).toBe("activity-a1");
+    expect(store.getActivity("u2", "a1")?.title).toBe("u2 activity");
+  });
+
+  it("migrates an old activity_id primary key to per-user ids", () => {
+    const dir = mkdtempSync(join(tmpdir(), "training-planner-migrate-"));
+    const dbPath = join(dir, "old.db");
+    const raw = new DatabaseSync(dbPath);
+    raw.exec(`CREATE TABLE activities (
+      activity_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      payload TEXT NOT NULL
+    )`);
+    const original = activity("a1", "u1", "2026-02-01", "2026-02-01T07:00:00.000Z");
+    raw
+      .prepare("INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)")
+      .run(original.activityId, original.userId, original.day, original.createdAt, JSON.stringify(original));
+    raw.close();
+
+    const handle = createStore(`sqlite:${dbPath}`);
+    handles.push(handle);
+    try {
+      expect(handle.store.getActivity("u1", "a1")?.title).toBe("activity-a1");
+      handle.store.appendActivity({
+        ...activity("a1", "u2", "2026-02-02", "2026-02-02T07:00:00.000Z"),
+        title: "u2 activity",
+      });
+      expect(handle.store.listActivities("u1")).toHaveLength(1);
+      expect(handle.store.listActivities("u2")).toHaveLength(1);
+      expect(handle.store.getActivity("u2", "a1")?.title).toBe("u2 activity");
+    } finally {
+      handle.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("gets one activity only for its owner", () => {

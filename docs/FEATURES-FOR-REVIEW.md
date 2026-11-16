@@ -72,9 +72,9 @@ product reason.
 
 | ID | Feature | Why it matters | Priority | Effort | Risk / dependency |
 |---|---|---|---|---|---|
-| C1 | ~~Auto-sync Garmin after an activity~~ | **Implemented (session-start + page-load)** — per-runner key saved from the popup, one pull on login/resumed cookie, 10-minute page-load backoff, upsert by activity id, notification bell for success/error | — | — | Background scheduler still open |
+| C1 | ~~Auto-sync Garmin after an activity~~ | **Implemented (session-start + page-load)** — per-runner key saved from the popup, top-bar sync icon next to the bell, one pull on login/resumed cookie, 10-minute page-load backoff, upsert by `(user_id, activity_id)`, notification bell for success/error | — | — | Background scheduler still open |
 | C2 | ~~Activity detail + pace/HR charts~~ | **Implemented (aggregate + execution depth)** — `/activity/<id>` detail with rich Garmin metrics, fastest efforts with PR badges, computed per-kilometre splits, Garmin laps/intervals, HR-zone time, adaptive volume, pace and HR trends | — | — | Zone charts, FIT parsing and a dedicated records page still open |
-| C3 | ~~Dedupe / reconcile activities~~ | **Implemented** — unique activity id + upsert; repeated sync updates instead of throwing | — | — | Garmin detail sync still open |
+| C3 | ~~Dedupe / reconcile activities~~ | **Implemented** — composite `(user_id, activity_id)` key + upsert; the same Garmin activity can be stored by multiple runners, and repeated sync updates instead of throwing | — | — | Garmin detail sync still open |
 | C4 | **Strava as second source** (PoC1) | Some runners only use Strava | P2 | M | OAuth, mapping; unify with Garmin |
 | C5 | **Manual activity entry** | Treadmill/commute not on Garmin | P2 | S | Form or coach "log my run" |
 | C6 | **Backup / export SQLite** | A private plan should be recoverable | **P0** | S | Copy/export endpoint; documented backup |

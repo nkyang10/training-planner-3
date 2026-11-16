@@ -572,12 +572,20 @@ function errorBanner(error?: string): string {
   return error === undefined ? "" : `<p class="error" role="alert">${escapeHtml(error)}</p>`;
 }
 
+function renderSyncIcon(): string {
+  return `<form method="post" action="/sync" class="sync-icon-form" data-sync-form>
+    <input type="hidden" name="next" value="/calendar">
+    <button class="icon-btn sync-btn" type="submit" aria-label="Sync Garmin" title="Sync Garmin"><span aria-hidden="true">⟳</span></button>
+  </form>`;
+}
+
 function renderNotificationBell(): string {
   return `<div class="notif-wrap">
     <button class="icon-btn notif-btn" id="notif-btn" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notif-panel"><span aria-hidden="true">🔔</span><span class="notif-badge" id="notif-badge" hidden>0</span></button>
     <section class="notif-panel" id="notif-panel" hidden aria-label="Notifications">
       <header><strong>Notifications</strong><button class="icon-btn" id="notif-close" type="button" aria-label="Close notifications">×</button></header>
       <div class="notif-list" id="notif-list" role="log" aria-live="polite"></div>
+      <footer class="notif-footer"><a href="/calendar?garmin=setup">Garmin key</a></footer>
     </section>
   </div>`;
 }
@@ -670,6 +678,19 @@ function renderNotificationScript(): string {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && !panel.hidden) hide();
     });
+    const syncForm = document.querySelector('[data-sync-form]');
+    if (syncForm) {
+      syncForm.addEventListener('submit', () => {
+        const next = syncForm.querySelector('input[name="next"]');
+        if (!next) return;
+        const params = new URLSearchParams(location.search);
+        for (const name of ['synced', 'syncError', 'garmin', 'keyError']) params.delete(name);
+        const query = params.toString();
+        const path = location.pathname === '/' ? '/calendar' : location.pathname;
+        next.value = path + (query.length === 0 ? '' : '?' + query);
+      });
+    }
+
     void load();
     window.setInterval(() => { void load(); }, 5000);
   })();
@@ -711,7 +732,6 @@ function renderGarminScript(): string {
     if (!modal) return;
     const keyInput = document.getElementById('garmin-key');
     const keyToggle = document.getElementById('garmin-key-toggle');
-    const form = document.querySelector('.sync-form[data-connected]');
     const params = new URLSearchParams(location.search);
     let lastFocus = null;
 
@@ -751,31 +771,13 @@ function renderGarminScript(): string {
         setKeyVisible(Boolean(keyInput && keyInput.type === 'password'));
       });
     }
-    if (form && form.getAttribute('data-connected') === 'false') {
-      form.addEventListener('submit', (event) => {
-        event.preventDefault();
-        show();
-      });
-    }
     if (params.get('garmin') === 'setup' || params.get('keyError') !== null) show();
   })();
   </script>`;
 }
 
-function renderGarminBar(savedKey: GarminKey | undefined, next: string, keyError: string | null = null): string {
-  const connected = savedKey !== undefined;
-  const status = connected ? `Connected · key ${maskKey(savedKey.apiKey)}` : "Not connected";
-  return `<section class="garmin-bar" data-connected="${connected}">
-    <div class="garmin-state"><span class="garmin-dot ${connected ? "on" : "off"}" aria-hidden="true"></span><div><strong>Garmin</strong><span class="muted small">${escapeHtml(status)}</span></div></div>
-    <div class="garmin-actions">
-      <form method="post" action="/sync" class="sync-form" data-connected="${connected}">
-        <input type="hidden" name="next" value="${escapeHtml(next)}">
-        <button class="btn" type="submit">Sync Garmin</button>
-      </form>
-      <button class="link-btn" type="button" data-open-garmin>${connected ? "Change key" : "Add key"}</button>
-    </div>
-  </section>
-  ${renderGarminModal(savedKey, next, keyError)}
+function renderGarminPanel(savedKey: GarminKey | undefined, next: string, keyError: string | null = null): string {
+  return `${renderGarminModal(savedKey, next, keyError)}
   ${renderGarminScript()}`;
 }
 
@@ -784,7 +786,7 @@ type ViewName = "calendar" | "history" | "none";
 function layout(title: string, body: string, user: AuthUser | undefined, activeView: ViewName = "calendar"): string {
   const topActions = user === undefined
     ? `<div class="top-actions"><a class="profile" href="/login">Sign in</a><a href="/signup">Sign up</a></div>`
-    : `<div class="top-actions">${renderNotificationBell()}<a class="profile" href="/profile">${escapeHtml(user.displayName)}</a><a href="/logout">Sign out</a></div>`;
+    : `<div class="top-actions">${renderSyncIcon()}${renderNotificationBell()}<a class="profile" href="/profile">${escapeHtml(user.displayName)}</a><a href="/logout">Sign out</a></div>`;
   const nav = `<nav class="top"><a class="brand" href="/calendar">⚡ AI COACH CALENDAR</a>${topActions}</nav>`;
   const viewBar = user === undefined
     ? ""
@@ -1769,7 +1771,7 @@ export function createWeb(options: WebOptions): WebApp {
 
         const longest = activities.reduce((best, activity) => Math.max(best, activity.distanceKm ?? 0), 0);
         const savedKey = options.store.getGarminKey(user.userId);
-        const garminBar = renderGarminBar(savedKey, cleanNext(url), url.searchParams.get("keyError"));
+        const garminPanel = renderGarminPanel(savedKey, cleanNext(url), url.searchParams.get("keyError"));
 
         const renderDay = (day: string, daySessions: TrainingSession[], dayActivities: Activity[]): string => {
           const dayMatches = matchActivitiesToPlan(dayActivities, daySessions);
@@ -1896,13 +1898,13 @@ export function createWeb(options: WebOptions): WebApp {
 
         const body = `<header class="page-head"><p class="eyebrow">Training log · 訓練紀錄</p><h1>Past training</h1><p class="muted">What actually happened, from Garmin. Pick a week, month or year; the plan stays on the calendar.</p></header>
           ${periodBar}
+          ${garminPanel}
           <section class="history-summary">
             <div class="stat"><strong>${activities.length}</strong><span>runs</span></div>
             <div class="stat"><strong>${sumDistance(activities)} km</strong><span>distance</span></div>
             <div class="stat"><strong>${formatMinutes(sumDuration(activities))}</strong><span>time</span></div>
             <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>longest</span></div>
           </section>
-          <section class="history-toolbar">${garminBar}</section>
           ${autoBanner}
           ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
           ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
@@ -1949,18 +1951,18 @@ export function createWeb(options: WebOptions): WebApp {
             ? `<p class="ok" role="status">Auto-synced ${auto.imported} Garmin ${auto.imported === 1 ? "activity" : "activities"}.</p>`
             : "";
         const savedKey = options.store.getGarminKey(user.userId);
-        const garminBar = renderGarminBar(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
+        const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
-            ${garminBar}
             ${autoBanner}
             ${synced === null ? "" : `<p class="ok" role="status">Garmin sync: ${escapeHtml(synced)} imported</p>`}
             ${syncError === null ? "" : `<p class="error" role="alert">Garmin sync failed: ${escapeHtml(syncError)}</p>`}
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
-          </section>`;
+          </section>
+          ${garminPanel}`;
         sendHtml(response, 200, layout("Calendar", body, user));
         return;
       }

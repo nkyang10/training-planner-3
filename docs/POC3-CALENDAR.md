@@ -50,7 +50,7 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 1. Open `http://<host>:8091/signup`, create an account (username, display name, password, timezone, optional goal), then
    sign in.
 2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry session chips; Garmin days
-   carry a `✓ n` badge. The nav shows your display name, a **notification bell**, and links to **/profile**.
+   carry a `✓ n` badge. The nav shows your display name, a **sync icon**, a **notification bell**, and links to **/profile**.
    The coach header shows the booking limit: **Bookings up to 180 days ahead · 可預約未來 180 日**.
 3. Click **💬 Coach** (bottom-right). Tell it a goal or a constraint:
    - "I want to run a 10k in 8 weeks."
@@ -60,9 +60,10 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 5. The coach returns 1–3 tappable suggestions after every turn; when there are none, the rail keeps starter prompts.
    To undo, the runner simply asks the coach in conversation (for example "undo the last change"); there is no history
    panel or Undo button.
-6. Sync Garmin from the calendar or the training log. With no saved key, **Sync Garmin** opens a guide/popup; create a
-   Personal API key, paste it, verify it with **Show**, and save. With a saved key the button syncs immediately. The last
-   90 days are pulled in; repeated syncs update by activity id. The top-bar bell keeps the success/error result.
+6. Sync Garmin from the top-bar **sync icon** next to the notification bell. With no saved key, the icon opens a
+   guide/popup; create a Personal API key, paste it, verify it with **Show**, and save. With a saved key the icon syncs
+   immediately. The last 90 days are pulled in; repeated syncs update by per-runner activity id. The bell keeps the
+   success/error result, and its **Garmin key** link reopens the popup to replace the key.
 7. Switch to **Training log**. Use **Week / Month / Year** plus the period picker: week shows seven day cards, month
    shows week rows and year shows month rows. Previous/next, the current-period shortcut and the date/month/year picker
    make old periods reachable without a long scroll.
@@ -169,7 +170,7 @@ SQLite tables (created by `src/store.ts`):
 | `messages` | `message_id`, `user_id`, `role`, `text`, `created_at` | conversation history for prompt context |
 | `memories` | `memory_id`, `user_id`, `text`, `created_at` | durable facts the coach chose to remember |
 | `sessions` | `session_id`, `user_id`, `day`, `payload`, `created_at` | the training plan; `payload` is the full session JSON |
-| `activities` | `activity_id`, `user_id`, `day`, `payload`, `created_at` | Garmin activities mapped to calendar days; `activity_id` is upserted so repeated sync updates and enriches the payload |
+| `activities` | `activity_id`, `user_id`, `day`, `payload`, `created_at` | Garmin activities mapped to calendar days; composite primary key `(user_id, activity_id)`, so two runners can store the same Garmin activity independently; repeated sync updates and enriches the payload |
 | `sync_state` | `user_id`, `last_synced_at` | per-runner auto-sync backoff timestamp |
 | `garmin_keys` | `user_id` (PK), `saved_at`, `api_key` | one verified Garmin Personal API key per runner; plaintext |
 | `notifications` | `notification_id`, `user_id`, `created_at`, `read_at`, `payload` | top-bar tray; success/error sync results, newest first |
@@ -526,12 +527,15 @@ choice, and is keyboard reachable (Enter/Space on a focused day).
 - HR zones: the list's `hrTimeInZone_1..5` seconds are stored; the detail page shows a stacked bar and legend. Zone
   boundaries are defined in Garmin and are not stored in POC3.
 - `POST /sync`, the page-load auto-sync and the session-start sync share `src/garmin-sync.ts`: fetch up to **100** activities
-  (the Garmin list endpoint's supported maximum), keep the last **90 days**, upsert by `activity_id` (a repeated sync updates
-  and enriches instead of throwing), count new versus processed rows, and record `sync_state.last_synced_at`.
-- With no saved key, **Sync Garmin** opens the key popup instead of being disabled. The popup explains where to create a
-  Garmin Personal API key, offers **Show** so the full pasted key can be checked, verifies the key against the token endpoint,
-  then stores it per runner and syncs immediately. With a saved key the button syncs immediately and the card shows only a
-  masked hint (`••••1234`).
+  (the Garmin list endpoint's supported maximum), keep the last **90 days**, upsert by `(user_id, activity_id)` (a repeated
+  sync updates and enriches instead of throwing; two runners may store the same Garmin activity independently), count new
+  versus processed rows, and record `sync_state.last_synced_at`. Existing databases are migrated on startup from the old
+  global `activity_id` primary key to the composite key; every stored activity row is preserved.
+- The top-bar **sync icon** next to the notification bell is the manual trigger. With no saved key it redirects to the key
+  popup; with a saved key it syncs and reloads the page with the result. The popup explains where to create a Garmin Personal
+  API key, offers **Show** so the full pasted key can be checked, verifies the key against the token endpoint, then stores it
+  per runner and syncs immediately. The bell's **Garmin key** link reopens the popup; it shows the masked current key
+  (`••••1234`) when replacing.
 - A new browser session — a login or a resumed `poc3_session` auth cookie without a live `poc3sid` session — starts one
   background pull when a key is saved. Page loads also pull when the last sync is older than **10 minutes**; a failure backs
   off for the same interval. Manual `/sync` and `/garmin/key` requests skip the session auto-sync so they cannot double-pull.
@@ -540,7 +544,8 @@ choice, and is keyboard reachable (Enter/Space on a focused day).
   to the training log. `src/garmin-errors.ts` turns 401, 403, 429 and 400 responses into actionable text, including Garmin's
   `retryInSeconds` / `count` / `limit` rate-limit body.
 - Garmin is the completion source; the coach is the booking source. Keys are per runner, stored plaintext in SQLite and never
-  shown again in full; there is no deployment-wide Garmin key.
+  shown again in full; there is no deployment-wide Garmin key. Activity IDs are per runner too, so the same Garmin activity
+  can be stored for multiple accounts without one runner's row blocking another.
 
 ---
 
@@ -614,8 +619,9 @@ Then:
 Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`). The live deployment uses
 `POC3_GATEWAY_PORT=8092` and `POC3_WEB_PORT=8093`.
 
-After signing in, open the calendar and use **Sync Garmin** once: with no saved key it opens the guide/popup, verifies the
-pasted Personal API key, stores it for that account, and syncs. No Garmin key belongs in the environment.
+After signing in, use the top-bar **sync icon** once: with no saved key it opens the guide/popup, verifies the pasted
+Personal API key, stores it for that account, and syncs. The bell's **Garmin key** link reopens the popup later. No Garmin
+key belongs in the environment.
 
 ### Environment reference
 
@@ -645,12 +651,12 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **164 tests in 8 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
+Current state: **166 tests in 9 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
 gateway streaming + CRUD + batch + change sets + revert + repair loop + native tool calls + timezone + idempotency,
-store users/change sets/coach turns/transactions/activity upsert/sync state/per-runner Garmin keys/notifications,
+store users/change sets/coach turns/transactions/per-user activity upsert/old-schema migration/sync state/per-runner Garmin keys/notifications,
 plan-vs-actual matcher, weekly load/ramp and hard/easy classification, personal bests and period bests, Garmin
 mapping/token quirks/response bodies/enriched metrics/HR zones/detail fetch/summary fetch/per-kilometre split parser/lap
-mapper/error copy, calendar web + conversation reload + week/month/year training log + period selector + load card + weekly
+mapper/error copy, cross-user Garmin sync of the same activity, calendar web + conversation reload + week/month/year training log + period selector + load card + weekly
 review prompt + rich activity detail + per-kilometre splits + Garmin laps + HR zones + PR badges + period best efforts +
 trends + key popup/save/verify + always-enabled sync + notifications + session-start sync + page-load auto-sync backoff +
 idempotent Garmin sync.

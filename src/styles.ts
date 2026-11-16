@@ -11,6 +11,10 @@ a { color: var(--ink); }
 .top { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.8); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 800; letter-spacing: .08em; text-decoration: none; color: var(--ember); }
 .top-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.sync-icon-form { display: flex; margin: 0; }
+.sync-btn { font-size: 21px; font-weight: 800; }
+.sync-btn span { display: inline-block; line-height: 1; }
+.sync-btn:active span { transform: rotate(180deg); transition: transform .15s ease; }
 .top .profile { text-decoration: none; font-weight: 700; color: var(--ember); }
 .top a:last-child { text-decoration: none; color: var(--muted); }
 main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; }
@@ -68,11 +72,9 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .history-summary .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
 .history-summary strong { display: block; font-size: 20px; letter-spacing: -.02em; }
 .history-summary span { display: block; margin-top: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.history-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .range-switch { display: flex; flex-wrap: wrap; gap: 6px; }
 .range-switch .chip { text-decoration: none; background: #fff; }
 .range-switch .chip.active { border-color: var(--ember); color: var(--ember); }
-.sync-form { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .history-weeks { display: grid; gap: 18px; }
 .history-week-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; margin: 0 0 8px; }
 .history-week-head h2 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
@@ -98,7 +100,6 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
   .view-bar { padding: 6px 10px 8px; }
   .view-switch { width: 100%; }
   .history-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .history-toolbar { align-items: stretch; }
   .history-activity { align-items: flex-start; flex-direction: column; }
 }
 .chip.match-on-plan { border-color: var(--success); color: var(--success); }
@@ -324,19 +325,11 @@ body.calendar-fx-active main { animation: page-shake .55s cubic-bezier(.36,.07,.
 .notif-item span { color: var(--ink-2); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .notif-item time { color: var(--muted); font-size: 11px; }
 .notif-empty { padding: 12px 4px; }
+.notif-footer { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); text-align: right; }
+.notif-footer a { color: var(--ember); font-size: 12px; font-weight: 700; text-decoration: none; }
+.notif-footer a:hover { text-decoration: underline; }
 
-/* Garmin connection bar and key popup */
-.garmin-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 14px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
-.history-toolbar .garmin-bar { flex: 1 1 100%; margin-bottom: 0; }
-.garmin-state { display: flex; align-items: center; gap: 9px; }
-.garmin-state strong { display: block; font-size: 14px; }
-.garmin-state .small { display: block; }
-.garmin-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--muted); }
-.garmin-dot.on { background: var(--success); }
-.garmin-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.garmin-bar .sync-form { margin: 0; }
-.garmin-bar .btn { padding: 8px 14px; font-size: 13px; }
-.link-btn { padding: 6px 2px; border: 0; background: transparent; color: var(--ember); font: inherit; font-size: 13px; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* Garmin key popup */
 body.modal-open { overflow: hidden; }
 .modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 18px; background: rgba(27,18,12,.45); backdrop-filter: blur(3px); }
 .modal-card { width: min(560px, 100%); max-height: calc(100vh - 36px); overflow: auto; padding: 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: 0 24px 70px rgba(27,18,12,.25); }
@@ -358,15 +351,11 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
   .top-actions { gap: 8px; }
   .icon-btn { width: 34px; height: 34px; font-size: 16px; }
   .notif-panel { right: 0; width: min(360px, calc(100vw - 24px)); max-height: 70vh; }
-  .garmin-bar { align-items: flex-start; }
-  .garmin-actions { width: 100%; }
-  .garmin-actions .sync-form { flex: 1; }
-  .garmin-actions .sync-form .btn { width: 100%; }
   .modal { padding: 10px; }
   .modal-card { padding: 16px; max-height: calc(100vh - 20px); }
   .modal-head h2 { font-size: 19px; }
   .modal-actions .btn { flex: 1; }
 }
 
-@media print { .top, .notif-wrap, .garmin-bar, .modal, .month-nav, form, .btn { display: none; } }
+@media print { .top, .notif-wrap, .modal, .month-nav, form, .btn { display: none; } }
 `;

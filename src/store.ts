@@ -75,11 +75,12 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS sessions_user_day ON sessions (user_id, day);
 
 CREATE TABLE IF NOT EXISTS activities (
-  activity_id TEXT PRIMARY KEY,
+  activity_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
   day TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  payload TEXT NOT NULL
+  payload TEXT NOT NULL,
+  PRIMARY KEY (user_id, activity_id)
 );
 CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day);
 
@@ -134,13 +135,12 @@ const INSERT_MESSAGE =
   "INSERT INTO messages (message_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
 const INSERT_MEMORY =
   "INSERT INTO memories (memory_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
-const INSERT_ACTIVITY =
+const UPSERT_ACTIVITY =
   `INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(activity_id) DO UPDATE SET
+   ON CONFLICT(user_id, activity_id) DO UPDATE SET
      day = excluded.day,
      created_at = excluded.created_at,
-     payload = excluded.payload
-   WHERE activities.user_id = excluded.user_id`;
+     payload = excluded.payload`;
 const UPSERT_SYNC_STATE = `
   INSERT INTO sync_state (user_id, last_synced_at) VALUES (?, ?)
   ON CONFLICT(user_id) DO UPDATE SET last_synced_at = excluded.last_synced_at
@@ -202,6 +202,40 @@ function usernameTaken(username: string): Error {
   return new Error(`username already taken: ${username}`);
 }
 
+/**
+ * Older POC3 databases keyed activities by activity_id alone, so one runner's row blocked another runner from storing
+ * the same Garmin activity. Rebuild that table with the composite (user_id, activity_id) key, preserving every row.
+ */
+function migrateActivitiesTable(db: SqliteDatabase): void {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'activities'")
+    .get();
+  if (row === undefined) return;
+  const sql = String(row["sql"] ?? "");
+  if (sql.includes("PRIMARY KEY (user_id, activity_id)")) return;
+
+  db.exec("BEGIN");
+  try {
+    db.exec(`CREATE TABLE activities_new (
+      activity_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      day TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      PRIMARY KEY (user_id, activity_id)
+    )`);
+    db.exec(`INSERT OR IGNORE INTO activities_new (activity_id, user_id, day, created_at, payload)
+      SELECT activity_id, user_id, day, created_at, payload FROM activities`);
+    db.exec("DROP TABLE activities");
+    db.exec("ALTER TABLE activities_new RENAME TO activities");
+    db.exec("CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day)");
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 class SqliteStore implements Store {
   private readonly db: SqliteDatabase;
   private closed = false;
@@ -209,6 +243,7 @@ class SqliteStore implements Store {
   constructor(location: string) {
     this.db = new DatabaseSync(location);
     this.db.exec(SCHEMA);
+    migrateActivitiesTable(this.db);
   }
 
   getUser(userId: string): UserProfile | undefined {
@@ -359,7 +394,7 @@ class SqliteStore implements Store {
 
   appendActivity(activity: Activity): void {
     this.db
-      .prepare(INSERT_ACTIVITY)
+      .prepare(UPSERT_ACTIVITY)
       .run(
         activity.activityId,
         activity.userId,

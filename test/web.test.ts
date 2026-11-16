@@ -522,15 +522,18 @@ describe("private calendar", () => {
 });
 
 describe("Garmin connection, notifications and session sync", () => {
-  it("keeps Sync Garmin enabled and opens the key popup when no key is saved", async () => {
+  it("shows the top-bar sync icon and opens the key popup when no key is saved", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('data-sync-form');
+    expect(html).toContain('aria-label="Sync Garmin"');
     expect(html).toContain('id="garmin-modal"');
     expect(html).toContain('id="garmin-key-toggle"');
     expect(html).toContain('id="notif-btn"');
-    expect(html).toContain("Not connected");
-    expect(html).toContain("Add key");
-    expect(html).toContain(">Sync Garmin</button>");
+    expect(html).toContain('class="notif-footer"');
+    expect(html).toContain("Garmin key");
+    expect(html).not.toContain('class="garmin-bar"');
+    expect(html).not.toContain("Not connected");
     expect(html).not.toContain("GARMIN_PERSONAL_API_KEY is not set");
 
     const sync = await fetch(`${base}/sync`, {
@@ -562,8 +565,11 @@ describe("Garmin connection, notifications and session sync", () => {
     expect(calls.count).toBe(1);
 
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
-    expect(html).toContain("Connected · key ••••-123");
-    expect(html).toContain("Change key");
+    expect(html).toContain("Replace your Garmin key");
+    expect(html).toContain("Current key ••••-123");
+    expect(html).toContain('data-sync-form');
+    expect(html).not.toContain('class="garmin-bar"');
+    expect(html).not.toContain("Change key");
   });
 
   it("rejects a key Garmin refuses, saves nothing and shows the 401 guidance", async () => {
