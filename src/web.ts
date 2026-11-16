@@ -794,7 +794,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
   const bubble = user === undefined ? "" : renderChatBubble();
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=5"></head>
+  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=6"></head>
   <body>${nav}${viewBar}<main>${body}</main>${bubble}${notificationScript}</body></html>`;
 }
 
