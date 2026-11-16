@@ -49,8 +49,9 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 
 1. Open `http://<host>:8091/signup`, create an account (username, display name, password, timezone, optional goal), then
    sign in.
-2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry session chips; Garmin days
-   carry a `✓ n` badge. The nav shows your display name, a **sync icon**, a **notification bell**, and links to **/profile**.
+2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry colored plan pills; recorded
+   runs carry green `✓` pills with the run's description. The nav shows your display name, a **sync icon**, a
+   **notification bell**, and links to **/profile**.
    The coach header shows the booking limit: **Bookings up to 180 days ahead · 可預約未來 180 日**.
 3. Click **💬 Coach** (bottom-right). Tell it a goal or a constraint:
    - "I want to run a 10k in 8 weeks."
@@ -83,7 +84,7 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │ Browser                                                             │
-│  :8091/calendar   month grid + day cells + Garmin badges            │
+│  :8091/calendar   month grid + plan/record pills                     │
 │  :8091/history    training log: week/month/year + load + bests       │
 │  period switch    Week | Month | Year + prev/next/picker             │
 │  :8091/activity   run + plan-vs-actual + metrics + splits + laps     │
@@ -146,7 +147,7 @@ Key properties:
 
 | Surface | URL | Implementation | Purpose |
 |---|---|---|---|
-| Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid, day detail, Garmin badges |
+| Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid with plan/record pills, day detail |
 | Training log | `/history?view=week\|month\|year&period=...` (`:8091`) | `src/web.ts` + `src/styles.ts` + `src/training.ts` | week = seven day cards, month = week rows, year = month rows; plan-match badges, weekly load/ACWR/hard-easy card, Review my week prompt, period best efforts, adaptive summary/trends, Ask coach, auto-sync review prompt |
 | Period selector | Week / Month / Year | `src/web.ts` + `src/styles.ts` | mode switch, previous/next/current and date/month/year picker; preserves the period anchor |
 | Activity detail | `/activity/<activityId>` (`:8091`) | `src/web.ts` + `src/garmin.ts` + `src/training.ts` | one run's metrics, rich Garmin metrics, fastest efforts, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, planned-vs-actual deltas, comparison bars, Ask coach |
@@ -424,8 +425,11 @@ revert path. There is no direct revert API shortcut.
   heading; the middle nav is the month display and shows the **month you are viewing** (for example December 2026).
   Clicking it opens the **year/month picker**: pick any year (2000–2100) and any month, or use **This month** inside the
   picker to jump back.
-- **Session chips** carry title + distance; colours by kind (`easy`, `long`, `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`).
-- **Garmin badge** `✓ n` on days with activities.
+- **Calendar pills** carry the description, not a tick count. Planned sessions use a colored pill by kind (`easy`, `long`,
+  `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`) with the distance when the title does not already state it;
+  recorded runs use a green `✓` pill with the activity title. Hovering a pill shows the full kind, distance, duration, pace,
+  HR, source and note in the tooltip. A day with more than four items shows the first four and a `+n more` hint; the day
+  menu's **View day details** opens the complete list.
 - **Training log periods** (`/history`): a **Week / Month / Year** mode switch with previous/next, a current-period shortcut
   and a period picker. Week shows seven day cards (Mon–Sun), month shows calendar-week rows and year shows month rows. The
   summary and trends follow the selected period; the log is read-only.
@@ -461,13 +465,17 @@ revert path. There is no direct revert API shortcut.
 - **Suggestion rail** above the composer: starter prompts on first open or when a turn has no suggestions; otherwise the
   coach's 1–3 follow-ups. The rail grows with its content and never scrolls; the log is the only scrolling area. Tapping a
   chip sends it as the next message.
-- **In-place refresh**: after a turn the bubble clears every day cell and re-renders from `/calendar/data`. The server omits
-  days with nothing left, so a deleted session's chip disappears immediately; no page reload is needed.
+- **In-place refresh**: after a turn the bubble clears every day cell and re-renders its pills from `/calendar/data`. The
+  server omits days with nothing left, so a deleted session's pill disappears immediately; no page reload is needed. The
+  endpoint returns each day's `items` with `{ type: "plan" | "record", kind, label, tooltip }`, computed by the same server
+  helpers as the first render, so the refreshed grid cannot drift from the HTML.
 - **Not applied card**: when a proposed target is missing, the reply stays clean and a card lists the action, title, day
   and reason, with `Show {day}` and `Try again`. A short localized note is stored with the message so the failure survives
   a history reload.
 
 The states below were rendered in headless Chrome from a live fixture:
+
+![Calendar month with plan pills and green recorded-run pills; hover shows the full description](design/calendar-pills.png)
 
 ![Starter suggestions on first open](design/coach-starter-suggestions.png)
 
@@ -484,14 +492,14 @@ The states below were rendered in headless Chrome from a live fixture:
 ![Activity detail: rich metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps and HR zones](design/activity-detail.png)
 
 - **CRUD animation** (verified in headless Chrome):
-  - `update`: the chip leaves the old cell, flies in an arc to the new day, scales up and rotates; the target cell pulses green.
-  - `remove`: the chip flies into a bin at the bottom centre, shrinks and fades; the old cell pulses red and the bin pops.
-  - `add`: the new chip pops into the target day.
+  - `update`: the pill leaves the old cell, flies in an arc to the new day, scales up and rotates; the target cell pulses green.
+  - `remove`: the pill flies into a bin at the bottom centre, shrinks and fades; the old cell pulses red and the bin pops.
+  - `add`: the new pill pops into the target day.
   - Multiple changes leave in a **140 ms stagger**, so a multi-day edit reads as one coordinated action.
   - A full-page warm flash + short shake runs behind the animation. The grid is refreshed **before** the animation, so the
     end state is correct even if the animation is interrupted.
 
-![Calendar CRUD animation — a session chip flying into the bin while the deleted day pulses](design/calendar-crud-animation.png)
+![Calendar CRUD animation — a session pill flying into the bin while the deleted day pulses](design/calendar-crud-animation.png)
 
 ### Day actions
 
@@ -581,7 +589,7 @@ request is still running gets `409 turn-in-progress`.
 | `GET` | `/history?view=week\|month\|year&period=...` | training log period views; default week/current; week period is a date (snapped to Monday), month `YYYY-MM`, year `YYYY`; week includes the load card and weekly review prompt; month/year include period best efforts |
 | `GET` | `/activity/<activityId>` | one run's detail with rich Garmin metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps/intervals, HR zones and planned-vs-actual comparison; 404 for a foreign or missing id |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
-| `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh |
+| `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh: `{ month, days: { [day]: { items: [{ type, kind, label, tooltip }] } } }` |
 | `POST` | `/chat` | bubble proxy → gateway; forwards `x-poc3-request-id`; returns `{reply, sessions, changes, suggestions, failures, changeSetId, reverted}` |
 | `GET` | `/chat/history` | the signed-in runner's recent messages, oldest first (used to restore the bubble after refresh) |
 | `POST` | `/sync` | manual Garmin pull (last 90 days, upsert and metric enrichment); no saved key redirects to the popup; `next` selects `/calendar` or `/history` |
@@ -645,6 +653,15 @@ key belongs in the environment.
 
 Never commit real keys or `.env` files.
 
+### Deploying the live process (Windows)
+
+`pnpm deploy:live` restarts the live :8093/:8092 process. The script reads the auth secret from
+`data/poc3-auth.secret`, uses `sqlite:data/poc3-auth.sqlite`, refuses to stop a process whose command line does not contain
+`src/index.ts`, starts `pnpm dev` with the live model/env, and waits for the gateway `/health`, the calendar `/login` and
+the new stylesheet. It fails if the deployed CSS lacks `.cal-pill.record` or the login page does not reference
+`app.css?v=7`. Runtime logs: `data/poc3-live.out.log` and `data/poc3-live.err.log`; deploy history:
+`data/poc3-deploy.log`.
+
 ---
 
 ## 12. Testing and gates
@@ -655,12 +672,12 @@ pnpm typecheck
 pnpm test
 ```
 
-Current state: **170 tests in 9 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
+Current state: **172 tests in 9 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
 gateway streaming + CRUD + batch + change sets + revert + repair loop + native tool calls + timezone + idempotency,
 store users/change sets/coach turns/transactions/per-user activity upsert/old-schema migration/sync state/per-runner Garmin keys/notifications,
 plan-vs-actual matcher, weekly load/ramp and hard/easy classification, personal bests and period bests, Garmin
 mapping/token quirks/response bodies/enriched metrics/HR zones/detail fetch/summary fetch/per-kilometre split parser/lap
-mapper/error copy, cross-user Garmin sync of the same activity, calendar web + conversation reload + week/month/year training log + period selector + load card + weekly
+mapper/error copy, cross-user Garmin sync of the same activity, calendar web + plan/record pills + tooltips + four-pill overflow + conversation reload + week/month/year training log + period selector + load card + weekly
 review prompt + rich activity detail + per-kilometre splits + Garmin laps + HR zones + PR badges + period best efforts +
 trends + key popup/save/verify + always-enabled sync + manual no-new confirmations + silent automatic no-change checks +
 newest-new notification targeting + session-start sync + page-load auto-sync backoff + idempotent Garmin sync.

@@ -216,6 +216,90 @@ function sessionChip(session: TrainingSession): string {
   return `<span class="session kind-${escapeHtml(session.kind)}" title="${escapeHtml(session.note ?? session.title)}">${escapeHtml(session.title)}${escapeHtml(amount)}</span>`;
 }
 
+/**
+ * One calendar-cell pill. The month grid shows the plan and what was actually recorded side by side, so a busy day
+ * reads as a short stack of descriptions instead of a bare `✓ n` tick. The pill text is computed on the server so the
+ * initial HTML and the in-place refresh after a coach turn cannot drift apart.
+ */
+interface CalendarItem {
+  type: "plan" | "record";
+  /** Session kind for a plan pill; activity source for a record pill. */
+  kind: string;
+  /** Short description visible inside the pill. */
+  label: string;
+  /** Full description shown on hover, including metrics and notes. */
+  tooltip: string;
+}
+
+/** A day cell keeps at most four pills; extra items collapse into "+n more" so one busy day cannot stretch the grid. */
+const CALENDAR_CELL_MAX_ITEMS = 4;
+
+function titleMentions(title: string, amount: number, unit: string): boolean {
+  const escaped = String(amount).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^0-9.])${escaped}\\s*${unit}\\b`, "i").test(title);
+}
+
+/** Keep the title as the description, adding distance only when the title does not already state it. */
+function calendarPillLabel(title: string, distanceKm: number | null): string {
+  return distanceKm !== null && !titleMentions(title, distanceKm, "km") ? `${title} · ${distanceKm} km` : title;
+}
+
+function planItem(session: TrainingSession): CalendarItem {
+  const details = [
+    session.kind,
+    session.distanceKm === null ? "" : `${session.distanceKm} km`,
+    session.durationMin === null ? "" : `${session.durationMin} min`,
+    session.note ?? "",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" · ");
+  return {
+    type: "plan",
+    kind: session.kind,
+    label: calendarPillLabel(session.title, session.distanceKm),
+    tooltip: `Planned session · ${session.title}${details.length === 0 ? "" : ` · ${details}`}`,
+  };
+}
+
+function recordItem(activity: Activity): CalendarItem {
+  const details = [
+    activity.distanceKm === null ? "" : `${activity.distanceKm} km`,
+    activity.durationMin === null ? "" : formatMinutes(activity.durationMin),
+    formatPace(activity.paceSecPerKm),
+    activity.avgHr === null ? "" : `${activity.avgHr} bpm`,
+    activity.source === "garmin" ? "Garmin" : "Reported",
+  ]
+    .filter((part) => part.length > 0)
+    .join(" · ");
+  return {
+    type: "record",
+    kind: activity.source,
+    // The record pill shows the run's description; distance, pace and HR stay in the tooltip so a long title fits.
+    label: calendarPillLabel(activity.title, null),
+    tooltip: `Recorded run · ${activity.title}${details.length === 0 ? "" : ` · ${details}`}`,
+  };
+}
+
+function calendarDayItems(sessions: readonly TrainingSession[], activities: readonly Activity[]): CalendarItem[] {
+  return [...sessions.map(planItem), ...activities.map(recordItem)];
+}
+
+function calendarItemHtml(item: CalendarItem): string {
+  if (item.type === "record") {
+    return `<span class="cal-pill record" title="${escapeHtml(item.tooltip)}"><span class="sr-only">Recorded run: </span><span class="cal-check" aria-hidden="true">✓</span><span class="cal-text">${escapeHtml(item.label)}</span></span>`;
+  }
+  return `<span class="cal-pill plan kind-${escapeHtml(item.kind)}" title="${escapeHtml(item.tooltip)}"><span class="sr-only">Planned session: </span><span class="cal-text">${escapeHtml(item.label)}</span></span>`;
+}
+
+function calendarItemsHtml(items: readonly CalendarItem[]): string {
+  const shown = items.slice(0, CALENDAR_CELL_MAX_ITEMS);
+  const hidden = items.length - shown.length;
+  const more = hidden === 0
+    ? ""
+    : `<span class="cal-more" title="Open the day to see every session and run">+${hidden} more</span>`;
+  return `${shown.map(calendarItemHtml).join("")}${more}`;
+}
+
 function activityLine(activity: Activity): string {
   const amount = [activity.distanceKm === null ? "" : `${activity.distanceKm} km`, activity.durationMin === null ? "" : `${activity.durationMin} min`, activity.paceSecPerKm === null ? "" : `${Math.floor(activity.paceSecPerKm / 60)}:${String(activity.paceSecPerKm % 60).padStart(2, "0")}/km`, activity.avgHr === null ? "" : `${activity.avgHr} bpm`]
     .filter((part) => part.length > 0)
@@ -802,7 +886,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
   const bubble = user === undefined ? "" : renderChatBubble();
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=6"></head>
+  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=7"></head>
   <body>${nav}${viewBar}<main>${body}</main>${bubble}${notificationScript}</body></html>`;
 }
 
@@ -826,6 +910,7 @@ function renderChatBubble(): string {
     const suggestions = document.getElementById('coach-suggestions');
     if (!bubble || !panel || !minimize || !form || !input || !log || !suggestions) return;
     const STARTERS = ${jsonForScript(STARTER_SUGGESTIONS)};
+    const CALENDAR_MAX_ITEMS = ${CALENDAR_CELL_MAX_ITEMS};
     let suggestionsSet = false;
     const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); showStarters(); void loadConversation(); };
     const minimizePanel = () => { panel.hidden = true; bubble.hidden = false; bubble.focus(); };
@@ -869,25 +954,46 @@ function renderChatBubble(): string {
         const response = await fetch('/calendar/data?month=' + encodeURIComponent(month));
         if (!response.ok) return;
         const data = await response.json();
-        // The server omits days with nothing left, so clear every cell first; otherwise a deleted chip stays until reload.
+        // The server omits days with nothing left, so clear every cell first; otherwise a deleted pill stays until reload.
         const cells = monthGrid.querySelectorAll('.cell[data-day]');
         for (const cell of cells) {
-          cell.querySelectorAll('.session, .done').forEach((node) => node.remove());
+          cell.querySelectorAll('.cal-pill, .cal-more').forEach((node) => node.remove());
         }
         for (const [day, info] of Object.entries(data.days || {})) {
           const cell = monthGrid.querySelector('.cell[data-day="' + day + '"]');
           if (!cell) continue;
-          for (const session of info.sessions || []) {
-            const chip = document.createElement('span');
-            chip.className = 'session kind-' + session.kind;
-            chip.textContent = session.title + (session.distanceKm == null ? '' : ' · ' + session.distanceKm + ' km');
-            cell.appendChild(chip);
+          const items = Array.isArray(info.items) ? info.items : [];
+          const shown = items.slice(0, CALENDAR_MAX_ITEMS);
+          for (const item of shown) {
+            if (!item || typeof item !== 'object') continue;
+            const pill = document.createElement('span');
+            const isRecord = item.type === 'record';
+            pill.className = isRecord ? 'cal-pill record' : 'cal-pill plan kind-' + String(item.kind || 'easy');
+            pill.title = typeof item.tooltip === 'string' ? item.tooltip : '';
+            const prefix = document.createElement('span');
+            prefix.className = 'sr-only';
+            prefix.textContent = isRecord ? 'Recorded run: ' : 'Planned session: ';
+            pill.appendChild(prefix);
+            if (isRecord) {
+              const check = document.createElement('span');
+              check.className = 'cal-check';
+              check.setAttribute('aria-hidden', 'true');
+              check.textContent = '✓';
+              pill.appendChild(check);
+            }
+            const text = document.createElement('span');
+            text.className = 'cal-text';
+            text.textContent = typeof item.label === 'string' ? item.label : '';
+            pill.appendChild(text);
+            cell.appendChild(pill);
           }
-          if (info.activities > 0) {
-            const done = document.createElement('span');
-            done.className = 'done';
-            done.textContent = '✓ ' + info.activities;
-            cell.appendChild(done);
+          const hidden = items.length - shown.length;
+          if (hidden > 0) {
+            const more = document.createElement('span');
+            more.className = 'cal-more';
+            more.title = 'Open the day to see every session and run';
+            more.textContent = '+' + hidden + ' more';
+            cell.appendChild(more);
           }
         }
       } catch {
@@ -1118,7 +1224,7 @@ function renderChatBubble(): string {
       closeButton.addEventListener('click', closeDayMenu);
       header.append(title, closeButton);
       dayMenu.appendChild(header);
-      const hasSessions = cell.querySelectorAll('.session').length > 0;
+      const hasSessions = cell.querySelectorAll('.cal-pill.plan').length > 0;
       const choices = [
         ['add', 'Add a session here', false],
         ['move', 'Move a session here', false],
@@ -1680,14 +1786,14 @@ export function createWeb(options: WebOptions): WebApp {
         const end = addDays(start, daysInMonth(month) - 1);
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 500).filter((activity) => activity.day >= start && activity.day <= end);
-        const days: Record<string, { sessions: Array<{ title: string; kind: string; distanceKm: number | null }>; activities: number }> = {};
+        const days: Record<string, { items: CalendarItem[] }> = {};
         for (const session of sessions) {
-          const entry = (days[session.day] ??= { sessions: [], activities: 0 });
-          entry.sessions.push({ title: session.title, kind: session.kind, distanceKm: session.distanceKm });
+          const entry = (days[session.day] ??= { items: [] });
+          entry.items.push(planItem(session));
         }
         for (const activity of activities) {
-          const entry = (days[activity.day] ??= { sessions: [], activities: 0 });
-          entry.activities += 1;
+          const entry = (days[activity.day] ??= { items: [] });
+          entry.items.push(recordItem(activity));
         }
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
         response.end(JSON.stringify({ month, days }));
@@ -1933,10 +2039,10 @@ export function createWeb(options: WebOptions): WebApp {
           const day = `${month}-${String(dayNumber).padStart(2, "0")}`;
           const daySessions = sessions.filter((session) => session.day === day);
           const dayActivities = activities.filter((activity) => activity.day === day);
+          const items = calendarDayItems(daySessions, dayActivities);
           cells.push(`<a class="cell${day === today ? " today" : ""}" data-day="${escapeHtml(day)}" href="/day/${escapeHtml(day)}" aria-haspopup="menu" title="Day actions">
             <span class="date">${dayNumber}</span>
-            ${daySessions.map(sessionChip).join("")}
-            ${dayActivities.length === 0 ? "" : `<span class="done">✓ ${dayActivities.length}</span>`}
+            ${calendarItemsHtml(items)}
           </a>`);
         }
         const prev = addDays(start, -1).slice(0, 7);
@@ -1946,7 +2052,7 @@ export function createWeb(options: WebOptions): WebApp {
         const savedKey = options.store.getGarminKey(user.userId);
         const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
-          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Sessions booked by your AI coach. Activities come from Garmin.</p></header>
+          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Planned sessions are colored by kind; green ✓ pills are recorded runs.</p></header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>

@@ -74,8 +74,11 @@ function tamperToken(token: string, part: 0 | 1): string {
   const pieces = token.split(".");
   const target = pieces[part];
   if (target === undefined || target.length === 0) throw new Error("token part is missing");
-  const replacement = target.endsWith("A") ? "B" : "A";
-  pieces[part] = target.slice(0, -1) + replacement;
+  // Change a middle character: the unused trailing bits of a base64url group can make a last-character edit decode
+  // to the same bytes, which would make this tamper check pass or fail depending on the random user id.
+  const index = Math.floor(target.length / 2);
+  const replacement = target[index] === "A" ? "B" : "A";
+  pieces[part] = target.slice(0, index) + replacement + target.slice(index + 1);
   return pieces.join(".");
 }
 

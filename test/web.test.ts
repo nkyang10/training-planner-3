@@ -424,10 +424,17 @@ describe("private calendar", () => {
 
     const ownData = (await (
       await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
-    ).json()) as { month: string; days: Record<string, { sessions: Array<{ title: string }>; activities: number }> };
+    ).json()) as {
+      month: string;
+      days: Record<string, { items: Array<{ type: string; kind: string; label: string; tooltip: string }> }>;
+    };
     expect(ownData.month).toBe("2026-11");
-    expect(ownData.days["2026-11-06"]?.sessions[0]?.title).toBe("Easy 5 km");
-    expect(ownData.days["2026-11-06"]?.activities).toBe(0);
+    expect(ownData.days["2026-11-06"]?.items[0]).toMatchObject({
+      type: "plan",
+      kind: "easy",
+      label: "Easy 5 km",
+    });
+    expect(ownData.days["2026-11-06"]?.items).toHaveLength(1);
     expect(ownData.days["2026-11-07"]).toBeUndefined();
 
     const ownDay = await fetch(`${base}/day/2026-11-06`, { headers: { cookie } });
@@ -443,6 +450,48 @@ describe("private calendar", () => {
     const foreignDay = await fetch(`${base}/day/2026-11-07`, { headers: { cookie: otherCookie } });
     expect(await foreignDay.text()).toContain("Other secret long run");
     expect(handle.store.getUser(user.userId)?.username).toBe(USERNAME);
+  });
+
+  it("shows planned and recorded descriptions as pills instead of a tick count", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Morning run", 4.2);
+        seedActivity(store, runner.userId, "garmin:2", "2026-11-04", "Evening shakeout", 3);
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="cal-pill plan kind-easy"');
+    expect(html).toContain("Easy 5 km");
+    expect(html).toContain('class="cal-pill record"');
+    expect(html).toContain("Morning run");
+    expect(html).toContain("Evening shakeout");
+    expect(html).toContain("Planned session · Easy 5 km · easy · 5 km · 35 min");
+    expect(html).toContain("Recorded run · Morning run · 4.2 km · 30 min · 6:00/km · 145 bpm · Garmin");
+    expect(html).toContain('<span class="sr-only">Planned session: </span>');
+    expect(html).toContain('<span class="sr-only">Recorded run: </span>');
+    expect(html).not.toContain('class="done"');
+    expect(html).not.toContain("✓ 2");
+  });
+
+  it("caps a busy day at four pills and keeps the rest behind an overflow hint", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        for (let index = 1; index <= 5; index += 1) {
+          seedActivity(store, runner.userId, `garmin:${index}`, "2026-11-03", `Run ${index}`, 3 + index);
+        }
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html.match(/class="cal-pill record"/g) ?? []).toHaveLength(4);
+    expect(html).toContain("+1 more");
+    expect(html).not.toContain("Run 1");
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as { days: Record<string, { items: unknown[] }> };
+    expect(data.days["2026-11-03"]?.items).toHaveLength(5);
   });
 
   it("syncs Garmin activities into the authenticated user's calendar", async () => {
@@ -1319,7 +1368,11 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("monthGrid.querySelectorAll('.cell[data-day]')");
-    expect(html).toContain("a deleted chip stays until reload");
+    expect(html).toContain("otherwise a deleted pill stays until reload");
+    expect(html).toContain("CALENDAR_MAX_ITEMS");
+    expect(html).toContain("cal-pill record");
+    expect(html).toContain("cal-pill plan kind-");
+    expect(html).toContain("cal-more");
     expect(html).toContain("scrollToLatest");
     expect(html).toContain("day-menu");
     expect(html).toContain("openDayMenu");
@@ -1336,7 +1389,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=6");
+    expect(html).toContain("app.css?v=7");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();

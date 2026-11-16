@@ -26,11 +26,24 @@ pnpm dev
 
 The live deployment runs the calendar on **8093** and the gateway on **8092**; the defaults above are 8091/8090.
 
+## Deploy the live process
+
+On Windows, every completed change is deployed by restarting the live :8093/:8092 process:
+
+```powershell
+pnpm deploy:live
+```
+
+`tools/deploy.ps1` reads the auth secret from `data/poc3-auth.secret`, uses `sqlite:data/poc3-auth.sqlite`, stops only the
+process whose command line contains `src/index.ts`, starts `pnpm dev`, waits for `/health` and `/login`, and rejects a
+stylesheet without the calendar pill styles. Logs are `data/poc3-live.out.log` and `data/poc3-live.err.log`; the deploy
+history is `data/poc3-deploy.log`.
+
 ## What is in the box
 
 | Surface | What it does |
 |---|---|
-| Private calendar | month grid, session chips, today ring, Garmin `✓ n` badges, day detail; click a day for actions; middle nav (viewed month, no separate heading) opens a year/month picker |
+| Private calendar | month grid with plan/record pills, today ring, day detail; click a day for actions; middle nav (viewed month, no separate heading) opens a year/month picker |
 | Training log | `/history`; **Week / Month / Year** views with previous/next/current navigation and date/month/year pickers; week = seven day cards, month = week rows, year = month rows; adaptive daily/weekly/monthly volume plus pace/HR trends, plan-match badges, **weekly load/ACWR/hard-easy card**, **period best efforts**, per-activity Ask coach, **Review my week** prompt and auto-sync review prompt |
 | Activity detail | `/activity/<id>`; full metrics, **rich Garmin metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps/intervals and HR-zone time**, planned-vs-actual comparison with distance/duration deltas and bars, Ask coach, day/plan links |
 | 💬 Coach bubble | self-implemented same-origin chat; restores the recent conversation after refresh; add / move / delete / revert sessions |
@@ -54,7 +67,7 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
 
 ## Status
 
-- 170 tests in 9 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
+- 172 tests in 9 files; `pnpm lint`, `pnpm typecheck`, `pnpm test`.
 - Live-verified: multi-user signup/login/profile/isolation, multi-day batch CRUD, in-place grid refresh (including delete
   without reload), page-wide CRUD animation, conversation reload after refresh, LLM-driven undo, starter and follow-up
   suggestions, non-scrolling suggestion rail, minimize-to-bubble, structured failure cards, Plan/Training log switcher,
@@ -64,11 +77,11 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
   filter/upsert, enriched load/cadence/elevation/effect/HR-zone fields, the current week's real load card, per-kilometre
   splits on a real run detail, Garmin laps/intervals, HR zones and PR badges, period best efforts, the auto-sync review
   prompt, and the week/month/year selector against the live database.
-- Live-verified cross-account Garmin ID collision: two accounts can store the same Garmin activity independently; the
-  calendar shows the day's `✓ 2` tick, and a repeated sync leaves the notification count unchanged.
+- Live-verified cross-account Garmin ID collision: two accounts can store the same Garmin activity independently, and a
+  repeated sync leaves the notification count unchanged.
 - Live-verified notification feed: automatic no-change page loads leave both the page and the bell silent; the existing
-  new-activity notification and 2026-11-15 tick remain. Manual/key no-new confirmations and newest-new targeting are
-  test-covered.
+  new-activity notification and the 2026-11-15 recorded run remain. Manual/key no-new confirmations and newest-new
+  targeting are test-covered.
 - Fixture/mock-verified: populated week, month and year training-log views plus the load card, weekly review prompt, period
   best efforts and activity detail with rich metrics, per-kilometre splits, laps, HR zones and PR badges (headless Chrome,
   [docs/design/training-log.png](docs/design/training-log.png),
@@ -77,6 +90,9 @@ The live deployment runs the calendar on **8093** and the gateway on **8092**; t
   [docs/design/activity-detail.png](docs/design/activity-detail.png)), plan-vs-actual matcher, adaptive daily/weekly/monthly
   volume and pace/HR charts, load/ramp and hard/easy classification, per-kilometre split parsing, lap mapping, HR zones,
   personal bests and auto-sync backoff.
+- Fixture-verified calendar pills: planned sessions and recorded runs render as colored descriptions in each day cell,
+  with the full kind/metrics/note in the hover tooltip and a `+n more` hint when a day has more than four items
+  (headless Chrome, [docs/design/calendar-pills.png](docs/design/calendar-pills.png)).
 - Each runner saves their own Garmin Personal API key through the top-bar sync icon or the bell's **Garmin key** link; the
   key is verified before it is stored and is never shown again in full. The key is per-runner, not deployment-wide, and
   activity IDs are per-runner too, so the same Garmin activity can be synced independently by multiple accounts. The
