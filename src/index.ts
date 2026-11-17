@@ -33,6 +33,7 @@ const gateway = createGateway({
   modelName: process.env["POC3_MODEL_NAME"] ?? "dgx/general",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
   maxAttempts,
+  autoStates: process.env["POC3_AUTO_STATES"] !== "false",
 });
 
 const web = createWeb({
@@ -40,6 +41,7 @@ const web = createWeb({
   auth,
   gatewayUrl: process.env["POC3_GATEWAY_URL"] ?? "http://127.0.0.1:8090",
   modelId: process.env["POC3_MODEL_ID"] ?? "poc3-coach",
+  autoStates: process.env["POC3_AUTO_STATES"] !== "false",
 });
 
 gateway.server.listen(gatewayPort, "127.0.0.1", () => {

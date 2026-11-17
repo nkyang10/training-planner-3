@@ -148,9 +148,9 @@ Key properties:
 | Surface | URL | Implementation | Purpose |
 |---|---|---|---|
 | Private calendar | `/calendar` (`:8091`) | `src/web.ts` + `src/styles.ts` | month grid with plan/record pills, day detail |
-| Training log | `/history?view=week\|month\|year&period=...` (`:8091`) | `src/web.ts` + `src/styles.ts` + `src/training.ts` | week = seven day cards, month = week rows, year = month rows; plan-match badges, weekly load/ACWR/hard-easy card, Review my week prompt, period best efforts, adaptive summary/trends, Ask coach, auto-sync review prompt |
+| Training log | `/history?view=week\|month\|year&period=...` (`:8091`) | `src/web.ts` + `src/styles.ts` + `src/training.ts` | week = seven day cards, month = week rows, year = month rows; plan-match badges, weekly load/ACWR/hard-easy card, Review my week prompt, period best efforts, adaptive summary/trends, comment-only Ask coach, auto-sync review prompt |
 | Period selector | Week / Month / Year | `src/web.ts` + `src/styles.ts` | mode switch, previous/next/current and date/month/year picker; preserves the period anchor |
-| Activity detail | `/activity/<activityId>` (`:8091`) | `src/web.ts` + `src/garmin.ts` + `src/training.ts` | one run's metrics, rich Garmin metrics, fastest efforts, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, planned-vs-actual deltas, comparison bars, Ask coach |
+| Activity detail | `/activity/<activityId>` (`:8091`) | `src/web.ts` + `src/garmin.ts` + `src/training.ts` | one run's metrics, rich Garmin metrics, fastest efforts, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, planned-vs-actual deltas, comparison bars, comment-only Ask coach |
 | View switcher | Plan / Training log | `layout()` in `src/web.ts` | sliding segmented control between the two projections |
 | Coach bubble | bottom-right of both views | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation; reloads the recent conversation on open |
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
@@ -178,6 +178,10 @@ SQLite tables (created by `src/store.ts`):
 | `notifications` | `notification_id`, `user_id`, `created_at`, `read_at`, `payload` | top-bar tray; success/error sync results, newest first |
 | `users` | `user_id`, `username` (unique, case-insensitive), `payload`, `created_at` | standalone account + profile + password hash |
 | `change_sets` | `change_set_id`, `user_id`, `created_at`, `payload`, `reverted_at` | audit log; payload has before/after entries |
+| `coach_directives` | `directive_id`, `user_id`, `created_at`, `payload` | hidden-directive audit row; visible message, directive, request/message ids and blocked writes |
+| `coach_turns` | `user_id`, `request_id`, `message_id`, `status`, `response_json`, `directive_hash` | idempotent turn claim/replay; a mismatched directive on replay is rejected |
+| `coach_states` | `state_id`, `user_id`, `state_key`, `status`, `source`, `updated_at`, `expires_at`, `resolved_at`, `payload` | durable coaching context; history is kept; active/observing rows drive the prompt and guardrails |
+| `coach_state_events` | `event_id`, `user_id`, `state_id`, `state_key`, `action`, `from_status`, `to_status`, `source`, `confidence`, `evidence`, `created_at`, `payload` | immutable state transition log (activate/update/confirm/resolve/expire/set); retention 180 days |
 
 Session payload:
 
@@ -281,6 +285,10 @@ Rules enforced by `src/coach.ts`:
   repeat them, and the rail is the only place for next steps.
 - The prompt carries the last 30 Garmin activities and the last 30 days of planned sessions, so a performance question can
   compare plan with actuals. The coach must not invent splits, heart-rate zones, distances or sessions.
+- A comment, review or opinion request is **comment-only**: the coach replies in plain text, writes no sessions and no
+  revert, and leaves the calendar unchanged. It changes the calendar only when the runner explicitly asks to add, move,
+  change or delete a session. Action-originated reviews carry a hidden directive with `allowCalendarWrites: false`, which
+  the gateway enforces server-side, so a comment-only turn cannot write even if the model proposes it.
 - If the runner names a day but not a specific session and the day has several sessions, the coach asks which one and
   writes nothing.
 - If a proposed target is not in the facts, the gateway applies the rest of the batch and returns structured `failures`;
@@ -428,8 +436,9 @@ revert path. There is no direct revert API shortcut.
 - **Calendar pills** carry the description, not a tick count. Planned sessions use a colored pill by kind (`easy`, `long`,
   `interval`, `tempo`, `rest`, `cross`, `race`, `racewalk`) with the distance when the title does not already state it;
   recorded runs use a green `✓` pill with the activity title. Hovering a pill shows the full kind, distance, duration, pace,
-  HR, source and note in the tooltip. A day with more than four items shows the first four and a `+n more` hint; the day
-  menu's **View day details** opens the complete list.
+  HR, source and note in the tooltip. Clicking a green recorded-run pill opens the **run peek** popup (below) instead of the
+  day menu; the pill is keyboard reachable (Tab, then Enter/Space) and is marked `aria-haspopup="dialog"`. A day with more
+  than four items shows the first four and a `+n more` hint; the day menu's **View day details** opens the complete list.
 - **Training log periods** (`/history`): a **Week / Month / Year** mode switch with previous/next, a current-period shortcut
   and a period picker. Week shows seven day cards (Mon–Sun), month shows calendar-week rows and year shows month rows. The
   summary and trends follow the selected period; the log is read-only.
@@ -437,7 +446,7 @@ revert path. There is no direct revert API shortcut.
   2000–2100 select. The mode switch keeps the anchor (week → its month/year, month → its first/current week, year →
   January/current month).
 - **Week view**: each day shows planned session chips, a match badge (**On plan / Short / Long / Unplanned**), activity rows
-  (distance, time, pace, HR, source) with **Ask coach**, **Detail** and **View plan**, and "No activity recorded" or "No
+  (distance, time, pace, HR, source) with **Ask coach** (comment-only), **Detail** and **View plan**, and "No activity recorded" or "No
   session or activity" for empty days.
 - **Training load card** (week only): the Garmin load sum, a coupled 7/28-day ACWR, the week-over-week change and the
   hard/easy kilometres and minutes from Garmin training-effect labels. A signal chip shows **Steady**, **Watch the ramp**,
@@ -454,8 +463,8 @@ revert path. There is no direct revert API shortcut.
 - **Activity detail** (`/activity/<id>`): full metrics, a planned-vs-actual card with distance/duration deltas and comparison
   bars, richer Garmin metrics (elevation, calories, max HR, cadence, stride, ground contact, training effect and load),
   fastest 1 km / 1 mi / 5 km efforts with **PR** badges, a **per-kilometre splits** table computed on demand from Garmin
-  detail samples, **Garmin laps/intervals** from the activity summary, an **HR-zone** stacked bar/legend, Ask coach, and
-  links back to the day and the plan. A failed detail or summary request degrades only its own section; the stored metrics
+  detail samples, **Garmin laps/intervals** from the activity summary, an **HR-zone** stacked bar/legend, a comment-only
+  Ask coach, and links back to the day and the plan. A failed detail or summary request degrades only its own section; the stored metrics
   still render. A run that no session fits is labeled unplanned rather than forced onto a plan.
 - **Auto-sync and review prompt**: page loads pull Garmin when the last sync is older than 10 minutes. A genuinely new run
   shows a **Review this run with the coach** card; the coach turn stays one tap, not an unsolicited message.
@@ -467,8 +476,9 @@ revert path. There is no direct revert API shortcut.
   chip sends it as the next message.
 - **In-place refresh**: after a turn the bubble clears every day cell and re-renders its pills from `/calendar/data`. The
   server omits days with nothing left, so a deleted session's pill disappears immediately; no page reload is needed. The
-  endpoint returns each day's `items` with `{ type: "plan" | "record", kind, label, tooltip }`, computed by the same server
-  helpers as the first render, so the refreshed grid cannot drift from the HTML.
+  endpoint returns each day's `items` with `{ type: "plan" | "record", kind, label, tooltip }` and, on record items,
+  `activityId`; the same server helpers compute the first render and the refresh, so the refreshed grid cannot drift from
+  the HTML. Re-rendered record pills keep their peek wiring, and an open peek closes when the grid refreshes.
 - **Not applied card**: when a proposed target is missing, the reply stays clean and a card lists the action, title, day
   and reason, with `Show {day}` and `Try again`. A short localized note is stored with the message so the failure survives
   a history reload.
@@ -477,6 +487,8 @@ The states below were rendered in headless Chrome from a fake demo fixture with 
 name, activity title or coach conversation is used.
 
 ![Calendar month with plan pills and green recorded-run pills; hover shows the full description](design/calendar-demo.png)
+
+![Calendar run peek: clicking a green recorded-run pill opens a popup with metrics, plan match, training load/effect, fastest efforts and four actions](design/activity-peek-demo.png)
 
 ![Starter suggestions on first open](design/coach-starter-demo.png)
 
@@ -491,6 +503,10 @@ name, activity title or coach conversation is used.
 ![Training log year view: monthly volume, best efforts and month rows](design/training-log-year-demo.png)
 
 ![Activity detail: rich metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps and HR zones](design/activity-detail-demo.png)
+
+![Coach states manager: active race-week and heat states, a proposed pain state with Confirm/Dismiss, Refresh detection, the set-state form and the non-diagnosis copy](design/coach-states-demo.png)
+
+![Coach state card in the chat bubble: a travel state with evidence and Resolve, plus the race-week guardrail system line](design/coach-state-bubble-demo.png)
 
 - **CRUD animation** (verified in headless Chrome):
   - `update`: the pill leaves the old cell, flies in an arc to the new day, scales up and rotates; the target cell pulses green.
@@ -511,11 +527,133 @@ Clicking a day cell opens a small menu anchored to that day:
 | Add a session here | Opens the coach bubble with `Add a session on YYYY-MM-DD: ` prefilled; the runner completes the request |
 | Move a session here | Prefills `Move a session to YYYY-MM-DD: ` so the runner names the source |
 | Delete a session here | Sends `Delete the session on YYYY-MM-DD.`; disabled when the day has no session |
-| Ask coach about this day | Sends `What is planned on YYYY-MM-DD? Review it and suggest changes.` |
+| Ask coach about this day | Sends `What is planned on YYYY-MM-DD?` plus a hidden **review-day** directive; the coach comments and does not change the calendar |
 | View day details | Navigates to `/day/YYYY-MM-DD` |
 
 All write choices go through the coach; there is no direct edit API. The menu closes on Escape, outside click, or after a
 choice, and is keyboard reachable (Enter/Space on a focused day).
+
+### Run peek
+
+Clicking a green recorded-run pill in the month grid opens a small popup anchored to the pill (a bottom sheet on narrow
+screens) with the run's key detail and next actions. The popup fetches `GET /activity/<id>/peek`; the server computes the
+display strings, so the client holds no metric logic.
+
+| Part | What it shows |
+|---|---|
+| Header | run title and the full day; × closes |
+| Meta | `Garmin` / `Reported` source chip and distance · time · pace · avg HR |
+| Plan | `On plan` / `Short` / `Long` / `Unplanned` chip, the matched session and its kind, distance and duration |
+| Training metrics | up to six training-first values: training load, effect, elevation, calories, max HR, cadence |
+| Best efforts | fastest 1 km / 1 mi / 5 km with a `PR` badge when the run holds the stored-history best |
+
+| Action | What it does |
+|---|---|
+| Open full detail | navigates to `/activity/<id>` |
+| Ask coach | opens the bubble with the natural question `How did my <title> go? (<day> · <distance> · <duration>)` plus a hidden **review-activity** directive; the visible day and metrics identify one exact record when titles repeat, and the coach checks that day's plan and comments without changing the calendar |
+| View day | navigates to `/day/YYYY-MM-DD` |
+| Training log week | navigates to `/history?view=week&period=<Monday of that week>` |
+
+The popup closes on ×, Escape, outside click, page scroll or a calendar refresh; Escape and × return focus to the pill.
+Clicking the same pill again toggles it closed, and a failed load leaves **Open full detail** and **View day** available.
+The pill is a keyboard target (Tab, then Enter/Space), so the peek is not mouse-only.
+
+### Hidden coach directives
+
+The chat shows only what the runner typed and what the coach replied. Every action-originated message also carries a
+**hidden directive**: a typed, server-authored stage direction that goes into the coach prompt but never into the bubble.
+
+Three layers stay separate:
+
+| Layer | Lives in | Example |
+|---|---|---|
+| Global rules | `COACH_RULES` | safety, tool contract, reply language |
+| Durable context | profile, memories, plan, activities | "training for a half marathon" |
+| Per-turn directive | `coach_directives` + the prompt | "comment-only race review; check that day's plan" |
+
+The browser sends a **typed intent**, never hidden prose:
+
+```ts
+{ kind: "review-activity", activityId: "garmin:…", source: "run-peek" }
+```
+
+`src/directives.ts` validates the intent and builds the directive:
+
+```json
+{
+  "mode": "review",
+  "allowCalendarWrites": false,
+  "allowMemoryWrites": true,
+  "focus": ["schedule", "pace", "hr", "race_execution"],
+  "references": { "activityId": "garmin:…", "day": "2026-11-01" },
+  "background": "Comment only: the referenced activity is the exact run the runner means…",
+  "source": "run-peek",
+  "style": { "language": "auto", "tone": "supportive" }
+}
+```
+
+The web server resolves the referenced activity/day/week and forwards `poc3.directive` to the gateway. The gateway
+validates it again, loads the referenced rows from the store (a missing or foreign reference is `404 reference-not-found`
+before the model is called), and renders a clearly separated **Turn directive** section into the system prompt. The visible
+message remains the user message.
+
+For a run review the visible question also carries the run's day, distance and duration
+(`How did my 新界 跑步 go? (Sun, 1 Nov 2026 · 2.6 km · 25 min)`), so a repeated title is unambiguous even before the
+directive is read, and a later follow-up turn keeps the reference in the conversation. A global rule tells the coach that
+the referenced activity is the exact run meant and that it must name that day instead of asking which record was intended.
+
+Enforcement is server-side, not a prompt request:
+
+- `allowCalendarWrites: false` rejects a proposed session/revert with `comment-only-write`, feeds the model a
+  `respect-directive` repair, and, if the repair still writes, returns the comment-only fallback. No calendar row and no
+  change set is written.
+- `allowMemoryWrites: false` drops proposed memories before the transaction.
+- The audit row stores the directive, visible message, request/message ids and `blockedWrites` in `coach_directives`.
+- A completed request id replayed with a different directive is `409 directive-mismatch`; the directive hash is stored on
+  `coach_turns`.
+- `src/web.ts` never accepts a directive from the browser; it accepts only the typed intent and builds the directive itself.
+
+The intents are `chat`, `review-activity`, `review-day`, `review-week`, `plan` and `undo`; each carries optional `source`,
+`focus` and `style` values from a fixed allowlist. The visible message stays conversational (action buttons add the run's
+day and metrics, never hidden instructions); the directive is app metadata, not a substitute for user intent.
+
+`GET /coach-audit` (linked from the profile page and the coach header) shows the owner's recent directives, a
+comment-only/blocked-writes summary, active coaching states and any legacy `mode:` memories. New durable context uses
+structured coaching states; legacy `mode:` memories remain in the coach's facts and are still shown for transparency.
+
+The chat response adds `mode`, `writesAllowed`, `blockedWrites`, `directiveId`, `states` and `blockedByStates`. The
+bubble shows the reply as usual, adds a state card for each state change, and adds
+`Comment-only · calendar unchanged · 日曆未有更改` only when the gateway had to block a proposed write. A guardrail
+fallback adds `Calendar unchanged — <state> guardrail · 日曆未有更改`.
+
+#### Coaching states (durable context beyond one turn)
+
+Hidden directives are per-turn; coaching states are durable. `src/coach-state-catalog.ts` defines a catalog of 34 keys in
+ten families (including the `setup` family); `src/coach-states.ts` is the detection/lifecycle/guardrail engine and the
+typed record (`coach_states`); `src/web-coach-states.ts` renders the manager/audit pages. Auto states are detected from
+the plan and Garmin data: race day, race week (1–7 days), taper (8–21 days), post-race (≤14 days), ACWR ramp
+(watch/high), hard/easy imbalance, under-load, day-aware missed planned sessions, a stale plan and stale Garmin data.
+Travel, heat, time pressure, sleep debt, stress, pain, illness, return-to-run and focus blocks are proposed by the model
+through `stateProposals` or set by the runner on `/coach-states`.
+
+- Sensitive states (`medical_red_flag`, `pregnancy_postpartum`, `menstrual_cycle_support`, `low_energy_availability`)
+  and safety states (`pain_injury`, `illness`, `return_to_run`) start as `observing`; the bubble/page asks for
+  confirmation. The coach never diagnoses.
+- `syncCoachStates` runs in one `BEGIN IMMEDIATE` transaction and applies TTL expiry, auto resolution, user-dismissal
+  cooldown and precedence. Auto states update in place; a user/chat state wins over auto detection, and a **user-set**
+  state also wins over a chat proposal for the same key. Creates, confirms, resolves and expiries append immutable
+  `coach_state_events` rows; resolved history and events older than 180 days are pruned.
+- The gateway refreshes states before the prompt and enforces hard guardrails (`mode-guardrail`, `respect-state`) over the
+  **effective post-turn calendar** — current sessions plus adds, updates, removes and reverts. Race week blocks
+  intervals/tempo on race day-3 through race day; taper blocks new long runs on race day-14 through race day; post-race
+  blocks intensity/race/racewalk for 7 days after; injury/return block intensity/racing/racewalk; illness blocks all
+  training except rest; a red flag blocks every booking. A repair attempt is allowed; a failed repair returns a fallback
+  and writes nothing to the calendar, while proposed states are still stored so a confirmation card is not lost.
+- Pages are read-only; auto detection is persisted by a gateway turn or the explicit **Refresh detection** action. Active
+  states render as calendar chips, bubble cards and on `/coach-states`; the audit page shows active states, an immutable
+  State activity log and any legacy `mode:` memories. The prompt block is server-authored background and is never shown in
+  the chat; evidence/notes are rendered as data, never instructions.
+- The full catalog, research citations and needed-vs-skipped list are in [COACH-STATES.md](COACH-STATES.md).
 
 ---
 
@@ -570,13 +708,15 @@ choice, and is keyboard reachable (Enter/Space on a focused day).
 |---|---|---|
 | `GET` | `/health` | liveness + model name |
 | `GET` | `/v1/models` | OpenAI-compatible model list (`poc3-coach`) |
-| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE); optional `x-poc3-request-id` for idempotency |
+| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE); optional `x-poc3-request-id` for idempotency; optional `poc3.directive` from the trusted web proxy |
 
 The gateway binds `127.0.0.1` and trusts the internal `x-poc3-user` header set by the web server; the browser never talks to
 it directly. The web surface is the authenticated entry point.
 
 A completed request id is replayed from `coach_turns` with `x-poc3-idempotent-replay: true`; a duplicate while the first
-request is still running gets `409 turn-in-progress`.
+request is still running gets `409 turn-in-progress`. A replay whose hidden directive hash differs from the original turn
+gets `409 directive-mismatch`. A directive reference that is missing or belongs to another runner gets
+`404 reference-not-found` before the model is called.
 
 ### Calendar web (`:8091`)
 
@@ -589,10 +729,17 @@ request is still running gets `409 turn-in-progress`.
 | `GET` | `/calendar?month=YYYY-MM` | month grid (authenticated, user-scoped) |
 | `GET` | `/history?view=week\|month\|year&period=...` | training log period views; default week/current; week period is a date (snapped to Monday), month `YYYY-MM`, year `YYYY`; week includes the load card and weekly review prompt; month/year include period best efforts |
 | `GET` | `/activity/<activityId>` | one run's detail with rich Garmin metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps/intervals, HR zones and planned-vs-actual comparison; 404 for a foreign or missing id |
+| `GET` | `/activity/<activityId>/peek` | JSON for the calendar run-peek popup: title, day label, source, metrics, six training-first metrics, fastest efforts with PR flags, plan match, visible `coachPrompt`, typed `coachIntent` and `detail`/`day`/`week` links; user-scoped, 404 for a foreign or missing id |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
-| `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh: `{ month, days: { [day]: { items: [{ type, kind, label, tooltip }] } } }` |
-| `POST` | `/chat` | bubble proxy → gateway; forwards `x-poc3-request-id`; returns `{reply, sessions, changes, suggestions, failures, changeSetId, reverted}` |
-| `GET` | `/chat/history` | the signed-in runner's recent messages, oldest first (used to restore the bubble after refresh) |
+| `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh: `{ month, days: { [day]: { items: [{ type, kind, label, tooltip, activityId? }] } } }`; `activityId` is present on record items and drives the run peek |
+| `POST` | `/chat` | bubble proxy → gateway; body `{ message, intent? }`; the web validates the typed intent, resolves references, builds the hidden directive and forwards it as `poc3.directive`; returns `{reply, sessions, changes, suggestions, failures, changeSetId, reverted, mode, writesAllowed, blockedWrites, directiveId, states, blockedByStates}` |
+| `GET` | `/chat/history` | the signed-in runner's recent visible messages, oldest first (used to restore the bubble after refresh); hidden directives are never included |
+| `GET` | `/coach-audit` | owner-only page listing recent hidden directives, comment-only/blocked-writes stats, active coaching states, an immutable State activity log and legacy `mode:` memories |
+| `GET` | `/coach-states` | owner-only coaching-state manager: read stored active/proposed states, resolved history (last 100), a setup card when no Garmin key is saved and a set-state form; GET never writes |
+| `POST` | `/coach-states` | set a state (`key`, `ttlDays`, `note`); redirects to `/coach-states` or with a fixed `error` code (`invalid-key`, `invalid-ttl`, `invalid-note`) |
+| `POST` | `/coach-states/refresh` | run auto detection once, persist states, then redirect to `/coach-states`; disabled by `POC3_AUTO_STATES=false` |
+| `POST` | `/coach-states/<id>/confirm` | observing → active; scoped to the signed-in runner; expired states are rejected |
+| `POST` | `/coach-states/<id>/resolve` | active/observing → resolved with source `user`; scoped to the signed-in runner |
 | `POST` | `/sync` | manual Garmin pull (last 90 days, upsert and metric enrichment); no saved key redirects to the popup; `next` selects `/calendar` or `/history` |
 | `POST` | `/garmin/key` | verify a pasted Personal API key, save it per runner, sync immediately; malformed/rejected keys return to the popup with `keyError` |
 | `GET` | `/notifications` | newest 20 sync notifications plus the unread count for the signed-in runner |
@@ -600,6 +747,8 @@ request is still running gets `409 turn-in-progress`.
 | `GET` | `/static/app.css` | styles (linked with a version query for cache busting) |
 
 All page routes except `/login`, `/signup`, `/health` and `/static/app.css` redirect unauthenticated requests to `/login`.
+State-changing POSTs also pass a same-origin check (Origin host must match Host) in addition to the SameSite=Lax session
+cookie.
 
 ---
 
@@ -646,22 +795,24 @@ key belongs in the environment.
 | `POC3_AUTH_SECRET` | `poc3-dev-secret-change-me` | HMAC secret for the signed session cookie; set a strong value |
 | `POC3_USER_ID` | `demo-runner` | gateway fallback when no `x-poc3-user` header |
 | `POC3_MODEL_BASE_URL` | `http://192.168.1.202:8102/v1` | OpenAI-compatible endpoint |
-| `POC3_MODEL_API_KEY` | empty | model bearer |
+| `POC3_MODEL_API_KEY` | empty | model bearer; the live deploy reads it from the environment or `data/poc3-model.secret` |
 | `POC3_MODEL_NAME` | `dgx/general` | model name |
 | `POC3_MODEL_ID` | `poc3-coach` | id exposed by the gateway |
 | `POC3_MAX_ATTEMPTS` | `2` | initial proposal + repair calls per turn |
+| `POC3_AUTO_STATES` | `true` | deterministic auto-state detection; `false` keeps manual/chat states but disables auto detection |
 | `POC3_GATEWAY_URL` | `http://127.0.0.1:8090` | web → gateway |
 
-Never commit real keys or `.env` files.
+Never commit real keys or `.env` files; the live secrets stay in the gitignored `data/` directory.
 
 ### Deploying the live process (Windows)
 
 `pnpm deploy:live` restarts the live :8093/:8092 process. The script reads the auth secret from
-`data/poc3-auth.secret`, uses `sqlite:data/poc3-auth.sqlite`, refuses to stop a process whose command line does not contain
-`src/index.ts`, starts `pnpm dev` with the live model/env, and waits for the gateway `/health`, the calendar `/login` and
-the new stylesheet. It fails if the deployed CSS lacks `.cal-pill.record` or the login page does not reference
-`app.css?v=7`. Runtime logs: `data/poc3-live.out.log` and `data/poc3-live.err.log`; deploy history:
-`data/poc3-deploy.log`.
+`data/poc3-auth.secret` and the model API key from `POC3_MODEL_API_KEY` or `data/poc3-model.secret`, uses
+`sqlite:data/poc3-auth.sqlite`, refuses to stop a process whose command line does not contain `src/index.ts`, starts
+`pnpm dev` with the live model/env, and waits for the gateway `/health`, the calendar `/login` and the new stylesheet. It
+fails if the auth secret or model key is missing, or if the deployed CSS lacks `.cal-pill.record`, `.state-card`,
+`.state-form` or `.state-refresh`, or the login page does not reference `app.css?v=11`. Runtime logs:
+`data/poc3-live.out.log` and `data/poc3-live.err.log`; deploy history: `data/poc3-deploy.log`.
 
 ---
 
@@ -671,17 +822,24 @@ the new stylesheet. It fails if the deployed CSS lacks `.cal-pill.record` or the
 pnpm lint
 pnpm typecheck
 pnpm test
+# or all three:
+pnpm check
 ```
 
-Current state: **172 tests in 9 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert,
-gateway streaming + CRUD + batch + change sets + revert + repair loop + native tool calls + timezone + idempotency,
-store users/change sets/coach turns/transactions/per-user activity upsert/old-schema migration/sync state/per-runner Garmin keys/notifications,
-plan-vs-actual matcher, weekly load/ramp and hard/easy classification, personal bests and period bests, Garmin
+CI runs `pnpm check` on Node 24 (`.github/workflows/ci.yml`).
+
+Current state: **257 tests in 11 files** — auth (signup/login/cookie/profile), coach contract/actions/suggestions/revert/comment-only rule,
+hidden directive intents/schema/render/hash, coaching-state catalog/detection/day-aware consistency/lifecycle/events/retention/proposals/guardrails/prompt block,
+gateway streaming + CRUD + batch + change sets + revert + effective-calendar guardrails + repair loop + native tool calls + timezone + idempotency + comment-only enforcement + referenced-context resolution + directive audit rows + directive-mismatch replay + auto state detection + guardrail repair/fallback + fallback state cards + proposal application + claim cleanup,
+store users/change sets/coach turns/transactions/coach states/state events/pruning/per-user activity upsert/old-schema migration/sync state/per-runner Garmin keys/notifications,
+plan-vs-actual same-day matcher, weekly load/ramp and hard/easy classification, personal bests and period bests, Garmin
 mapping/token quirks/response bodies/enriched metrics/HR zones/detail fetch/summary fetch/per-kilometre split parser/lap
-mapper/error copy, cross-user Garmin sync of the same activity, calendar web + plan/record pills + tooltips + four-pill overflow + conversation reload + week/month/year training log + period selector + load card + weekly
+mapper/error copy, cross-user Garmin sync of the same activity, calendar web + plan/record pills + tooltips + four-pill overflow + conversation reload + run-peek endpoint/display-ready metrics/plan match/efforts/scoping + recorded-run pill wiring + week/month/year training log + period selector + load card + weekly
 review prompt + rich activity detail + per-kilometre splits + Garmin laps + HR zones + PR badges + period best efforts +
 trends + key popup/save/verify + always-enabled sync + manual no-new confirmations + silent automatic no-change checks +
-newest-new notification targeting + session-start sync + page-load auto-sync backoff + idempotent Garmin sync.
+newest-new notification targeting + session-start sync + page-load auto-sync backoff + idempotent Garmin sync + typed
+action intents + the owner-only coach audit page + the coaching-state manager/set/confirm/resolve routes + calendar state
+chips + bubble state cards + legacy `mode:` memories.
 
 The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `TODO`, no `any`, no obvious secrets.
 
@@ -732,12 +890,16 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
     activities, not a complete lifetime record. A dedicated records page and longer history are later work.
 21. **Garmin laps are not per-kilometre splits.** They are Garmin's own lap/interval summaries; the computed per-kilometre
     table remains the only per-km view.
+22. **The run peek is a summary, not a second detail page.** It reads stored Garmin metrics only (no on-demand detail or
+    summary request), shows at most six training-first metrics and the stored-history fastest efforts, and links to
+    `/activity/<id>` for splits, laps and HR zones.
 
 ---
 
 ## 14. Documents
 
 - [`FEATURES-FOR-REVIEW.md`](FEATURES-FOR-REVIEW.md) — candidate features from PoC1/PoC2, prioritised for review.
+- [`COACH-STATES.md`](COACH-STATES.md) — coaching-state catalog, detection, precedence, guardrails, research and skips.
 - [`TRAINING-LOG-PLAN.md`](TRAINING-LOG-PLAN.md) — training-log research, feature inventory and the implemented load/ramp,
   rich-metrics, per-kilometre-split, lap/interval, HR-zone, best-efforts/PR and weekly-review slices.
 - [`adr/0001-server-validated-coach.md`](adr/0001-server-validated-coach.md)
@@ -752,6 +914,8 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 - [`design/training-log-week-demo.png`](design/training-log-week-demo.png)
 - [`design/training-log-year-demo.png`](design/training-log-year-demo.png)
 - [`design/activity-detail-demo.png`](design/activity-detail-demo.png)
+- [`design/coach-states-demo.png`](design/coach-states-demo.png)
+- [`design/coach-state-bubble-demo.png`](design/coach-state-bubble-demo.png)
 
 POC3 is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog and the
 training-log plan.

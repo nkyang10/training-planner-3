@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { SessionKind, Store } from "../src/types";
+import type { CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -90,6 +90,30 @@ const seedActivity = (
     source: "garmin",
     createdAt: `${TODAY}T08:00:00.000Z`,
   });
+};
+
+const seedCoachState = (
+  store: Store,
+  userId: string,
+  key: CoachStateKey,
+  overrides: Partial<CoachStateRecord> = {},
+): CoachStateRecord => {
+  const record: CoachStateRecord = {
+    stateId: `state:${key}`,
+    userId,
+    key,
+    status: "active",
+    source: "user",
+    confidence: 1,
+    evidence: [`${key} evidence`],
+    activatedAt: `${TODAY}T07:00:00.000Z`,
+    updatedAt: `${TODAY}T07:00:00.000Z`,
+    expiresAt: "2026-11-20T00:00:00.000Z",
+    resolvedAt: null,
+    ...overrides,
+  };
+  store.appendCoachState(record);
+  return record;
 };
 
 const garminActivity = {
@@ -177,25 +201,30 @@ interface MockGateway {
   seenUser(): string | undefined;
   seenMessage(): string | undefined;
   seenRequestId(): string | undefined;
+  seenDirective(): unknown;
 }
 
 interface MockGatewayOptions {
   failures?: unknown[];
+  poc3?: Record<string, unknown>;
 }
 
 const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockGateway> => {
   let seenUser: string | undefined;
   let seenMessage: string | undefined;
   let seenRequestId: string | undefined;
+  let seenDirective: unknown;
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const chunks: Buffer[] = [];
       for await (const chunk of request) chunks.push(chunk as Buffer);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
         messages?: Array<{ role?: string; content?: string }>;
+        poc3?: { directive?: unknown };
       };
       seenUser = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : undefined;
       seenMessage = body.messages?.[0]?.content;
+      seenDirective = body.poc3?.directive;
       seenRequestId =
         typeof request.headers["x-poc3-request-id"] === "string" ? request.headers["x-poc3-request-id"] : undefined;
       response.writeHead(200, { "content-type": "application/json" });
@@ -210,6 +239,7 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
             reverted: false,
             suggestions: ["Book my long run for Sunday", "Move Thursday to Friday"],
             failures: options.failures ?? [],
+            ...options.poc3,
           },
         }),
       );
@@ -227,6 +257,7 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
     seenUser: () => seenUser,
     seenMessage: () => seenMessage,
     seenRequestId: () => seenRequestId,
+    seenDirective: () => seenDirective,
   };
 };
 
@@ -470,8 +501,19 @@ describe("private calendar", () => {
     expect(html).toContain("Recorded run · Morning run · 4.2 km · 30 min · 6:00/km · 145 bpm · Garmin");
     expect(html).toContain('<span class="sr-only">Planned session: </span>');
     expect(html).toContain('<span class="sr-only">Recorded run: </span>');
+    expect(html).toContain('<span class="cal-pill record" data-activity-id="garmin:1" role="button" tabindex="0" aria-haspopup="dialog"');
+    expect(html).toContain("Recorded run: Morning run. Show run details");
     expect(html).not.toContain('class="done"');
     expect(html).not.toContain("✓ 2");
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as { days: Record<string, { items: Array<{ type: string; activityId?: string }> }> };
+    const recordIds = (data.days["2026-11-04"]?.items ?? [])
+      .filter((item) => item.type === "record")
+      .map((item) => item.activityId)
+      .sort();
+    expect(recordIds).toEqual(["garmin:1", "garmin:2"]);
   });
 
   it("caps a busy day at four pills and keeps the rest behind an overflow hint", async () => {
@@ -582,6 +624,177 @@ describe("private calendar", () => {
     const notes = handle.store.listNotifications(user.userId);
     expect(notes.filter((note) => note.title === "Garmin sync: no new activities")).toHaveLength(1);
     expect(notes.filter((note) => note.title === "Garmin sync: 1 new activity")).toHaveLength(1);
+  });
+});
+
+describe("calendar run peek", () => {
+  it("returns display-ready detail, plan match, efforts and actions for one run", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedSession(store, runner.userId, "session:peek", "2026-11-07", "Easy 5 km", "easy", 5);
+        store.appendActivity({
+          activityId: "garmin:peek-1",
+          userId: runner.userId,
+          day: "2026-11-07",
+          title: "Morning run",
+          distanceKm: 5.2,
+          durationMin: 34,
+          paceSecPerKm: 392,
+          avgHr: 146,
+          source: "garmin",
+          createdAt: `${TODAY}T08:00:00.000Z`,
+          trainingLoad: 85,
+          trainingEffectLabel: "AEROBIC_BASE",
+          fastest1kSec: 320,
+          fastest1miSec: 540,
+          fastest5kSec: 1700,
+          elevationGainM: 42,
+          calories: 320,
+          maxHr: 172,
+          cadenceSpm: 174,
+        });
+      },
+    });
+
+    const response = await fetch(`${base}/activity/${encodeURIComponent("garmin:peek-1")}/peek`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as {
+      peek: {
+        activityId: string;
+        title: string;
+        day: string;
+        dayLabel: string;
+        source: string;
+        sourceLabel: string;
+        metrics: string;
+        extra: Array<{ label: string; value: string }>;
+        efforts: Array<{ label: string; value: string; pr: boolean }>;
+        plan: { status: string; label: string; title: string | null; planned: string | null };
+        coachPrompt: string;
+        coachIntent: { kind: string; activityId: string; source: string };
+        links: { detail: string; day: string; week: string };
+      };
+    };
+    expect(body.peek.activityId).toBe("garmin:peek-1");
+    expect(body.peek.title).toBe("Morning run");
+    expect(body.peek.day).toBe("2026-11-07");
+    expect(body.peek.dayLabel).toBe("Sat, 7 Nov 2026");
+    expect(body.peek.source).toBe("garmin");
+    expect(body.peek.sourceLabel).toBe("Garmin");
+    expect(body.peek.metrics).toBe("5.2 km · 34 min · 6:32/km · 146 bpm");
+    expect(body.peek.extra).toEqual([
+      { label: "Training load", value: "85" },
+      { label: "Effect", value: "Aerobic Base" },
+      { label: "Elevation", value: "+42 m" },
+      { label: "Calories", value: "320 kcal" },
+      { label: "Max HR", value: "172 bpm" },
+      { label: "Cadence", value: "174 spm" },
+    ]);
+    expect(body.peek.efforts).toEqual([
+      { label: "1 km", value: "5:20", pr: true },
+      { label: "1 mi", value: "9:00", pr: true },
+      { label: "5 km", value: "28:20", pr: true },
+    ]);
+    expect(body.peek.plan).toEqual({
+      status: "on-plan",
+      label: "On plan +0.2 km",
+      title: "Easy 5 km",
+      planned: "easy · 5 km · 35 min",
+    });
+    expect(body.peek.coachPrompt).toBe("How did my Morning run go? (Sat, 7 Nov 2026 · 5.2 km · 34 min)");
+    expect(body.peek.coachIntent).toEqual({
+      kind: "review-activity",
+      activityId: "garmin:peek-1",
+      source: "run-peek",
+    });
+    expect(body.peek.links).toEqual({
+      detail: "/activity/garmin%3Apeek-1",
+      day: "/day/2026-11-07",
+      week: "/history?view=week&period=2026-11-02",
+    });
+  });
+
+  it("identifies the exact run when several records share the same title", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:same-1", "2026-11-01", "新界 跑步", 2.6);
+        seedActivity(store, runner.userId, "garmin:same-2", "2026-11-03", "新界 跑步", 5.4);
+      },
+    });
+    const read = async (activityId: string): Promise<{ coachPrompt: string; coachIntent: { activityId: string } }> => {
+      const response = await fetch(`${base}/activity/${encodeURIComponent(activityId)}/peek`, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { peek: { coachPrompt: string; coachIntent: { activityId: string } } };
+      return body.peek;
+    };
+    const first = await read("garmin:same-1");
+    const second = await read("garmin:same-2");
+    expect(first.coachPrompt).toBe("How did my 新界 跑步 go? (Sun, 1 Nov 2026 · 2.6 km · 30 min)");
+    expect(second.coachPrompt).toBe("How did my 新界 跑步 go? (Tue, 3 Nov 2026 · 5.4 km · 30 min)");
+    expect(first.coachPrompt).not.toBe(second.coachPrompt);
+    expect(first.coachIntent.activityId).toBe("garmin:same-1");
+    expect(second.coachIntent.activityId).toBe("garmin:same-2");
+  });
+
+  it("marks an unmatched run unplanned and hides another runner's run", async () => {
+    const { base, auth, handle, user, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:solo", "2026-11-09", "Solo run", 7);
+      },
+    });
+
+    const own = await fetch(`${base}/activity/${encodeURIComponent("garmin:solo")}/peek`, { headers: { cookie } });
+    expect(own.status).toBe(200);
+    const ownBody = (await own.json()) as {
+      peek: { plan: { status: string; label: string; title: string | null; planned: string | null } };
+    };
+    expect(ownBody.peek.plan).toEqual({ status: "unplanned", label: "Unplanned", title: null, planned: null });
+
+    const otherSignup = auth.signup({
+      username: "other_peek",
+      password: "other-password-123",
+      displayName: "Other Peek",
+      timezone: "UTC",
+    });
+    seedActivity(handle.store, otherSignup.user.userId, "garmin:other", "2026-11-09", "Other secret run", 6);
+
+    const foreign = await fetch(`${base}/activity/${encodeURIComponent("garmin:other")}/peek`, { headers: { cookie } });
+    expect(foreign.status).toBe(404);
+    expect(foreign.headers.get("content-type")).toContain("application/json");
+    const missing = await fetch(`${base}/activity/${encodeURIComponent("garmin:missing")}/peek`, { headers: { cookie } });
+    expect(missing.status).toBe(404);
+    const malformed = await fetch(`${base}/activity/%E0%A4%A/peek`, { headers: { cookie } });
+    expect(malformed.status).toBe(404);
+    expect(handle.store.getUser(user.userId)?.username).toBe(USERNAME);
+  });
+
+  it("renders the peek popup hooks and wires the recorded-run pills", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Morning run", 4.2);
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('data-activity-id="garmin:1"');
+    expect(html).toContain("openActivityPeek");
+    expect(html).toContain("activity-peek");
+    expect(html).toContain("peek-actions");
+    expect(html).toContain("peek-grid");
+    expect(html).toContain("peek-efforts");
+    expect(html).toContain("Training log week");
+    expect(html).toContain("View day");
+    expect(html).toContain("Open full detail");
+    expect(html).toContain("app.css?v=11");
+
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain("#activity-peek");
+    expect(css).toContain(".peek-grid");
+    expect(css).toContain(".peek-effort.pr");
+    expect(css).toContain(".peek-actions .btn");
+    expect(css).toContain(".cal-pill.record:focus-visible");
   });
 });
 
@@ -1365,6 +1578,12 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("fetch('/chat'");
     expect(html).toContain("fetch('/chat/history'");
     expect(html).toContain("x-poc3-request-id");
+    expect(html).toContain("data-coach-intent");
+    expect(html).toContain("parseIntent");
+    expect(html).toContain("pendingIntent");
+    expect(html).toContain("blockedWrites");
+    expect(html).toContain("Comment-only · calendar unchanged");
+    expect(html).toContain("/coach-audit");
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("monthGrid.querySelectorAll('.cell[data-day]')");
@@ -1389,7 +1608,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=7");
+    expect(html).toContain("app.css?v=11");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -1401,7 +1620,9 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain(".trend-chart");
     expect(css).toContain(".plan-compare");
     expect(css).toContain(".review-card");
-    expect(css).toContain(".chip.match-on-plan");
+    expect(css).toContain(".audit-item");
+    expect(css).toContain(".audit-background");
+    expect(css).toContain(".coach-audit-link");
     expect(css).toContain(".period-bar");
     expect(css).toContain(".period-mode");
     expect(css).toContain(".period-row");
@@ -1428,6 +1649,21 @@ describe("in-calendar coach bubble", () => {
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
     expect(scripts).toHaveLength(3);
     for (const script of scripts) expect(() => new Function(script[1] ?? "")).not.toThrow();
+  });
+
+  it("tags action buttons with typed intents instead of hidden prose", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedActivity(store, runner.userId, "garmin:intent", "2026-11-04", "Morning run", 5),
+    });
+    const history = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(history).toContain("data-coach-intent");
+    expect(history).toContain("review-activity");
+    expect(history).toContain("review-week");
+    expect(history).toContain("How did my Morning run go? (Wed, 4 Nov 2026 · 5 km · 30 min)");
+    expect(history).not.toContain("comment-only review: do not add");
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("review-day");
+    expect(calendar).toContain("data-coach-intent");
   });
 
   it("proxies a chat turn and passes suggestions and changes through", async () => {
@@ -1485,6 +1721,216 @@ describe("in-calendar coach bubble", () => {
     expect(body.failures).toEqual(failures);
   });
 
+  it("builds directives from typed intents and forwards them", async () => {
+    const gateway = await startMockGateway({
+      poc3: {
+        sessions: 0,
+        memories: 0,
+        changes: [],
+        changeSetId: null,
+        mode: "review",
+        writesAllowed: false,
+        blockedWrites: 1,
+        directiveId: "directive:test",
+      },
+    });
+    const { base, cookie, user } = await start({
+      gatewayUrl: gateway.url,
+      seed: (store, runner) => seedActivity(store, runner.userId, "garmin:review", "2026-11-04", "Morning run", 5),
+    });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "How did my Morning run go?",
+        intent: { kind: "review-activity", activityId: "garmin:review", source: "run-peek" },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      mode: string | null;
+      writesAllowed: boolean;
+      blockedWrites: number;
+      directiveId: string | null;
+      sessions: number;
+    };
+    expect(body.mode).toBe("review");
+    expect(body.writesAllowed).toBe(false);
+    expect(body.blockedWrites).toBe(1);
+    expect(body.directiveId).toBe("directive:test");
+    expect(body.sessions).toBe(0);
+    expect(gateway.seenMessage()).toBe("How did my Morning run go?");
+    expect(gateway.seenUser()).toBe(user.userId);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "review",
+      allowCalendarWrites: false,
+      references: { activityId: "garmin:review", day: "2026-11-04" },
+      source: "run-peek",
+    });
+    const directive = gateway.seenDirective() as { focus?: string[]; background?: string };
+    expect(directive.focus).toContain("schedule");
+    expect(directive.background).toContain("Comment only");
+
+    const undo = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "Undo that", intent: { kind: "undo" } }),
+    });
+    expect(undo.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({ mode: "undo", allowCalendarWrites: true, source: "composer" });
+
+    const week = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Review my week",
+        intent: { kind: "review-week", weekStart: "2026-11-11", source: "load-card" },
+      }),
+    });
+    expect(week.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "review",
+      allowCalendarWrites: false,
+      references: { weekStart: "2026-11-09" },
+      source: "load-card",
+    });
+
+    const plan = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Add an easy run",
+        intent: { kind: "plan", day: "2026-11-20", source: "day-menu" },
+      }),
+    });
+    expect(plan.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "plan",
+      allowCalendarWrites: true,
+      references: { day: "2026-11-20" },
+      source: "day-menu",
+    });
+  });
+
+  it("rejects an invalid intent and a missing run reference without calling the gateway", async () => {
+    const gateway = await startMockGateway();
+    const { base, cookie } = await start({ gatewayUrl: gateway.url });
+    const missing = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "Hi", intent: { kind: "review-activity", activityId: "garmin:missing" } }),
+    });
+    expect(missing.status).toBe(404);
+    const unknown = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "Hi", intent: { kind: "make-me-admin" } }),
+    });
+    expect(unknown.status).toBe(400);
+    expect(gateway.seenMessage()).toBeUndefined();
+  });
+
+});
+
+describe("coach audit", () => {
+  it("shows the owner's hidden directives and coaching states without leaking another runner", async () => {
+    const { base, handle, user, auth, cookie } = await start();
+    const directive = {
+      mode: "review" as const,
+      allowCalendarWrites: false,
+      allowMemoryWrites: true,
+      focus: ["schedule" as const, "pace" as const],
+      references: { activityId: "garmin:review", day: "2026-11-04" },
+      background: "Comment only: check the day's plan.",
+      source: "run-peek" as const,
+      style: { language: "auto" as const, tone: "supportive" as const },
+    };
+    handle.store.appendCoachDirective({
+      directiveId: "directive:one",
+      userId: user.userId,
+      requestId: "req-1",
+      messageId: "m-1",
+      visible: "How did my Morning run go?",
+      directive,
+      blockedWrites: 2,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+    });
+    handle.store.appendCoachState({
+      stateId: "state:audit-owner",
+      userId: user.userId,
+      key: "race_week",
+      status: "active",
+      source: "user",
+      confidence: 0.9,
+      evidence: ['Race "Half marathon" on 2026-11-08 (2 days).'],
+      activatedAt: `${TODAY}T08:00:00.000Z`,
+      updatedAt: `${TODAY}T08:00:00.000Z`,
+      expiresAt: "2026-11-20T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    handle.store.appendMemory({
+      memoryId: "mode-1",
+      userId: user.userId,
+      text: "mode: legacy race week",
+      createdAt: `${TODAY}T08:00:00.000Z`,
+    });
+    const other = auth.signup({
+      username: "audit_other",
+      password: "other-password-123",
+      displayName: "Audit Other",
+      timezone: "UTC",
+    }).user;
+    handle.store.appendCoachDirective({
+      directiveId: "directive:other",
+      userId: other.userId,
+      requestId: "req-other",
+      messageId: "m-other",
+      visible: "Other secret",
+      directive,
+      blockedWrites: 0,
+      createdAt: `${TODAY}T09:30:00.000Z`,
+    });
+    handle.store.appendCoachState({
+      stateId: "state:audit-other",
+      userId: other.userId,
+      key: "illness",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Other secret state"],
+      activatedAt: `${TODAY}T08:30:00.000Z`,
+      updatedAt: `${TODAY}T08:30:00.000Z`,
+      expiresAt: "2026-11-20T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    handle.store.appendMemory({
+      memoryId: "mode-2",
+      userId: other.userId,
+      text: "mode: secret taper",
+      createdAt: `${TODAY}T08:30:00.000Z`,
+    });
+
+    const html = await (await fetch(`${base}/coach-audit`, { headers: { cookie } })).text();
+    expect(html).toContain("Coach audit");
+    expect(html).toContain("How did my Morning run go?");
+    expect(html).toContain("comment-only");
+    expect(html).toContain("blocked 2");
+    expect(html).toContain("Comment only: check the day&#39;s plan.");
+    expect(html).toContain("Active coaching states");
+    expect(html).toContain("Race week");
+    expect(html).toContain("race_week");
+    expect(html).toContain("Legacy mode memories");
+    expect(html).toContain("mode: legacy race week");
+    expect(html).toContain("activity garmin:review");
+    expect(html).not.toContain("Other secret");
+    expect(html).not.toContain("Other secret state");
+    expect(html).not.toContain("mode: secret taper");
+    expect(html).toContain("/coach-audit");
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".audit-item");
+    expect(css).toContain(".audit-background");
+    expect(css).toContain(".coach-audit-link");
+  });
 });
 
 describe("conversation history after refresh", () => {
@@ -1534,6 +1980,288 @@ describe("month picker", () => {
     expect(html).toContain("month-year-select");
     expect(html).toContain("month-picker-grid");
     expect(html).toContain('id="month-current"');
+  });
+});
+
+describe("coach states page", () => {
+  it("renders active, proposed and historical states without leaking another runner", async () => {
+    const { base, handle, user, cookie, auth } = await start({
+      seed: (store, owner) => {
+        seedCoachState(store, owner.userId, "heat", { evidence: ["Hot and humid"] });
+        seedCoachState(store, owner.userId, "pain_injury", {
+          stateId: "state:pain",
+          status: "observing",
+          source: "chat",
+          confidence: 0.6,
+          evidence: ["Knee pain after the run"],
+        });
+        seedCoachState(store, owner.userId, "travel", {
+          stateId: "state:old",
+          status: "resolved",
+          resolvedAt: `${TODAY}T07:00:00.000Z`,
+          updatedAt: `${TODAY}T07:00:00.000Z`,
+        });
+      },
+    });
+    const other = auth.signup({
+      username: "state_other",
+      password: "other-password-123",
+      displayName: "State Other",
+      timezone: "UTC",
+    }).user;
+    seedCoachState(handle.store, other.userId, "illness", { stateId: "state:other", evidence: ["Other secret"] });
+
+    const response = await fetch(`${base}/coach-states`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("Coach states");
+    expect(html).toContain("Active states");
+    expect(html).toContain("Heat");
+    expect(html).toContain("Hot and humid");
+    expect(html).toContain("Pain / injury");
+    expect(html).toContain("Knee pain after the run");
+    expect(html).toContain("Confirm");
+    expect(html).toContain("Dismiss");
+    expect(html).toContain("Set a state");
+    expect(html).toContain("Not medical advice");
+    expect(html).toContain("Recent state history");
+    expect(html).toContain("Travel");
+    expect(html).toContain("state%3Apain");
+    expect(html).not.toContain("Other secret");
+    expect(user.userId).not.toBe(other.userId);
+  });
+
+  it("sets a state from the form and reports validation errors", async () => {
+    const { base, handle, user, cookie } = await start();
+    const saved = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ key: "travel", ttlDays: "10", note: "Tokyo" }),
+      redirect: "manual",
+    });
+    expect(saved.status).toBe(303);
+    expect(saved.headers.get("location")).toBe("/coach-states");
+    const active = handle.store.getActiveCoachStates(user.userId, `${TODAY}T08:00:00.000Z`);
+    expect(active.find((state) => state.key === "travel")).toMatchObject({ source: "user", evidence: ["Tokyo"] });
+
+    const page = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
+    expect(page).toContain("Tokyo");
+
+    const badKey = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ key: "mode: race week", ttlDays: "7" }),
+      redirect: "manual",
+    });
+    expect(badKey.status).toBe(303);
+    expect(badKey.headers.get("location")).toBe("/coach-states?error=invalid-key");
+
+    const badTtl = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ key: "heat", ttlDays: "0" }),
+      redirect: "manual",
+    });
+    expect(badTtl.status).toBe(303);
+    expect(badTtl.headers.get("location")).toBe("/coach-states?error=invalid-ttl");
+    expect(handle.store.getActiveCoachStates(user.userId, `${TODAY}T08:00:00.000Z`).some((state) => state.key === "heat")).toBe(false);
+
+    const badNote = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ key: "heat", ttlDays: "7", note: "x".repeat(201) }),
+      redirect: "manual",
+    });
+    expect(badNote.status).toBe(303);
+    expect(badNote.headers.get("location")).toBe("/coach-states?error=invalid-note");
+  });
+
+  it("refreshes auto states only through the explicit refresh action", async () => {
+    const { base, cookie } = await start({
+      seed: (store, owner) => {
+        seedSession(store, owner.userId, "race:web", "2026-11-08", "Half marathon", "race", 21.1);
+      },
+    });
+    const before = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
+    expect(before).toContain("Refresh detection");
+    expect(before).not.toContain("2026-11-08");
+
+    const refreshed = await fetch(`${base}/coach-states/refresh`, {
+      method: "POST",
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(refreshed.status).toBe(303);
+    expect(refreshed.headers.get("location")).toBe("/coach-states");
+
+    const after = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
+    expect(after).toContain("2026-11-08");
+    expect(after).toContain("Race week");
+    expect(after).toContain("Setup · 設定");
+    expect(after).toContain("Add it on Profile");
+  });
+
+  it("rejects a cross-origin state POST and keeps the state unchanged", async () => {
+    const { base, handle, user, cookie } = await start();
+    const response = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        cookie,
+        origin: "http://evil.test",
+      },
+      body: formBody({ key: "travel", ttlDays: "7", note: "Cross origin" }),
+      redirect: "manual",
+    });
+    expect(response.status).toBe(403);
+    expect(handle.store.getActiveCoachStates(user.userId, `${TODAY}T08:00:00.000Z`).some((state) => state.key === "travel")).toBe(false);
+  });
+
+  it("shows immutable state events on the audit page", async () => {
+    const { base, cookie } = await start();
+    const saved = await fetch(`${base}/coach-states`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ key: "travel", ttlDays: "7", note: "Tokyo" }),
+      redirect: "manual",
+    });
+    expect(saved.status).toBe(303);
+    const html = await (await fetch(`${base}/coach-audit`, { headers: { cookie } })).text();
+    expect(html).toContain("State activity");
+    expect(html).toContain("set");
+    expect(html).toContain("Travel");
+  });
+
+  it("requires auth for the state manager and audit pages", async () => {
+    const { base } = await start();
+    for (const path of ["/coach-states", "/coach-audit"]) {
+      const response = await fetch(`${base}${path}`, { redirect: "manual" });
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toBe("/login");
+    }
+  });
+
+  it("confirms and resolves a proposed state, scoped to the owner", async () => {
+    const { base, handle, user, cookie, auth } = await start({
+      seed: (store, owner) => {
+        seedCoachState(store, owner.userId, "pain_injury", {
+          stateId: "state:confirm",
+          status: "observing",
+          source: "chat",
+          evidence: ["Knee pain"],
+        });
+      },
+    });
+    const other = auth.signup({
+      username: "confirm_other",
+      password: "other-password-123",
+      displayName: "Confirm Other",
+      timezone: "UTC",
+    }).user;
+    seedCoachState(handle.store, other.userId, "illness", {
+      stateId: "state:foreign",
+      status: "observing",
+      source: "chat",
+    });
+
+    const confirm = await fetch(`${base}/coach-states/${encodeURIComponent("state:confirm")}/confirm`, {
+      method: "POST",
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(confirm.status).toBe(303);
+    expect(handle.store.getCoachState(user.userId, "state:confirm")?.status).toBe("active");
+    expect(handle.store.listCoachStateEvents(user.userId, 10).some((event) => event.action === "confirm")).toBe(true);
+
+    const resolve = await fetch(`${base}/coach-states/${encodeURIComponent("state:confirm")}/resolve`, {
+      method: "POST",
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(resolve.status).toBe(303);
+    expect(handle.store.getCoachState(user.userId, "state:confirm")).toMatchObject({ status: "resolved", source: "user" });
+    expect(handle.store.listCoachStateEvents(user.userId, 10).some((event) => event.action === "resolve")).toBe(true);
+
+    const foreign = await fetch(`${base}/coach-states/${encodeURIComponent("state:foreign")}/confirm`, {
+      method: "POST",
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(foreign.status).toBe(303);
+    expect(foreign.headers.get("location")).toContain("/coach-states?error=");
+    expect(handle.store.getCoachState(other.userId, "state:foreign")?.status).toBe("observing");
+
+    const get = await fetch(`${base}/coach-states/${encodeURIComponent("state:confirm")}/confirm`, {
+      headers: { cookie },
+    });
+    expect(get.status).toBe(405);
+  });
+
+  it("shows active state chips on the calendar and links to the manager", async () => {
+    const { base, cookie } = await start({
+      seed: (store, owner) => {
+        seedCoachState(store, owner.userId, "heat", { evidence: ["Hot week"] });
+      },
+    });
+    const html = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(html).toContain('class="state-chips"');
+    expect(html).toContain("state-chip");
+    expect(html).toContain("Heat");
+    expect(html).toContain("/coach-states");
+    expect(html).toContain("States");
+  });
+
+  it("omits the chip row when there are no active states", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(html).not.toContain('class="state-chips"');
+  });
+
+  it("forwards state changes and blocked-state labels to the chat bubble", async () => {
+    const gateway = await startMockGateway({
+      poc3: {
+        states: [{ stateId: "state:web-travel", key: "travel", status: "active", action: "activate" }],
+        blockedByStates: ["race_week"],
+      },
+    });
+    const { base, cookie } = await start({
+      gatewayUrl: gateway.url,
+      seed: (store, owner) => {
+        seedCoachState(store, owner.userId, "travel", {
+          stateId: "state:web-travel",
+          evidence: ["Tokyo trip"],
+        });
+      },
+    });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie, "x-poc3-request-id": "req-web-state" },
+      body: JSON.stringify({ message: "I am travelling next week" }),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      states?: Array<{ stateId?: string; key?: string; label?: string; status?: string; source?: string; evidence?: string[] }>;
+      blockedByStates?: Array<{ key?: string; label?: string }>;
+    };
+    expect(body.states).toHaveLength(1);
+    expect(body.states?.[0]).toMatchObject({
+      stateId: "state:web-travel",
+      key: "travel",
+      label: "Travel",
+      status: "active",
+      source: "user",
+      evidence: ["Tokyo trip"],
+    });
+    expect(body.blockedByStates).toEqual([{ key: "race_week", label: "Race week" }]);
+
+    const page = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(page).toContain("addStateCards");
+    expect(page).toContain("state-bubble-head");
+    expect(page).toContain("Calendar unchanged —");
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".state-card");
+    expect(css).toContain(".state-form");
+    expect(css).toContain(".state-bubble-head");
   });
 });
 

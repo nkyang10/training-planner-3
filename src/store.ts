@@ -3,6 +3,10 @@ import type {
   Activity,
   AppNotification,
   ChangeSet,
+  CoachDirectiveRecord,
+  CoachStateEvent,
+  CoachStatePatch,
+  CoachStateRecord,
   CoachTurnCompletion,
   CoachTurnRecord,
   GarminKey,
@@ -123,9 +127,48 @@ CREATE TABLE IF NOT EXISTS coach_turns (
   validation_code TEXT,
   outcome TEXT,
   response_json TEXT,
+  directive_hash TEXT,
   PRIMARY KEY (user_id, request_id)
 );
 CREATE INDEX IF NOT EXISTS coach_turns_user_created ON coach_turns (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS coach_directives (
+  directive_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS coach_directives_user_created ON coach_directives (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS coach_states (
+  state_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  state_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  source TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  expires_at TEXT,
+  resolved_at TEXT,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS coach_states_user_updated ON coach_states (user_id, updated_at);
+CREATE INDEX IF NOT EXISTS coach_states_user_key ON coach_states (user_id, state_key, status);
+
+CREATE TABLE IF NOT EXISTS coach_state_events (
+  event_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  state_id TEXT NOT NULL,
+  state_key TEXT NOT NULL,
+  action TEXT NOT NULL,
+  from_status TEXT,
+  to_status TEXT NOT NULL,
+  source TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  evidence TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS coach_state_events_user_created ON coach_state_events (user_id, created_at);
 `;
 
 const INSERT_USER =
@@ -157,11 +200,20 @@ const UPSERT_SESSION =
   "INSERT OR REPLACE INTO sessions (session_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
 const INSERT_CHANGE_SET =
   "INSERT INTO change_sets (change_set_id, user_id, created_at, reverted_at, payload) VALUES (?, ?, ?, ?, ?)";
+const INSERT_COACH_STATE_EVENT = `
+  INSERT INTO coach_state_events
+    (event_id, user_id, state_id, state_key, action, from_status, to_status, source, confidence, evidence, created_at, payload)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`;
+const PRUNE_COACH_STATES =
+  "DELETE FROM coach_states WHERE user_id = ? AND status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?";
+const PRUNE_COACH_STATE_EVENTS =
+  "DELETE FROM coach_state_events WHERE user_id = ? AND created_at < ?";
 const MARK_CHANGE_SET_REVERTED =
   "UPDATE change_sets SET reverted_at = ?, payload = ? WHERE user_id = ? AND change_set_id = ?";
 const CLAIM_COACH_TURN = `
-  INSERT INTO coach_turns (request_id, user_id, created_at, completed_at, status, attempts, validation_code, outcome, response_json)
-  VALUES (?, ?, ?, NULL, 'in_progress', 0, NULL, NULL, NULL)
+  INSERT INTO coach_turns (request_id, user_id, created_at, completed_at, status, attempts, validation_code, outcome, response_json, directive_hash)
+  VALUES (?, ?, ?, NULL, 'in_progress', 0, NULL, NULL, NULL, ?)
   ON CONFLICT(user_id, request_id) DO UPDATE SET
     created_at = excluded.created_at,
     completed_at = NULL,
@@ -169,9 +221,14 @@ const CLAIM_COACH_TURN = `
     attempts = 0,
     validation_code = NULL,
     outcome = NULL,
-    response_json = NULL
+    response_json = NULL,
+    directive_hash = excluded.directive_hash
   WHERE coach_turns.status = 'failed'
 `;
+const INSERT_COACH_DIRECTIVE =
+  "INSERT INTO coach_directives (directive_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
+const INSERT_COACH_STATE =
+  "INSERT INTO coach_states (state_id, user_id, state_key, status, source, updated_at, expires_at, resolved_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 const COMPLETE_COACH_TURN = `
   UPDATE coach_turns
   SET completed_at = ?, status = 'completed', attempts = ?, validation_code = ?, outcome = ?, response_json = ?
@@ -236,14 +293,26 @@ function migrateActivitiesTable(db: SqliteDatabase): void {
   }
 }
 
+/**
+ * Older databases predate the hidden-directive hash on coach turns. Add the column in place so an existing live
+ * database keeps its turn history and idempotency records.
+ */
+function migrateCoachTurnsDirectiveHash(db: SqliteDatabase): void {
+  const columns = db.prepare("PRAGMA table_info(coach_turns)").all();
+  if (columns.some((column) => column["name"] === "directive_hash")) return;
+  db.exec("ALTER TABLE coach_turns ADD COLUMN directive_hash TEXT");
+}
+
 class SqliteStore implements Store {
   private readonly db: SqliteDatabase;
   private closed = false;
 
   constructor(location: string) {
     this.db = new DatabaseSync(location);
+    this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec(SCHEMA);
     migrateActivitiesTable(this.db);
+    migrateCoachTurnsDirectiveHash(this.db);
   }
 
   getUser(userId: string): UserProfile | undefined {
@@ -519,7 +588,7 @@ class SqliteStore implements Store {
   claimCoachTurn(record: CoachTurnRecord): boolean {
     const result = this.db
       .prepare(CLAIM_COACH_TURN)
-      .run(record.requestId, record.userId, record.createdAt);
+      .run(record.requestId, record.userId, record.createdAt, record.directiveHash);
     return Number(result.changes) > 0;
   }
 
@@ -556,7 +625,139 @@ class SqliteStore implements Store {
       validationCode: row["validation_code"] === null ? null : String(row["validation_code"]),
       outcome: row["outcome"] === null ? null : String(row["outcome"]),
       responseJson: row["response_json"] === null ? null : String(row["response_json"]),
+      directiveHash: row["directive_hash"] === null || row["directive_hash"] === undefined ? null : String(row["directive_hash"]),
     };
+  }
+
+  appendCoachDirective(record: CoachDirectiveRecord): void {
+    this.db
+      .prepare(INSERT_COACH_DIRECTIVE)
+      .run(record.directiveId, record.userId, record.createdAt, JSON.stringify(record));
+  }
+
+  listCoachDirectives(userId: string, limit = 50): CoachDirectiveRecord[] {
+    const take = normalizeLimit(limit, 50);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        "SELECT payload FROM coach_directives WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+      )
+      .all(userId, take);
+    return rows.map((row) => decode<CoachDirectiveRecord>(String(row["payload"])));
+  }
+
+  appendCoachState(record: CoachStateRecord): void {
+    this.db
+      .prepare(INSERT_COACH_STATE)
+      .run(
+        record.stateId,
+        record.userId,
+        record.key,
+        record.status,
+        record.source,
+        record.updatedAt,
+        record.expiresAt,
+        record.resolvedAt,
+        JSON.stringify(record),
+      );
+  }
+
+  updateCoachState(userId: string, stateId: string, patch: CoachStatePatch): boolean {
+    const existing = this.getCoachState(userId, stateId);
+    if (existing === undefined) return false;
+    const next: CoachStateRecord = {
+      ...existing,
+      ...patch,
+      stateId: existing.stateId,
+      userId: existing.userId,
+      key: existing.key,
+    };
+    this.db
+      .prepare(
+        `UPDATE coach_states
+          SET status = ?, source = ?, updated_at = ?, expires_at = ?, resolved_at = ?, payload = ?
+          WHERE user_id = ? AND state_id = ?`,
+      )
+      .run(
+        next.status,
+        next.source,
+        next.updatedAt,
+        next.expiresAt,
+        next.resolvedAt,
+        JSON.stringify(next),
+        userId,
+        stateId,
+      );
+    return true;
+  }
+
+  getCoachState(userId: string, stateId: string): CoachStateRecord | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM coach_states WHERE user_id = ? AND state_id = ?")
+      .get(userId, stateId);
+    return row === undefined ? undefined : decode<CoachStateRecord>(String(row["payload"]));
+  }
+
+  listCoachStates(userId: string, limit = 50): CoachStateRecord[] {
+    const take = normalizeLimit(limit, 50);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        "SELECT payload FROM coach_states WHERE user_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT ?",
+      )
+      .all(userId, take);
+    return rows.map((row) => decode<CoachStateRecord>(String(row["payload"])));
+  }
+
+  getActiveCoachStates(userId: string, at: string): CoachStateRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM coach_states
+          WHERE user_id = ?
+            AND status IN ('observing', 'active')
+            AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY updated_at DESC, rowid DESC`,
+      )
+      .all(userId, at);
+    return rows.map((row) => decode<CoachStateRecord>(String(row["payload"])));
+  }
+
+  appendCoachStateEvent(event: CoachStateEvent): void {
+    this.db
+      .prepare(INSERT_COACH_STATE_EVENT)
+      .run(
+        event.eventId,
+        event.userId,
+        event.stateId,
+        event.key,
+        event.action,
+        event.fromStatus,
+        event.toStatus,
+        event.source,
+        event.confidence,
+        JSON.stringify(event.evidence),
+        event.createdAt,
+        JSON.stringify(event),
+      );
+  }
+
+  listCoachStateEvents(userId: string, limit = 20): CoachStateEvent[] {
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM (
+           SELECT payload, created_at, rowid FROM coach_state_events
+            WHERE user_id = ?
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT ?
+         ) ORDER BY created_at DESC, rowid DESC`,
+      )
+      .all(userId, limit);
+    return rows.map((row) => decode<CoachStateEvent>(String(row["payload"])));
+  }
+
+  pruneCoachStates(userId: string, before: string): void {
+    this.db.prepare(PRUNE_COACH_STATES).run(userId, before);
+    this.db.prepare(PRUNE_COACH_STATE_EVENTS).run(userId, before);
   }
 
   transaction<T>(work: () => T): T {

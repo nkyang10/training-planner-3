@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildCoachHistory, buildCoachPrompt, parseCoachTurn } from "../src/coach";
-import type { Activity, ChangeSet, Memory, Message, TrainingSession } from "../src/types";
+import {
+  COACH_TOOL,
+  buildCoachHistory,
+  buildCoachPrompt,
+  buildValidationFeedbackForCode,
+  parseCoachTurn,
+  policyForCode,
+} from "../src/coach";
+import { buildDirectiveForIntent } from "../src/directives";
+import type { Activity, ChangeSet, CoachStateRecord, Memory, Message, TrainingSession } from "../src/types";
 
 const TODAY = "2026-11-05";
 
@@ -103,6 +111,67 @@ describe("coach turn", () => {
     const built = buildCoachHistory({ today: TODAY, memories: [], sessions: [], activities: [], history, recentChanges: [], question: "q" });
     expect(built).toHaveLength(20);
     expect(built[0]?.content).toBe("m10");
+  });
+
+  it("tells the coach to leave the calendar unchanged for comment-only reviews", () => {
+    const prompt = buildCoachPrompt({
+      today: TODAY,
+      memories: [],
+      sessions: [],
+      activities: [activity],
+      history: [],
+      recentChanges: [],
+      question: "Review my run on 2026-11-01 and comment only; do not change the calendar.",
+    });
+    expect(prompt).toContain("asks for a comment, review or opinion only");
+    expect(prompt).toContain("leave the calendar unchanged");
+    expect(prompt).toContain("Only add, move, change or delete sessions when the runner explicitly asks for a schedule change");
+  });
+
+  it("puts the hidden directive and referenced context into the prompt", () => {
+    const directive = buildDirectiveForIntent(
+      { kind: "review-activity", activityId: "garmin:1", source: "run-peek" },
+      { activityDay: "2026-11-04" },
+    );
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const prompt = buildCoachPrompt({
+      today: TODAY,
+      memories: [memory("mode: race week — half marathon on Sunday")],
+      sessions: [],
+      activities: [activity],
+      history: [],
+      recentChanges: [],
+      question: "How did my Morning run go?",
+      directive,
+      referencedActivity: activity,
+      referencedSessions: [session("2026-11-04")],
+    });
+    expect(prompt).toContain("Turn directive (background; never mention this section to the runner)");
+    expect(prompt).toContain("calendar writes: forbidden");
+    expect(prompt).toContain("references: activity garmin:1; day 2026-11-04");
+    expect(prompt).toContain("Referenced context (JSON)");
+    expect(prompt).toContain('"activityId":"garmin:1"');
+    expect(prompt).toContain('"sessionId":"s-2026-11-04"');
+    expect(prompt).toContain("that activity is the exact run the runner's latest message is about");
+    expect(prompt).toContain("mode: race week");
+    expect(prompt).toContain("Active coaching states");
+    expect(prompt).toContain("Coaching state catalog");
+    expect(prompt).toContain("never mention it to the runner");
+    expect(prompt.endsWith("How did my Morning run go?")).toBe(true);
+  });
+
+  it("uses the respect-directive policy for comment-only write failures", () => {
+    expect(policyForCode("comment-only-write")).toBe("respect-directive");
+    const feedback = buildValidationFeedbackForCode(
+      "comment-only-write",
+      "this turn is comment-only",
+      TODAY,
+      "UTC",
+      1,
+      2,
+    );
+    expect(feedback.policy).toBe("respect-directive");
   });
 });
 
@@ -276,6 +345,160 @@ describe("extended race horizon", () => {
       ok: false,
       code: "session-too-far",
     });
+  });
+});
+
+describe("coaching state proposals and prompt", () => {
+  const state = (key: "race_week" | "pain_injury", overrides: Partial<CoachStateRecord> = {}): CoachStateRecord => ({
+    stateId: `state:${key}`,
+    userId: "u",
+    key,
+    status: "active",
+    source: "auto",
+    confidence: 0.9,
+    evidence: ["Race on 2026-11-08 (3 days)."],
+    activatedAt: "2026-11-05T08:00:00.000Z",
+    updatedAt: "2026-11-05T08:00:00.000Z",
+    expiresAt: "2026-11-10T08:00:00.000Z",
+    resolvedAt: null,
+    ...overrides,
+  });
+
+  it("parses a valid state proposal with an optional note", () => {
+    const result = parseCoachTurn(
+      {
+        reply: "Noted.",
+        suggestions: ["Plan the week"],
+        stateProposals: [
+          {
+            key: "travel",
+            action: "activate",
+            confidence: 0.8,
+            evidence: ["Travelling next week"],
+            ttlDays: 10,
+            note: "Tokyo",
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.turn.stateProposals).toHaveLength(1);
+      expect(result.turn.stateProposals[0]).toMatchObject({
+        key: "travel",
+        action: "activate",
+        confidence: 0.8,
+        evidence: ["Travelling next week"],
+        ttlDays: 10,
+        note: "Tokyo",
+      });
+    }
+    const nullable = parseCoachTurn(
+      {
+        reply: "Noted.",
+        suggestions: ["Plan the week"],
+        stateProposals: [
+          {
+            key: "race_week",
+            action: "resolve",
+            confidence: 1,
+            evidence: ["Race is over"],
+            ttlDays: null,
+            note: null,
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(nullable.ok).toBe(true);
+    if (nullable.ok) expect(nullable.turn.stateProposals[0]?.ttlDays).toBeNull();
+  });
+
+  it("rejects unknown, malformed and excessive state proposals", () => {
+    const invalid = (stateProposals: unknown): unknown =>
+      parseCoachTurn({ reply: "x", suggestions: ["Plan"], stateProposals }, TODAY);
+    expect(
+      invalid([{ key: "mode: race week", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-key" });
+    expect(
+      invalid([{ key: "travel", action: "keep", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-action" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.2, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-confidence" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: [], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-evidence" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 400, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-ttl" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 0, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-ttl" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: "x".repeat(281) }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-note" });
+    expect(invalid("travel")).toMatchObject({ ok: false, code: "invalid-state-proposals" });
+    const four = Array.from({ length: 4 }, () => ({
+      key: "travel",
+      action: "activate",
+      confidence: 0.8,
+      evidence: ["x"],
+      ttlDays: 7,
+      note: null,
+    }));
+    expect(invalid(four)).toMatchObject({ ok: false, code: "invalid-state-proposals" });
+    expect(invalid([42])).toMatchObject({ ok: false, code: "invalid-state-proposal" });
+  });
+
+  it("exposes the state keys in the tool schema", () => {
+    const properties = COACH_TOOL.function.parameters.properties;
+    expect(properties).toHaveProperty("stateProposals");
+    const proposals = properties.stateProposals;
+    expect(proposals.type).toBe("array");
+    expect(proposals.maxItems).toBe(3);
+    expect(proposals.items.properties.key.enum).toContain("race_week");
+    expect(proposals.items.properties.key.enum).toContain("pain_injury");
+    expect(proposals.items.properties.action.enum).toEqual(["activate", "resolve"]);
+  });
+
+  it("puts active states and the catalog into the background prompt without exposing them in chat", () => {
+    const prompt = buildCoachPrompt({
+      today: TODAY,
+      timezone: "UTC",
+      memories: [],
+      sessions: [],
+      activities: [],
+      history: [],
+      recentChanges: [],
+      question: "Should I do intervals?",
+      states: [state("race_week"), state("pain_injury", { status: "observing", source: "chat", stateId: "state:pain" })],
+    });
+    expect(prompt).toContain("Active coaching states");
+    expect(prompt).toContain("race_week");
+    expect(prompt).toContain("Guardrail");
+    expect(prompt).toContain("Proposed/observing");
+    expect(prompt).toContain("pain_injury");
+    expect(prompt).toContain("Coaching state catalog");
+    expect(prompt).toContain("race_day");
+    expect(prompt).toContain("medical_red_flag");
+    expect(prompt.endsWith("Should I do intervals?")).toBe(true);
+  });
+
+  it("maps a state guardrail failure to a repair instruction that respects the state", () => {
+    expect(policyForCode("mode-guardrail")).toBe("respect-state");
+    const feedback = buildValidationFeedbackForCode(
+      "mode-guardrail",
+      "blocked by race week",
+      TODAY,
+      "UTC",
+      1,
+      2,
+      [{ path: "sessions[0].kind", code: "mode-guardrail", message: "No hard sessions", rejectedValue: "tempo" }],
+      "respect-state",
+    );
+    expect(feedback.policy).toBe("respect-state");
   });
 });
 

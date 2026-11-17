@@ -25,7 +25,25 @@ import {
   type ValidationFeedback,
 } from "./coach";
 import { applyRevert } from "./history";
-import type { ChangeEntry, ChangeSet, Store, TrainingSession } from "./types";
+import { directiveHash, parseCoachDirective } from "./directives";
+import {
+  applyStateProposals,
+  refreshCoachStates,
+  stateGuardrailViolations,
+  type GuardrailChange,
+  type StateChange,
+  type StateProposal,
+} from "./coach-states";
+import type {
+  Activity,
+  ChangeEntry,
+  ChangeSet,
+  CoachDirective,
+  CoachMode,
+  CoachStateRecord,
+  Store,
+  TrainingSession,
+} from "./types";
 import { addDays, localDay, safeTimeZone } from "./time";
 
 export interface GatewayOptions {
@@ -36,6 +54,8 @@ export interface GatewayOptions {
   modelApiKey: string;
   modelName: string;
   modelId?: string;
+  /** Deterministic auto-state detection; manual/chat states still work when this is off. */
+  autoStates?: boolean;
   now?: () => string;
   fetchImpl?: typeof fetch;
   /** Initial proposal plus at most this many repair calls. Default 2 (one repair). */
@@ -77,6 +97,18 @@ export interface GatewayMeta {
   outcome: TurnOutcome;
   /** The primary validation code when the turn fell back, or null when it did not. */
   validationCode: string | null;
+  /** The hidden directive's mode, or null for a plain chat turn. */
+  mode: CoachMode | null;
+  /** Whether the directive allowed calendar writes; true for plain chat. */
+  writesAllowed: boolean;
+  /** Calendar writes the gateway refused because the directive forbade them. */
+  blockedWrites: number;
+  /** Audit id for the hidden directive, or null when the turn had none. */
+  directiveId: string | null;
+  /** Coaching states activated or resolved by this turn. */
+  states: StateChange[];
+  /** Active state keys that blocked a proposed session on this turn. */
+  blockedByStates: string[];
 }
 
 const FALLBACK_REPLY =
@@ -253,7 +285,11 @@ function repairInstruction(feedback: ValidationFeedback): string {
       ? "Do not silently move or rewrite the rejected session. Ask the runner one short question."
       : feedback.policy === "explain-limit"
         ? "Explain the 180-day booking limit and do not book beyond it."
-        : "Correct the format only; do not invent facts or dates.";
+        : feedback.policy === "respect-directive"
+          ? "This turn is comment-only. Reply with the comment in plain text and do not emit sessions or a revert."
+          : feedback.policy === "respect-state"
+            ? "An active coaching state forbids this session. Change the session to an allowed kind or reply with a short explanation; do not override the state."
+            : "Correct the format only; do not invent facts or dates.";
   return `Your previous answer looked like the schema template or otherwise failed validation. ${JSON.stringify(feedback)} ${policy} Return a corrected proposal by calling ${COACH_TOOL_NAME}, or reply with one short clarifying question in plain text without calling the tool. Never copy schema placeholders such as YYYY-MM-DD or string.`;
 }
 
@@ -276,6 +312,12 @@ function appendRepair(messages: Array<Record<string, unknown>>, reply: ModelRepl
 }
 
 function fallbackFor(code: string | null): string {
+  if (code === "comment-only-write") {
+    return "I kept this turn to a comment and did not change your calendar. Ask again if you want a schedule change.";
+  }
+  if (code === "mode-guardrail") {
+    return "I did not book that session because a coaching-state guardrail protects you. The calendar is unchanged. If the state is wrong, resolve it on the Coach states page.";
+  }
   if (code === "past-session") {
     return `${FALLBACK_REPLY}\n\nI tried to book a date that has already passed, so I did not move it to today automatically.`;
   }
@@ -319,6 +361,12 @@ function emptyMeta(): GatewayMeta {
     attempts: 0,
     outcome: "fallback",
     validationCode: null,
+    mode: null,
+    writesAllowed: true,
+    blockedWrites: 0,
+    directiveId: null,
+    states: [],
+    blockedByStates: [],
   };
 }
 
@@ -349,6 +397,193 @@ function resolveChangeSet(store: Store, userId: string, requested: string): Chan
   return store.getChangeSet(userId, requested);
 }
 
+/**
+ * The calendar a turn would produce: current sessions plus adds/updates/removes and a revert.
+ *
+ * Guardrails need both halves: `sessions` is the context used to find the effective next race, and `changes` is the
+ * set of sessions the turn actually introduces or restores. Checking all effective sessions would flag untouched
+ * sessions that were already booked; checking only raw drafts would miss a revert.
+ */
+function effectiveCalendarForTurn(
+  store: Store,
+  userId: string,
+  turn: CoachTurn,
+  today: string,
+  at: string,
+): { sessions: TrainingSession[]; changes: GuardrailChange[] } {
+  const sessions = new Map<string, TrainingSession>();
+  for (const session of store.listSessions(userId, today, addDays(today, HORIZON_DAYS))) {
+    sessions.set(session.sessionId, session);
+  }
+  const changes: GuardrailChange[] = [];
+
+  if (turn.revertChangeSetId !== null) {
+    const target = resolveChangeSet(store, userId, turn.revertChangeSetId);
+    if (target !== undefined && target.revertedAt === null) {
+      for (const entry of [...target.entries].reverse()) {
+        if (entry.before === null) {
+          sessions.delete(entry.sessionId);
+          continue;
+        }
+        sessions.set(entry.sessionId, entry.before);
+        if (entry.before.day >= today) {
+          changes.push({
+            sessionId: entry.before.sessionId,
+            action: "revert",
+            day: entry.before.day,
+            kind: entry.before.kind,
+            title: entry.before.title,
+          });
+        }
+      }
+    }
+  }
+
+  for (let index = 0; index < turn.sessions.length; index += 1) {
+    const draft = turn.sessions[index];
+    if (draft === undefined) continue;
+    if (draft.action === "remove") {
+      if (draft.sessionId !== null) sessions.delete(draft.sessionId);
+      continue;
+    }
+    if (draft.action === "update") {
+      const existing =
+        draft.sessionId === null
+          ? undefined
+          : sessions.get(draft.sessionId) ?? store.getSession(userId, draft.sessionId);
+      if (existing === undefined) continue;
+      const updated: TrainingSession = {
+        ...existing,
+        day: draft.day,
+        title: draft.title,
+        kind: draft.kind,
+        distanceKm: draft.distanceKm,
+        durationMin: draft.durationMin,
+        note: draft.note,
+      };
+      sessions.set(updated.sessionId, updated);
+      changes.push({
+        sessionId: updated.sessionId,
+        action: "update",
+        day: updated.day,
+        kind: updated.kind,
+        title: updated.title,
+      });
+      continue;
+    }
+    const added: TrainingSession = {
+      sessionId: `draft:${index}:${draft.day}:${draft.kind}:${draft.title}`,
+      userId,
+      day: draft.day,
+      title: draft.title,
+      kind: draft.kind,
+      distanceKm: draft.distanceKm,
+      durationMin: draft.durationMin,
+      note: draft.note,
+      createdAt: at,
+    };
+    sessions.set(added.sessionId, added);
+    changes.push({
+      sessionId: added.sessionId,
+      action: "add",
+      day: added.day,
+      kind: added.kind,
+      title: added.title,
+    });
+  }
+
+  return { sessions: [...sessions.values()], changes };
+}
+
+interface DirectiveRequest {
+  directive: CoachDirective | undefined;
+  hash: string | null;
+}
+
+/** Read the hidden directive from the trusted web proxy. Plain chat turns carry none. */
+function directiveFromBody(
+  body: Record<string, unknown>,
+): { ok: true; request: DirectiveRequest } | { ok: false; detail: string } {
+  const poc3 = body["poc3"];
+  if (poc3 === undefined) return { ok: true, request: { directive: undefined, hash: null } };
+  if (!isObject(poc3)) return { ok: false, detail: "poc3 must be an object" };
+  const raw = poc3["directive"];
+  if (raw === undefined) return { ok: true, request: { directive: undefined, hash: null } };
+  const parsed = parseCoachDirective(raw);
+  if (!parsed.ok) return { ok: false, detail: parsed.detail };
+  return { ok: true, request: { directive: parsed.directive, hash: directiveHash(parsed.directive) } };
+}
+
+interface ResolvedDirective {
+  activity?: Activity;
+  sessions: TrainingSession[];
+}
+
+/** Load the rows a directive points at. References are resolved from the store, never trusted from the browser. */
+function resolveDirectiveReferences(
+  store: Store,
+  userId: string,
+  directive: CoachDirective,
+): { ok: true; resolved: ResolvedDirective } | { ok: false; detail: string } {
+  const references = directive.references;
+  if (references === undefined) return { ok: true, resolved: { sessions: [] } };
+  let activity: Activity | undefined;
+  if (references.activityId !== undefined) {
+    activity = store.getActivity(userId, references.activityId);
+    if (activity === undefined) return { ok: false, detail: `activity not found: ${references.activityId}` };
+    if (references.day !== undefined && activity.day !== references.day) {
+      return { ok: false, detail: "the referenced activity does not belong to the referenced day" };
+    }
+  }
+  const sessions: TrainingSession[] = [];
+  const seen = new Set<string>();
+  const addSessions = (rows: readonly TrainingSession[]): void => {
+    for (const session of rows) {
+      if (seen.has(session.sessionId)) continue;
+      seen.add(session.sessionId);
+      sessions.push(session);
+    }
+  };
+  const day = references.day ?? activity?.day;
+  if (day !== undefined) addSessions(store.listSessions(userId, day, day));
+  if (references.weekStart !== undefined) {
+    addSessions(store.listSessions(userId, references.weekStart, addDays(references.weekStart, 6)));
+  }
+  if (references.sessionIds !== undefined) {
+    for (const sessionId of references.sessionIds) {
+      const session = store.getSession(userId, sessionId);
+      if (session === undefined) return { ok: false, detail: `session not found: ${sessionId}` };
+      addSessions([session]);
+    }
+  }
+  return { ok: true, resolved: { ...(activity === undefined ? {} : { activity }), sessions } };
+}
+
+/** Persist the hidden directive for the owner's audit page; it is never part of the visible chat. */
+function persistDirective(
+  store: Store,
+  userId: string,
+  requestId: string | null,
+  messageId: string,
+  visible: string,
+  directive: CoachDirective,
+  blockedWrites: number,
+  at: string,
+): string {
+  const directiveId = `directive:${randomUUID()}`;
+  store.appendCoachDirective({
+    directiveId,
+    userId,
+    requestId,
+    messageId,
+    visible,
+    directive,
+    blockedWrites,
+    createdAt: at,
+  });
+  return directiveId;
+}
+
 interface ApplyResult {
   reply: string;
   meta: GatewayMeta;
@@ -364,15 +599,26 @@ function applyParsedTurn(
   turn: CoachTurn,
   at: string,
   attempts: number,
+  allowCalendarWrites = true,
+  allowMemoryWrites = true,
 ): ApplyResult {
   return options.store.transaction(() => {
     const meta = emptyMeta();
     meta.attempts = attempts;
     meta.suggestions = turn.suggestions;
+    const effectiveTurn = allowMemoryWrites ? turn : { ...turn, memories: [] };
 
     const appendAssistant = (text: string): void => {
       options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text, createdAt: at });
     };
+
+    // Defense in depth: a comment-only directive never writes, even if a caller skipped the pre-apply check.
+    if (!allowCalendarWrites && (turn.sessions.length > 0 || turn.revertChangeSetId !== null)) {
+      meta.outcome = "clarified";
+      const reply = "I kept this turn to a comment and did not change your calendar.";
+      appendAssistant(reply);
+      return { reply, meta };
+    }
 
     if (turn.revertChangeSetId !== null && turn.sessions.length > 0) {
       meta.outcome = "fallback";
@@ -407,11 +653,12 @@ function applyParsedTurn(
       meta.reverted = true;
       meta.sessions = result.changes.length;
       meta.changeSetId = options.store.listChangeSets(userId, 1)[0]?.changeSetId ?? null;
+      meta.states = applyStateProposals(options.store, userId, turn.stateProposals, at);
       const reply = turn.reply;
-      for (const text of turn.memories) {
+      for (const text of effectiveTurn.memories) {
         options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
       }
-      meta.memories = turn.memories.length;
+      meta.memories = effectiveTurn.memories.length;
       meta.outcome = "committed";
       appendAssistant(reply);
       return { reply, meta };
@@ -419,10 +666,11 @@ function applyParsedTurn(
 
     const reply = turn.reply;
     const failures: TurnFailure[] = [];
-    for (const text of turn.memories) {
+    meta.states = applyStateProposals(options.store, userId, turn.stateProposals, at);
+    for (const text of effectiveTurn.memories) {
       options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
     }
-    meta.memories = turn.memories.length;
+    meta.memories = effectiveTurn.memories.length;
 
     for (const draft of turn.sessions) {
       if (draft.action === "add") {
@@ -564,10 +812,22 @@ export function createGateway(options: GatewayOptions): Gateway {
         return;
       }
       const userId = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : options.userId;
+      const directiveResult = directiveFromBody(body);
+      if (!directiveResult.ok) {
+        sendJson(response, 400, { error: { code: "invalid-directive", detail: directiveResult.detail } });
+        return;
+      }
+      const { directive, hash: currentDirectiveHash } = directiveResult.request;
       const requestId = body["stream"] === true ? null : requestIdFrom(request, body);
       if (requestId !== null) {
         const existing = options.store.getCoachTurn(userId, requestId);
         if (existing?.status === "completed" && existing.responseJson !== null) {
+          if ((existing.directiveHash ?? null) !== currentDirectiveHash) {
+            sendJson(response, 409, {
+              error: { code: "directive-mismatch", detail: "the request id was used with a different turn directive" },
+            });
+            return;
+          }
           response.writeHead(200, {
             "content-type": "application/json; charset=utf-8",
             "cache-control": "no-store",
@@ -582,6 +842,17 @@ export function createGateway(options: GatewayOptions): Gateway {
           });
           return;
         }
+      }
+      let resolved: ResolvedDirective = { sessions: [] };
+      if (directive !== undefined) {
+        const resolution = resolveDirectiveReferences(options.store, userId, directive);
+        if (!resolution.ok) {
+          sendJson(response, 404, { error: { code: "reference-not-found", detail: resolution.detail } });
+          return;
+        }
+        resolved = resolution.resolved;
+      }
+      if (requestId !== null) {
         const claimed = options.store.claimCoachTurn({
           requestId,
           userId,
@@ -592,6 +863,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           validationCode: null,
           outcome: null,
           responseJson: null,
+          directiveHash: currentDirectiveHash,
         });
         if (!claimed) {
           sendJson(response, 409, {
@@ -600,10 +872,15 @@ export function createGateway(options: GatewayOptions): Gateway {
           return;
         }
       }
-      const profile = options.store.getUser(userId);
-      const timezone = safeTimeZone(profile?.timezone);
-      const nowIso = now();
-      const today = localDay(nowIso, timezone);
+
+      try {
+        const profile = options.store.getUser(userId);
+        const timezone = safeTimeZone(profile?.timezone);
+        const nowIso = now();
+        const today = localDay(nowIso, timezone);
+        const states = refreshCoachStates(options.store, userId, nowIso, today, {
+          detect: options.autoStates !== false,
+        });
       const history = options.store.listMessages(userId, 20);
       const recentChanges = options.store.listChangeSets(userId, 10);
       const prompt = buildCoachPrompt({
@@ -617,10 +894,15 @@ export function createGateway(options: GatewayOptions): Gateway {
         history,
         recentChanges,
         question,
+        states,
+        ...(directive === undefined ? {} : { directive }),
+        ...(resolved.activity === undefined ? {} : { referencedActivity: resolved.activity }),
+        ...(resolved.sessions.length === 0 ? {} : { referencedSessions: resolved.sessions }),
       });
       const createdAt = now();
+      const userMessageId = randomUUID();
       options.store.appendMessage({
-        messageId: randomUUID(),
+        messageId: userMessageId,
         userId,
         role: "user",
         text: question,
@@ -637,6 +919,9 @@ export function createGateway(options: GatewayOptions): Gateway {
       let meta = emptyMeta();
       let validationCode: string | null = null;
       let persisted = false;
+      let blockedWrites = 0;
+      let blockedByStates: string[] = [];
+      let lastProposals: StateProposal[] = [];
       let attempt = 0;
       try {
         for (attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -648,9 +933,11 @@ export function createGateway(options: GatewayOptions): Gateway {
             meta.outcome = "clarified";
             meta.validationCode = null;
             validationCode = null;
+            blockedByStates = [];
             break;
           }
           if (extracted.kind === "invalid") {
+            blockedByStates = [];
             validationCode = extracted.code;
             meta.attempts = attempt;
             meta.validationCode = validationCode;
@@ -672,7 +959,102 @@ export function createGateway(options: GatewayOptions): Gateway {
 
           const parsed: ParseResult = parseCoachTurn(extracted.raw, today);
           if (parsed.ok) {
-            const applied = applyParsedTurn(options, userId, parsed.turn, now(), attempt);
+            lastProposals = parsed.turn.stateProposals;
+            if (
+              directive !== undefined &&
+              !directive.allowCalendarWrites &&
+              (parsed.turn.sessions.length > 0 || parsed.turn.revertChangeSetId !== null)
+            ) {
+              blockedByStates = [];
+              blockedWrites += 1;
+              validationCode = "comment-only-write";
+              meta.attempts = attempt;
+              meta.validationCode = validationCode;
+              if (attempt >= maxAttempts) {
+                reply = fallbackFor(validationCode);
+                break;
+              }
+              const feedback = buildValidationFeedbackForCode(
+                "comment-only-write",
+                "this turn is comment-only: reply in plain text and do not emit sessions or a revert",
+                today,
+                timezone,
+                attempt,
+                maxAttempts,
+                [
+                  {
+                    path: "sessions",
+                    code: "comment-only-write",
+                    message: "calendar writes are forbidden on this turn",
+                  },
+                ],
+                "respect-directive",
+              );
+              appendRepair(messages, modelReply, feedback);
+              continue;
+            }
+            const proposedActiveStates: CoachStateRecord[] = parsed.turn.stateProposals
+              .filter((proposal) => proposal.action === "activate")
+              .map((proposal) => ({
+                stateId: `proposed:${proposal.key}`,
+                userId,
+                key: proposal.key,
+                status: "active" as const,
+                source: "chat" as const,
+                confidence: proposal.confidence,
+                evidence: proposal.evidence,
+                activatedAt: now(),
+                updatedAt: now(),
+                expiresAt: null,
+                resolvedAt: null,
+              }));
+            const effectiveCalendar = effectiveCalendarForTurn(options.store, userId, parsed.turn, today, now());
+            const guardrailViolations = stateGuardrailViolations(
+              options.store,
+              userId,
+              [...states, ...proposedActiveStates],
+              effectiveCalendar.changes,
+              today,
+              effectiveCalendar.sessions,
+            );
+            if (guardrailViolations.length > 0) {
+              blockedByStates = [...new Set(guardrailViolations.map((violation) => violation.key))];
+              validationCode = "mode-guardrail";
+              meta.attempts = attempt;
+              meta.validationCode = validationCode;
+              meta.blockedByStates = blockedByStates;
+              if (attempt >= maxAttempts) {
+                reply = fallbackFor(validationCode);
+                break;
+              }
+              const feedback = buildValidationFeedbackForCode(
+                "mode-guardrail",
+                guardrailViolations.map((violation) => violation.message).join(" "),
+                today,
+                timezone,
+                attempt,
+                maxAttempts,
+                guardrailViolations.map((violation) => ({
+                  path: violation.path,
+                  code: "mode-guardrail",
+                  message: violation.message,
+                  rejectedValue: violation.kind,
+                })),
+                "respect-state",
+              );
+              appendRepair(messages, modelReply, feedback);
+              continue;
+            }
+            blockedByStates = [];
+            const applied = applyParsedTurn(
+              options,
+              userId,
+              parsed.turn,
+              now(),
+              attempt,
+              directive?.allowCalendarWrites !== false,
+              directive?.allowMemoryWrites !== false,
+            );
             reply = applied.reply;
             meta = applied.meta;
             validationCode = meta.validationCode;
@@ -689,16 +1071,41 @@ export function createGateway(options: GatewayOptions): Gateway {
           const feedback = buildValidationFeedback(parsed, today, timezone, attempt, maxAttempts);
           appendRepair(messages, modelReply, feedback);
         }
-      } catch (error) {
+      } catch {
         if (requestId !== null) options.store.failCoachTurn(userId, requestId, now());
-        sendJson(response, 502, { error: { code: "model-failed", detail: error instanceof Error ? error.message : String(error) } });
+        if (directive !== undefined) {
+          persistDirective(options.store, userId, requestId, userMessageId, question, directive, blockedWrites, now());
+        }
+        sendJson(response, 502, { error: { code: "model-failed", detail: "the model call failed" } });
         return;
+      }
+
+      meta.mode = directive?.mode ?? null;
+      meta.writesAllowed = directive?.allowCalendarWrites !== false;
+      meta.blockedWrites = blockedWrites;
+      meta.blockedByStates = blockedByStates;
+      if (directive !== undefined) {
+        meta.directiveId = persistDirective(
+          options.store,
+          userId,
+          requestId,
+          userMessageId,
+          question,
+          directive,
+          blockedWrites,
+          now(),
+        );
       }
 
       if (!persisted) {
         meta.attempts = attempt;
         meta.validationCode = validationCode;
         if (meta.outcome !== "clarified") meta.outcome = "fallback";
+        // A guardrail fallback can still leave the runner with the context the model proposed; sensitive states
+        // stay observing and surface as a confirmation card instead of being silently lost.
+        if (validationCode === "mode-guardrail" && lastProposals.length > 0) {
+          meta.states = options.store.transaction(() => applyStateProposals(options.store, userId, lastProposals, now()));
+        }
         options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text: reply, createdAt: now() });
       }
 
@@ -728,9 +1135,19 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
       }
       sendJson(response, 200, completion);
-    })().catch((error: unknown) => {
+      } catch (error) {
+        if (requestId !== null) {
+          try {
+            options.store.failCoachTurn(userId, requestId, now());
+          } catch {
+            // The claim is best-effort; the response below is still the source of truth for this request.
+          }
+        }
+        throw error;
+      }
+    })().catch(() => {
       if (!response.headersSent) {
-        sendJson(response, 500, { error: { code: "gateway-failed", detail: error instanceof Error ? error.message : String(error) } });
+        sendJson(response, 500, { error: { code: "gateway-failed", detail: "the gateway failed before it could reply" } });
       } else {
         response.end();
       }

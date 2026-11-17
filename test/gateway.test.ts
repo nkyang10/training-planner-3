@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createGateway, type GatewayMeta } from "../src/gateway";
 import { createStore, type StoreHandle } from "../src/store";
-import type { SessionKind } from "../src/types";
+import type { SessionKind, Store } from "../src/types";
 
 const USER = "demo-runner";
 const TODAY = "2026-11-05";
@@ -13,6 +13,7 @@ interface TurnOverrides {
   sessions?: unknown[];
   suggestions?: string[];
   revertChangeSetId?: string | null;
+  stateProposals?: unknown[];
 }
 
 const turn = (overrides: TurnOverrides = {}): Record<string, unknown> => ({
@@ -21,6 +22,7 @@ const turn = (overrides: TurnOverrides = {}): Record<string, unknown> => ({
   sessions: [{ day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35, note: "conversational" }],
   suggestions: SUGGESTIONS,
   revertChangeSetId: null,
+  stateProposals: [],
   ...overrides,
 });
 
@@ -116,6 +118,22 @@ afterEach(async () => {
 interface BaseOptions {
   now?: () => string;
   timezone?: string;
+  /** Simulate a state-store failure before the prompt is built. */
+  failStateRefresh?: boolean;
+}
+
+function failingStateStore(store: Store): Store {
+  return new Proxy(store, {
+    get(target, property) {
+      if (property === "listCoachStates") {
+        return () => {
+          throw new Error("state store unavailable");
+        };
+      }
+      const value = Reflect.get(target, property);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
@@ -132,7 +150,7 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
     });
   }
   const gateway = createGateway({
-    store: handle.store,
+    store: options.failStateRefresh === true ? failingStateStore(handle.store) : handle.store,
     userId: USER,
     modelBaseUrl: "http://model.test/v1",
     modelApiKey: "test",
@@ -920,6 +938,7 @@ describe("idempotent coach turns", () => {
       validationCode: null,
       outcome: null,
       responseJson: null,
+      directiveHash: null,
     });
 
     const response = await post(url, {
@@ -930,6 +949,683 @@ describe("idempotent coach turns", () => {
 
     expect(response.status).toBe(409);
     expect(model.prompts).toHaveLength(0);
+  });
+});
+
+describe("hidden coach directives", () => {
+  const seedRun = (handle: StoreHandle): void => {
+    handle.store.appendActivity({
+      activityId: "garmin:run-1",
+      userId: USER,
+      day: "2026-11-04",
+      title: "Morning run",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: 145,
+      source: "garmin",
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    });
+  };
+
+  it("blocks a calendar write on a comment-only turn and repairs to a comment", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedRun(handle);
+    model.responses.push(
+      modelResponse(
+        turn({
+          reply: "I would book an easy run.",
+          memories: [],
+          sessions: [{ day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35, note: null }],
+        }),
+      ),
+      textResponse("You ran 5 km at an easy effort. Keep the effort relaxed and check the plan for the day."),
+    );
+
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How did my Morning run go?" }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          allowMemoryWrites: true,
+          focus: ["schedule", "pace"],
+          references: { activityId: "garmin:run-1", day: "2026-11-04" },
+          background: "Comment only: check the day's plan.",
+          source: "run-peek",
+          style: { language: "auto", tone: "supportive" },
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toContain("Keep the effort relaxed");
+    expect(body.poc3).toMatchObject({
+      sessions: 0,
+      memories: 0,
+      changes: [],
+      changeSetId: null,
+      mode: "review",
+      writesAllowed: false,
+      blockedWrites: 1,
+      attempts: 2,
+      outcome: "clarified",
+      validationCode: null,
+    });
+    expect(body.poc3.directiveId).toMatch(/^directive:/);
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(1);
+    expect(handle.store.listCoachDirectives(USER)[0]).toMatchObject({
+      visible: "How did my Morning run go?",
+      blockedWrites: 1,
+      directive: { mode: "review", allowCalendarWrites: false },
+    });
+    expect(model.prompts).toHaveLength(2);
+    expect(model.prompts[0]).toContain("Turn directive");
+    expect(model.prompts[0]).toContain("calendar writes: forbidden");
+    expect(model.prompts[0]).toContain("Referenced context");
+    expect(model.prompts[0]).toContain("Morning run");
+    expect(model.prompts[0]).toContain("that activity is the exact run the runner's latest message is about");
+    expect(model.prompts[1]).toContain("comment-only");
+  });
+
+  it("accepts a plain-text comment on a comment-only turn without touching the calendar", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    model.responses.push(textResponse("Nice easy run. Keep the effort relaxed."));
+
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "What do you think?" }],
+      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toBe("Nice easy run. Keep the effort relaxed.");
+    expect(body.poc3).toMatchObject({
+      sessions: 0,
+      changes: [],
+      changeSetId: null,
+      mode: "review",
+      writesAllowed: false,
+      blockedWrites: 0,
+      attempts: 1,
+      outcome: "clarified",
+    });
+    expect(handle.store.listMessages(USER, 10).map((message) => message.text)).toEqual([
+      "What do you think?",
+      "Nice easy run. Keep the effort relaxed.",
+    ]);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(1);
+  });
+
+  it("lets a plan directive write and records the directive", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(
+      turn({
+        reply: "Booked an easy Friday.",
+        memories: [],
+        sessions: [{ day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35, note: null }],
+      }),
+    );
+
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Add an easy run on 2026-11-06." }],
+      poc3: {
+        directive: {
+          mode: "plan",
+          allowCalendarWrites: true,
+          references: { day: "2026-11-06" },
+          source: "day-menu",
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3).toMatchObject({
+      sessions: 1,
+      mode: "plan",
+      writesAllowed: true,
+      blockedWrites: 0,
+      outcome: "committed",
+    });
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
+    expect(handle.store.listCoachDirectives(USER)[0]?.blockedWrites).toBe(0);
+  });
+
+  it("rejects a missing or foreign reference before calling the model", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const missing = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How did my run go?" }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          references: { activityId: "garmin:missing" },
+          source: "run-peek",
+        },
+      },
+    });
+    expect(missing.status).toBe(404);
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listMessages(USER, 10)).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(0);
+
+    handle.store.appendActivity({
+      activityId: "garmin:foreign",
+      userId: "someone-else",
+      day: "2026-11-04",
+      title: "Foreign run",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: 145,
+      source: "garmin",
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    });
+    const foreign = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How did my run go?" }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          references: { activityId: "garmin:foreign" },
+          source: "run-peek",
+        },
+      },
+    });
+    expect(foreign.status).toBe(404);
+    expect(model.prompts).toHaveLength(0);
+  });
+
+  it("refuses a replay whose directive differs from the original turn", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(turn({ reply: "Comment only.", memories: [], sessions: [] }));
+
+    const first = await post(url, {
+      model: "poc3-coach",
+      request_id: "req-directive",
+      messages: [{ role: "user", content: "How did my run go?" }],
+      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "run-peek" } },
+    });
+    expect(first.status).toBe(200);
+
+    const second = await post(url, {
+      model: "poc3-coach",
+      request_id: "req-directive",
+      messages: [{ role: "user", content: "How did my run go?" }],
+      poc3: { directive: { mode: "plan", allowCalendarWrites: true, source: "day-menu" } },
+    });
+    expect(second.status).toBe(409);
+    const body = (await second.json()) as { error?: { code?: string } };
+    expect(body.error?.code).toBe("directive-mismatch");
+    expect(model.prompts).toHaveLength(1);
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+  });
+
+  it("drops memories when the directive forbids memory writes", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(turn({ reply: "Noted.", memories: ["Should not be stored"], sessions: [] }));
+
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Comment only." }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          allowMemoryWrites: false,
+          source: "composer",
+        },
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3).toMatchObject({ memories: 0, sessions: 0, writesAllowed: false });
+    expect(handle.store.listMemories(USER, 100)).toHaveLength(0);
+  });
+
+  it("rejects an invalid directive before the model call", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Hi" }],
+      poc3: { directive: { mode: "review", allowCalendarWrites: "no", source: "run-peek" } },
+    });
+    expect(response.status).toBe(400);
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listMessages(USER, 10)).toHaveLength(0);
+  });
+});
+
+describe("coaching states in the gateway", () => {
+  it("detects race week and injects it into the prompt", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "race:1", "2026-11-08", "Half marathon", "race");
+    model.answers.push(turn({ reply: "Race week noted.", memories: [], sessions: [] }));
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "What should I do this week?" }] });
+    expect(response.status).toBe(200);
+    expect(model.prompts[0]).toContain("Active coaching states");
+    expect(model.prompts[0]).toContain("race_week");
+    expect(model.prompts[0]).toContain("Race week");
+    const states = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
+    expect(states.some((state) => state.key === "race_week" && state.source === "auto")).toBe(true);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.states).toEqual([]);
+    expect(body.poc3.blockedByStates).toEqual([]);
+  });
+
+  it("refuses a tempo session in race week and accepts the repaired easy session", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "race:1", "2026-11-07", "Half marathon", "race");
+    model.answers.push(
+      turn({
+        reply: "Tempo booked.",
+        memories: [],
+        sessions: [{ day: "2026-11-06", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30 }],
+      }),
+    );
+    model.answers.push(
+      turn({
+        reply: "Easy instead.",
+        memories: [],
+        sessions: [{ day: "2026-11-06", title: "Easy", kind: "easy", distanceKm: 5, durationMin: 30 }],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.attempts).toBe(2);
+    expect(body.poc3.sessions).toBe(1);
+    expect(body.poc3.validationCode).toBeNull();
+    expect(body.poc3.blockedByStates).toEqual([]);
+    expect(model.prompts[1]).toContain("active coaching state");
+    expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06").map((session) => session.kind)).toEqual(["easy"]);
+  });
+
+  it("falls back without writing when the model keeps the race-week violation", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "race:1", "2026-11-07", "Half marathon", "race");
+    const blocked = turn({
+      reply: "Tempo booked.",
+      memories: [],
+      sessions: [{ day: "2026-11-06", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30 }],
+    });
+    model.answers.push(blocked);
+    model.answers.push(blocked);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.validationCode).toBe("mode-guardrail");
+    expect(body.poc3.blockedByStates).toEqual(["race_week"]);
+    expect(body.poc3.sessions).toBe(0);
+    expect(body.choices[0]?.message.content).toContain("coaching-state guardrail");
+    expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06")).toHaveLength(0);
+  });
+
+  it("applies an ordinary state proposal and returns the state change", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(
+      turn({
+        reply: "Travel noted.",
+        memories: [],
+        sessions: [],
+        stateProposals: [
+          {
+            key: "travel",
+            action: "activate",
+            confidence: 0.8,
+            evidence: ["Travelling to Tokyo"],
+            ttlDays: 10,
+            note: "Tokyo",
+          },
+        ],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I am travelling next week" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.states).toHaveLength(1);
+    expect(body.poc3.states[0]).toMatchObject({ key: "travel", status: "active", action: "activate" });
+    expect(body.poc3.states[0]?.stateId).toMatch(/^state:/);
+    const active = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
+    expect(active.find((state) => state.key === "travel")).toMatchObject({ source: "chat", confidence: 0.8 });
+    expect(active.find((state) => state.key === "travel")?.evidence).toContain("Tokyo");
+    expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "activate" && event.key === "travel")).toBe(true);
+  });
+
+  it("keeps a sensitive proposal observing until the runner confirms", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(
+      turn({
+        reply: "I am sorry about the knee. Please see a clinician if it worsens.",
+        memories: [],
+        sessions: [],
+        stateProposals: [
+          {
+            key: "pain_injury",
+            action: "activate",
+            confidence: 0.6,
+            evidence: ["Knee pain after the run"],
+            ttlDays: 14,
+            note: null,
+          },
+        ],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "My knee hurts after runs" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
+    const active = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
+    expect(active.find((state) => state.key === "pain_injury")).toMatchObject({ status: "observing", source: "chat" });
+  });
+
+  it("blocks easy training while an active user illness state is set and accepts rest", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendCoachState({
+      stateId: "state:illness",
+      userId: USER,
+      key: "illness",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Fever"],
+      activatedAt: "2026-11-05T07:00:00.000Z",
+      updatedAt: "2026-11-05T07:00:00.000Z",
+      expiresAt: "2026-11-12T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    model.answers.push(
+      turn({
+        reply: "Easy run booked.",
+        memories: [],
+        sessions: [{ day: "2026-11-06", title: "Easy", kind: "easy", distanceKm: 5, durationMin: 30 }],
+      }),
+    );
+    model.answers.push(
+      turn({
+        reply: "Rest instead.",
+        memories: [],
+        sessions: [{ day: "2026-11-06", title: "Rest", kind: "rest", distanceKm: null, durationMin: null }],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I have a fever" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.attempts).toBe(2);
+    expect(body.poc3.sessions).toBe(1);
+    expect(body.poc3.validationCode).toBeNull();
+    expect(model.prompts[0]).toContain("illness");
+    expect(model.prompts[1]).toContain("active coaching state");
+    expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06").map((session) => session.kind)).toEqual(["rest"]);
+  });
+
+  it("resolves a state through a proposal", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendCoachState({
+      stateId: "state:heat",
+      userId: USER,
+      key: "heat",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Hot week"],
+      activatedAt: "2026-11-04T07:00:00.000Z",
+      updatedAt: "2026-11-04T07:00:00.000Z",
+      expiresAt: "2026-11-12T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    model.answers.push(
+      turn({
+        reply: "Heat resolved.",
+        memories: [],
+        sessions: [],
+        stateProposals: [
+          {
+            key: "heat",
+            action: "resolve",
+            confidence: 1,
+            evidence: ["Cooler weather"],
+            ttlDays: null,
+            note: null,
+          },
+        ],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "It is cooler now" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.states[0]).toMatchObject({ key: "heat", status: "resolved", action: "resolve" });
+    expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").some((state) => state.key === "heat")).toBe(false);
+    expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "resolve" && event.key === "heat")).toBe(true);
+  });
+
+  it("allows a session after the race window even while race week is active", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "race:1", "2026-11-07", "Half marathon", "race");
+    model.answers.push(
+      turn({
+        reply: "Tempo after the race.",
+        memories: [],
+        sessions: [{ day: "2026-11-10", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30 }],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo for after the race" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.validationCode).toBeNull();
+    expect(body.poc3.sessions).toBe(1);
+    expect(handle.store.listSessions(USER, "2026-11-10", "2026-11-10").map((session) => session.kind)).toEqual(["tempo"]);
+  });
+
+  it("blocks a race move that would make a tempo session fall inside race week", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "race:1", "2026-11-07", "Half marathon", "race");
+    const blocked = turn({
+      reply: "Moved the race and booked a tempo.",
+      memories: [],
+      sessions: [
+        {
+          action: "update",
+          sessionId: "race:1",
+          day: "2026-11-10",
+          title: "Half marathon",
+          kind: "race",
+          distanceKm: 21.1,
+          durationMin: 120,
+          note: null,
+        },
+        { action: "add", day: "2026-11-08", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30, note: null },
+      ],
+    });
+    model.answers.push(blocked, blocked);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move the race to Tuesday" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.validationCode).toBe("mode-guardrail");
+    expect(body.poc3.blockedByStates).toEqual(["race_week"]);
+    expect(handle.store.listSessions(USER, "2026-11-08", "2026-11-08")).toHaveLength(0);
+    expect(handle.store.getSession(USER, "race:1")?.day).toBe("2026-11-07");
+  });
+
+  it("blocks a revert that would restore a tempo session during injury", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedSession(handle, "tempo:1", "2026-11-06", "Tempo", "tempo");
+    const tempo = handle.store.getSession(USER, "tempo:1");
+    handle.store.deleteSession(USER, "tempo:1");
+    handle.store.appendChangeSet({
+      changeSetId: "change:remove-tempo",
+      userId: USER,
+      createdAt: `${TODAY}T07:00:00.000Z`,
+      summary: "Removed tempo",
+      entries: [
+        {
+          action: "remove",
+          sessionId: "tempo:1",
+          before: tempo ?? null,
+          after: null,
+          fromDay: "2026-11-06",
+          toDay: null,
+          title: "Tempo",
+          kind: "tempo",
+        },
+      ],
+      revertedAt: null,
+    });
+    handle.store.appendCoachState({
+      stateId: "state:pain",
+      userId: USER,
+      key: "pain_injury",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Knee pain"],
+      activatedAt: `${TODAY}T07:00:00.000Z`,
+      updatedAt: `${TODAY}T07:00:00.000Z`,
+      expiresAt: "2026-11-20T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    const blocked = turn({
+      reply: "Restored the tempo.",
+      memories: [],
+      sessions: [],
+      revertChangeSetId: "change:remove-tempo",
+    });
+    model.answers.push(blocked, blocked);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo removing the tempo" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.validationCode).toBe("mode-guardrail");
+    expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
+    expect(handle.store.getSession(USER, "tempo:1")).toBeUndefined();
+    expect(handle.store.getChangeSet(USER, "change:remove-tempo")?.revertedAt).toBeNull();
+  });
+
+  it("does not let a chat proposal overwrite a runner-set state", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendCoachState({
+      stateId: "state:user-travel",
+      userId: USER,
+      key: "travel",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Runner: Tokyo"],
+      activatedAt: `${TODAY}T07:00:00.000Z`,
+      updatedAt: `${TODAY}T07:00:00.000Z`,
+      expiresAt: "2026-11-15T00:00:00.000Z",
+      resolvedAt: null,
+    });
+    model.answers.push(
+      turn({
+        reply: "Travel noted.",
+        memories: [],
+        sessions: [],
+        stateProposals: [{ key: "travel", action: "activate", confidence: 0.5, evidence: ["Model guess"], ttlDays: 3, note: null }],
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I am travelling" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.states).toEqual([]);
+    expect(handle.store.getCoachState(USER, "state:user-travel")).toMatchObject({
+      source: "user",
+      confidence: 1,
+      evidence: ["Runner: Tokyo"],
+    });
+  });
+
+  it("keeps state proposals on a comment-only turn as durable context", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(
+      turn({
+        reply: "Travel noted; the calendar stays as it is.",
+        memories: [],
+        sessions: [],
+        stateProposals: [
+          { key: "travel", action: "activate", confidence: 0.8, evidence: ["Tokyo next week"], ttlDays: 7, note: null },
+        ],
+      }),
+    );
+    const response = await post(url, {
+      model: "poc3-coach",
+      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
+      messages: [{ role: "user", content: "I am travelling next week" }],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.writesAllowed).toBe(false);
+    expect(body.poc3.states[0]).toMatchObject({ key: "travel", status: "active" });
+    expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").some((state) => state.key === "travel")).toBe(true);
+    expect(handle.store.listSessions(USER, "2026-11-05", "2026-11-30")).toHaveLength(0);
+  });
+
+  it("keeps a sensitive proposal as a confirmation card when the guardrail forces a fallback", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const blocked = turn({
+      reply: "Pain noted; tempo booked.",
+      memories: [],
+      sessions: [{ day: "2026-11-06", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30 }],
+      stateProposals: [
+        { key: "pain_injury", action: "activate", confidence: 0.6, evidence: ["Knee pain"], ttlDays: 14, note: null },
+      ],
+    });
+    model.answers.push(blocked, blocked);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "My knee hurts; book a tempo" }] });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3.validationCode).toBe("mode-guardrail");
+    expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
+    expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
+    expect(body.choices[0]?.message.content).toContain("coaching-state guardrail");
+    expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").find((state) => state.key === "pain_injury")).toMatchObject({
+      status: "observing",
+      source: "chat",
+    });
+    expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06")).toHaveLength(0);
+  });
+
+  it("fails the turn claim when state refresh throws before the prompt", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl, { failStateRefresh: true });
+    const response = await post(url, {
+      model: "poc3-coach",
+      request_id: "req-state-refresh-failure",
+      messages: [{ role: "user", content: "Hello" }],
+    });
+    expect(response.status).toBe(500);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("gateway-failed");
+    expect(handle.store.getCoachTurn(USER, "req-state-refresh-failure")?.status).toBe("failed");
   });
 });
 

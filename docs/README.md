@@ -6,7 +6,7 @@ and training-log behavior. The [training-log plan](TRAINING-LOG-PLAN.md) goes de
 
 | Document | What it answers |
 |---|---|
-| [POC3-CALENDAR.md](POC3-CALENDAR.md) | The standalone solution: problem, architecture, accounts/profiles, coach contract, CRUD/batch, change history/revert, suggestions, animation, Garmin, API, runbook, limits |
+| [POC3-CALENDAR.md](POC3-CALENDAR.md) | The standalone solution: problem, architecture, accounts/profiles, coach contract, CRUD/batch, change history/revert, suggestions, animation, run peek, Garmin, API, runbook, limits |
 | [TRAINING-LOG-PLAN.md](TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented training-log slices: load/ramp, hard/easy, rich run metrics, per-kilometre splits, Garmin laps/intervals, HR zones, period best efforts/PRs and weekly coach review |
 | [FEATURES-FOR-REVIEW.md](FEATURES-FOR-REVIEW.md) | Remaining candidate features from PoC1/PoC2, prioritised for owner review; the implemented slice is marked done |
 | [adr/0001-server-validated-coach.md](adr/0001-server-validated-coach.md) | LLM proposes, server validates before writing |
@@ -20,6 +20,10 @@ All screenshots use a fake demo runner (`Demo Runner`) and synthetic training da
 | Screenshot | Shows |
 |---|---|
 | [Calendar pills](design/calendar-demo.png) | Plan pills and green recorded-run pills in the month grid |
+| [Run peek](design/activity-peek-demo.png) | A recorded-run pill opens a popup with metrics, plan match, load/effect, fastest efforts and four actions; Ask coach sends the natural question with the run's day and metrics plus a hidden review directive |
+| [Coach states](design/coach-states-demo.png) | Active and proposed coaching states, the Refresh detection action, set-state form, resolved history and clinician/safety copy; active states also appear as calendar chips and chat-bubble cards |
+| [Coach state card](design/coach-state-bubble-demo.png) | A chat-bubble state card with evidence and Resolve, plus the race-week guardrail system line |
+| [Coach audit](design/coach-audit-demo.png) | The owner-only audit page: recent hidden directives, comment-only/blocked-write stats, active coaching states, the immutable State activity log and legacy `mode:` memories |
 | [Calendar CRUD animation](design/calendar-crud-demo.png) | A session pill flying into the bin while the deleted day pulses |
 | [Coach starter suggestions](design/coach-starter-demo.png) | Starter prompts on first open |
 | [Coach Not applied card](design/coach-not-applied-demo.png) | Structured failure card above the suggestion rail |

@@ -71,6 +71,15 @@ describe("plan-vs-actual matching", () => {
     expect(long?.distanceDeltaKm).toBe(0.9);
   });
 
+  it("does not match a run to a session on another day", () => {
+    const [match] = matchActivitiesToPlan(
+      [activity("a1", "2026-11-06", 5)],
+      [session("s1", "2026-11-05", 5, "easy", 30)],
+    );
+    expect(match?.session).toBeNull();
+    expect(match?.status).toBe("unplanned");
+  });
+
   it("leaves a run unplanned when no session is plausible", () => {
     const [match] = matchActivitiesToPlan(
       [activity("a1", "2026-11-05", 12)],

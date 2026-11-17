@@ -12,6 +12,7 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node tools/lint.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
     "deploy:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1"
   },
   "devDependencies": {

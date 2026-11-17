@@ -1,13 +1,14 @@
 # Deploy the live POC3 calendar + gateway on Windows.
 #
 # Stops the process that currently owns the web/gateway ports, starts `pnpm dev` with the live environment, and waits
-# for both HTTP surfaces. The auth secret and SQLite file are read from the repository's data directory; the script
-# refuses to stop a process that does not look like this app.
+# for both HTTP surfaces. The auth secret, model API key and SQLite file are read from the repository's data directory;
+# the script refuses to stop a process that does not look like this app.
 param(
     [int]$WebPort = 8093,
     [int]$GatewayPort = 8092,
     [string]$Database = 'sqlite:data/poc3-auth.sqlite',
     [string]$SecretFile = 'data/poc3-auth.secret',
+    [string]$ModelKeyFile = 'data/poc3-model.secret',
     [string]$ModelBaseUrl = 'http://192.168.1.202:8102/v1',
     [string]$ModelName = 'dgx/general',
     [int]$MaxAttempts = 2,
@@ -25,6 +26,18 @@ if (-not (Test-Path $secretPath)) {
 $secret = (Get-Content -Raw $secretPath).Trim()
 if ($secret.Length -lt 16) {
     throw "Auth secret looks too short: $secretPath"
+}
+
+$modelKey = ([string]$env:POC3_MODEL_API_KEY).Trim()
+if ($modelKey.Length -eq 0) {
+    $modelKeyPath = Join-Path $root $ModelKeyFile
+    if (-not (Test-Path $modelKeyPath)) {
+        throw "Model API key not found: set POC3_MODEL_API_KEY or create $ModelKeyFile (the coach gateway needs it)."
+    }
+    $modelKey = (Get-Content -Raw $modelKeyPath).Trim()
+}
+if ($modelKey.Length -lt 8) {
+    throw "Model API key looks too short: $ModelKeyFile"
 }
 
 $dbPath = $Database -replace '^sqlite:', ''
@@ -72,6 +85,7 @@ $env:POC3_GATEWAY_PORT = [string]$GatewayPort
 $env:POC3_GATEWAY_URL = "http://127.0.0.1:$GatewayPort"
 $env:POC3_WEB_PORT = [string]$WebPort
 $env:POC3_MODEL_BASE_URL = $ModelBaseUrl
+$env:POC3_MODEL_API_KEY = $modelKey
 $env:POC3_MODEL_NAME = $ModelName
 $env:POC3_MAX_ATTEMPTS = [string]$MaxAttempts
 
@@ -85,7 +99,7 @@ $process = Start-Process -FilePath 'cmd.exe' `
     -PassThru
 
 $process.Id | Set-Content -Path $pidFile -Encoding ASCII
-Add-Content -Path $deployLog -Value ("{0} deploy web={1} gateway={2} db={3} pid={4}" -f `
+Add-Content -Path $deployLog -Value ("{0} deploy web={1} gateway={2} db={3} pid={4} modelKey=set" -f `
     $startedAt.ToString('o'), $WebPort, $GatewayPort, $Database, $process.Id)
 
 function Wait-HttpOk([string]$url, [int]$timeoutSeconds) {
@@ -113,9 +127,12 @@ try {
     if ($cssText -notmatch '\.cal-pill\.record') {
         throw 'The deployed stylesheet does not contain the calendar pill styles.'
     }
+    if ($cssText -notmatch '\.state-card' -or $cssText -notmatch '\.state-form' -or $cssText -notmatch '\.state-refresh') {
+        throw 'The deployed stylesheet does not contain the coaching-state styles.'
+    }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=7') {
-        throw 'The deployed login page does not reference app.css?v=7.'
+    if ($loginText -notmatch 'app\.css\?v=11') {
+        throw 'The deployed login page does not reference app.css?v=11.'
     }
 
     $gatewayText = [string]$gateway.Content

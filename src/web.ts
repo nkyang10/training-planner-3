@@ -9,6 +9,16 @@ import { AuthError, type Auth, type AuthUser, type ProfileUpdate } from "./auth"
 import { createGarminClient, type GarminClient } from "./garmin";
 import { describeGarminError } from "./garmin-errors";
 import { createGarminSync, type GarminSyncOutcome } from "./garmin-sync";
+import { buildDirectiveForIntent, parseCoachIntent, type CoachIntent } from "./directives";
+import {
+  confirmCoachState,
+  getCoachStateDefinition,
+  isCoachStateKey,
+  refreshCoachStates,
+  resolveCoachState,
+  setManualCoachState,
+  sortCoachStates,
+} from "./coach-states";
 import {
   mapGarminLaps,
   mapGarminSplits,
@@ -16,6 +26,8 @@ import {
   type ActivitySplit,
 } from "./garmin";
 import { CSS } from "./styles";
+import { errorBanner, escapeHtml, type ViewName } from "./web-html";
+import { renderCoachAudit, renderCoachStates, stateChipHtml } from "./web-coach-states";
 import { localDay, localDateTime, safeTimeZone } from "./time";
 import {
   loadSummaryForWeek,
@@ -29,7 +41,14 @@ import {
   type LoadSummary,
   type PersonalBest,
 } from "./training";
-import type { Activity, AppNotification, GarminKey, Store, TrainingSession } from "./types";
+import type {
+  Activity,
+  AppNotification,
+  CoachStateKey,
+  GarminKey,
+  Store,
+  TrainingSession,
+} from "./types";
 
 export interface WebOptions {
   store: Store;
@@ -45,6 +64,8 @@ export interface WebOptions {
   autoSyncMinutes?: number;
   /** Pull Garmin when a new browser session starts (login or a resumed auth cookie). Defaults to true. */
   sessionSync?: boolean;
+  /** Deterministic auto-state detection; manual/chat states still work when this is off. */
+  autoStates?: boolean;
   now?: () => string;
 }
 
@@ -67,15 +88,6 @@ const MAX_SESSIONS = 500;
  * place for next steps: starters on first open, then the coach's 1-3 follow-ups.
  */
 const STARTER_SUGGESTIONS = ["Plan my week", "Book a 5 km run", "Review last week"];
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /** Inline JSON that cannot close the surrounding script element. */
 function jsonForScript(value: unknown): string {
@@ -229,6 +241,8 @@ interface CalendarItem {
   label: string;
   /** Full description shown on hover, including metrics and notes. */
   tooltip: string;
+  /** Record pills only: the activity whose run-peek popup opens on click. */
+  activityId?: string;
 }
 
 /** A day cell keeps at most four pills; extra items collapse into "+n more" so one busy day cannot stretch the grid. */
@@ -274,6 +288,7 @@ function recordItem(activity: Activity): CalendarItem {
   return {
     type: "record",
     kind: activity.source,
+    activityId: activity.activityId,
     // The record pill shows the run's description; distance, pace and HR stay in the tooltip so a long title fits.
     label: calendarPillLabel(activity.title, null),
     tooltip: `Recorded run · ${activity.title}${details.length === 0 ? "" : ` · ${details}`}`,
@@ -286,7 +301,9 @@ function calendarDayItems(sessions: readonly TrainingSession[], activities: read
 
 function calendarItemHtml(item: CalendarItem): string {
   if (item.type === "record") {
-    return `<span class="cal-pill record" title="${escapeHtml(item.tooltip)}"><span class="sr-only">Recorded run: </span><span class="cal-check" aria-hidden="true">✓</span><span class="cal-text">${escapeHtml(item.label)}</span></span>`;
+    const id = item.activityId === undefined ? "" : ` data-activity-id="${escapeHtml(item.activityId)}"`;
+    const action = `Recorded run: ${item.label}. Show run details`;
+    return `<span class="cal-pill record"${id} role="button" tabindex="0" aria-haspopup="dialog" aria-label="${escapeHtml(action)}" title="${escapeHtml(item.tooltip)}"><span class="sr-only">Recorded run: </span><span class="cal-check" aria-hidden="true">✓</span><span class="cal-text">${escapeHtml(item.label)}</span></span>`;
   }
   return `<span class="cal-pill plan kind-${escapeHtml(item.kind)}" title="${escapeHtml(item.tooltip)}"><span class="sr-only">Planned session: </span><span class="cal-text">${escapeHtml(item.label)}</span></span>`;
 }
@@ -383,13 +400,26 @@ function activityMetrics(activity: Activity): string {
 }
 
 function plannedText(sessions: readonly TrainingSession[]): string {
-  return sessions.map((session) => `${session.title}${session.distanceKm === null ? "" : ` ${session.distanceKm} km`}`).join(", ");
+  return sessions.map((session) => calendarPillLabel(session.title, session.distanceKm)).join(", ");
 }
 
-function coachPromptForActivity(activity: Activity, sessions: readonly TrainingSession[]): string {
-  const metrics = activityMetrics(activity);
-  const plan = sessions.length === 0 ? "There was no planned session that day." : `The plan was ${plannedText(sessions)}.`;
-  return `How did my ${activity.title} on ${activity.day} go?${metrics.length === 0 ? "" : ` ${metrics}.`} ${plan} Give me one thing to keep and one thing to change.`;
+/** A compact identity for one recorded run: its day plus distance and duration. */
+function activityReference(activity: Activity): string {
+  const amount = [
+    activity.distanceKm === null ? "" : `${activity.distanceKm} km`,
+    activity.durationMin === null ? "" : formatMinutes(activity.durationMin),
+  ]
+    .filter((part) => part.length > 0)
+    .join(" · ");
+  return amount.length === 0 ? formatDayLabel(activity.day) : `${formatDayLabel(activity.day)} · ${amount}`;
+}
+
+/**
+ * The visible question; the review-only constraints travel in the hidden directive. The parenthetical names the
+ * exact run so a repeated title cannot be mistaken for another record, and follow-up turns keep the reference.
+ */
+function coachPromptForActivity(activity: Activity): string {
+  return `How did my ${activity.title} go? (${activityReference(activity)})`;
 }
 
 function coachPromptForMissed(day: string, sessions: readonly TrainingSession[]): string {
@@ -414,25 +444,42 @@ function humanizeEffect(label: string): string {
     .join(" ");
 }
 
-function activityExtraMetrics(activity: Activity): string {
-  const items: Array<{ label: string; value: string }> = [];
-  const add = (label: string, value: number | null | undefined, suffix: string, prefix = ""): void => {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      items.push({ label, value: `${prefix}${value} ${suffix}`.trim() });
-    }
-  };
-  add("Elevation", activity.elevationGainM, "m", "+");
-  add("Calories", activity.calories, "kcal");
-  add("Max HR", activity.maxHr, "bpm");
-  add("Cadence", activity.cadenceSpm, "spm");
-  add("Stride", activity.strideLengthCm, "cm");
-  add("Ground contact", activity.groundContactMs, "ms");
-  add("Aerobic effect", activity.aerobicTrainingEffect, "");
-  add("Anaerobic effect", activity.anaerobicTrainingEffect, "");
-  add("Training load", activity.trainingLoad, "");
+interface ActivityMetricItem {
+  label: string;
+  value: string;
+}
+
+function pushMetricItem(
+  items: ActivityMetricItem[],
+  label: string,
+  value: number | null | undefined,
+  suffix: string,
+  prefix = "",
+): void {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    items.push({ label, value: `${prefix}${value} ${suffix}`.trim() });
+  }
+}
+
+function activityExtraItems(activity: Activity): ActivityMetricItem[] {
+  const items: ActivityMetricItem[] = [];
+  pushMetricItem(items, "Elevation", activity.elevationGainM, "m", "+");
+  pushMetricItem(items, "Calories", activity.calories, "kcal");
+  pushMetricItem(items, "Max HR", activity.maxHr, "bpm");
+  pushMetricItem(items, "Cadence", activity.cadenceSpm, "spm");
+  pushMetricItem(items, "Stride", activity.strideLengthCm, "cm");
+  pushMetricItem(items, "Ground contact", activity.groundContactMs, "ms");
+  pushMetricItem(items, "Aerobic effect", activity.aerobicTrainingEffect, "");
+  pushMetricItem(items, "Anaerobic effect", activity.anaerobicTrainingEffect, "");
+  pushMetricItem(items, "Training load", activity.trainingLoad, "");
   if (activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined && activity.trainingEffectLabel.length > 0) {
     items.push({ label: "Effect", value: humanizeEffect(activity.trainingEffectLabel) });
   }
+  return items;
+}
+
+function activityExtraMetrics(activity: Activity): string {
+  const items = activityExtraItems(activity);
   if (items.length === 0) return "";
   return `<div class="metric-extra-grid">${items.map((item) => `<div class="metric-extra"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("")}</div>`;
 }
@@ -447,7 +494,14 @@ function bestEffortLabel(distance: BestEffortDistance): string {
   return BEST_EFFORT_LABELS[distance];
 }
 
-function fastestEfforts(activity: Activity, prDistances: ReadonlySet<BestEffortDistance>): string {
+interface FastestEffortItem {
+  distance: BestEffortDistance;
+  label: string;
+  seconds: number;
+  pr: boolean;
+}
+
+function fastestEffortItems(activity: Activity, prDistances: ReadonlySet<BestEffortDistance>): FastestEffortItem[] {
   const efforts = [
     { distance: "1k" as const, seconds: activity.fastest1kSec },
     { distance: "1mi" as const, seconds: activity.fastest1miSec },
@@ -455,10 +509,19 @@ function fastestEfforts(activity: Activity, prDistances: ReadonlySet<BestEffortD
   ].filter((effort): effort is { distance: BestEffortDistance; seconds: number } =>
     typeof effort.seconds === "number" && Number.isFinite(effort.seconds) && effort.seconds > 0,
   );
+  return efforts.map((effort) => ({
+    distance: effort.distance,
+    label: bestEffortLabel(effort.distance),
+    seconds: effort.seconds,
+    pr: prDistances.has(effort.distance),
+  }));
+}
+
+function fastestEfforts(activity: Activity, prDistances: ReadonlySet<BestEffortDistance>): string {
+  const efforts = fastestEffortItems(activity, prDistances);
   if (efforts.length === 0) return "";
   return `<div class="best-efforts">${efforts.map((effort) => {
-    const isPr = prDistances.has(effort.distance);
-    return `<div class="best-effort${isPr ? " pr" : ""}"><span>Fastest ${bestEffortLabel(effort.distance)}</span><strong>${formatSeconds(effort.seconds)}</strong>${isPr ? `<span class="chip pr-chip">PR</span>` : ""}</div>`;
+    return `<div class="best-effort${effort.pr ? " pr" : ""}"><span>Fastest ${effort.label}</span><strong>${formatSeconds(effort.seconds)}</strong>${effort.pr ? `<span class="chip pr-chip">PR</span>` : ""}</div>`;
   }).join("")}</div>`;
 }
 
@@ -569,6 +632,115 @@ function planComparison(match: ActivityPlanMatch): string {
   </section>`;
 }
 
+/** The six run metrics a calendar peek shows; the activity detail keeps the full list. */
+const PEEK_METRIC_LIMIT = 6;
+
+function activityPeekMetrics(activity: Activity): ActivityMetricItem[] {
+  const items: ActivityMetricItem[] = [];
+  pushMetricItem(items, "Training load", activity.trainingLoad, "");
+  if (activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined && activity.trainingEffectLabel.length > 0) {
+    items.push({ label: "Effect", value: humanizeEffect(activity.trainingEffectLabel) });
+  }
+  pushMetricItem(items, "Elevation", activity.elevationGainM, "m", "+");
+  pushMetricItem(items, "Calories", activity.calories, "kcal");
+  pushMetricItem(items, "Max HR", activity.maxHr, "bpm");
+  pushMetricItem(items, "Cadence", activity.cadenceSpm, "spm");
+  return items.slice(0, PEEK_METRIC_LIMIT);
+}
+
+interface ActivityPeekPlan {
+  status: ActivityPlanMatch["status"];
+  label: string;
+  title: string | null;
+  planned: string | null;
+}
+
+function activityPeekPlan(match: ActivityPlanMatch): ActivityPeekPlan {
+  if (match.session === null) {
+    return { status: "unplanned", label: "Unplanned", title: null, planned: null };
+  }
+  const statusLabel = match.status === "on-plan" ? "On plan" : match.status === "short" ? "Short" : "Long";
+  const delta = match.distanceDeltaKm === null || match.distanceDeltaKm === 0
+    ? ""
+    : ` ${formatDelta(match.distanceDeltaKm, "km")}`;
+  const planned = [
+    match.session.kind,
+    match.session.distanceKm === null ? "" : `${match.session.distanceKm} km`,
+    match.session.durationMin === null ? "" : `${match.session.durationMin} min`,
+  ]
+    .filter((part) => part.length > 0)
+    .join(" · ");
+  return {
+    status: match.status,
+    label: `${statusLabel}${delta}`,
+    title: match.session.title,
+    planned: planned.length === 0 ? null : planned,
+  };
+}
+
+function prDistancesFor(activities: readonly Activity[], activityId: string): Set<BestEffortDistance> {
+  return new Set<BestEffortDistance>(
+    personalBests(activities)
+      .filter((best) => best.activity.activityId === activityId)
+      .map((best) => best.distance),
+  );
+}
+
+interface ActivityPeekEffort {
+  label: string;
+  value: string;
+  pr: boolean;
+}
+
+interface ActivityPeek {
+  activityId: string;
+  title: string;
+  day: string;
+  dayLabel: string;
+  source: Activity["source"];
+  sourceLabel: string;
+  metrics: string;
+  extra: ActivityMetricItem[];
+  efforts: ActivityPeekEffort[];
+  plan: ActivityPeekPlan;
+  /** The visible question; it reads like a normal message. */
+  coachPrompt: string;
+  /** The typed action the bubble sends with the visible question; the hidden directive is built server-side. */
+  coachIntent: CoachIntent;
+  links: { detail: string; day: string; week: string };
+}
+
+/** Everything the calendar's run-peek popup renders, computed once on the server so the client holds no metric logic. */
+function buildActivityPeek(
+  activity: Activity,
+  sessions: readonly TrainingSession[],
+  prDistances: ReadonlySet<BestEffortDistance>,
+): ActivityPeek {
+  return {
+    activityId: activity.activityId,
+    title: activity.title,
+    day: activity.day,
+    dayLabel: formatDayLabel(activity.day),
+    source: activity.source,
+    sourceLabel: activity.source === "garmin" ? "Garmin" : "Reported",
+    metrics: activityMetrics(activity),
+    extra: activityPeekMetrics(activity),
+    efforts: fastestEffortItems(activity, prDistances).map((effort) => ({
+      label: effort.label,
+      value: formatSeconds(effort.seconds),
+      pr: effort.pr,
+    })),
+    plan: activityPeekPlan(matchActivity(activity, sessions)),
+    coachPrompt: coachPromptForActivity(activity),
+    coachIntent: { kind: "review-activity", activityId: activity.activityId, source: "run-peek" },
+    links: {
+      detail: `/activity/${encodeURIComponent(activity.activityId)}`,
+      day: `/day/${activity.day}`,
+      week: historyHref("week", weekStartOf(activity.day)),
+    },
+  };
+}
+
 interface VolumeBucket {
   label: string;
   total: number;
@@ -660,8 +832,17 @@ function trendSection(
   return `<section class="trends"><div class="trend-head"><h2>Trends</h2><p class="muted small">${escapeHtml(periodLabel)} · ${activities.length} runs</p></div><div class="trend-grid">${volumeChart(buckets, volumeTitle, `${sumDistance(activities)} km · ${periodLabel}`, volumeAria)}${metricLineChart(activities, "pace", periodLabel)}${metricLineChart(activities, "hr", periodLabel)}<figure class="trend-card trend-stats"><figcaption>Summary</figcaption><dl><div><dt>Average pace</dt><dd>${averagePace === null ? "—" : escapeHtml(formatPace(averagePace))}</dd></div><div><dt>Average HR</dt><dd>${averageHr === null ? "—" : `${averageHr} bpm`}</dd></div><div><dt>Consistency</dt><dd>${consistency}%</dd></div></dl></figure></div></section>`;
 }
 
-function errorBanner(error?: string): string {
-  return error === undefined ? "" : `<p class="error" role="alert">${escapeHtml(error)}</p>`;
+/** SameSite=Lax covers most CSRF; this also rejects a browser POST whose Origin is another host. */
+function isSameOriginPost(request: IncomingMessage): boolean {
+  const origin = request.headers.origin;
+  if (typeof origin !== "string" || origin.length === 0) return true;
+  const host = request.headers.host;
+  if (typeof host !== "string" || host.length === 0) return false;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 function renderSyncIcon(): string {
@@ -873,8 +1054,6 @@ function renderGarminPanel(savedKey: GarminKey | undefined, next: string, keyErr
   ${renderGarminScript()}`;
 }
 
-type ViewName = "calendar" | "history" | "none";
-
 function layout(title: string, body: string, user: AuthUser | undefined, activeView: ViewName = "calendar"): string {
   const topActions = user === undefined
     ? `<div class="top-actions"><a class="profile" href="/login">Sign in</a><a href="/signup">Sign up</a></div>`
@@ -886,7 +1065,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
   const bubble = user === undefined ? "" : renderChatBubble();
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=7"></head>
+  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=11"></head>
   <body>${nav}${viewBar}<main>${body}</main>${bubble}${notificationScript}</body></html>`;
 }
 
@@ -894,7 +1073,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
-    <header><div><strong>AI Coach</strong><span class="coach-limit">Bookings up to 180 days ahead · 可預約未來 180 日</span></div><button id="coach-minimize" type="button" aria-label="Minimize chat" title="Minimize">−</button></header>
+    <header><div><strong>AI Coach</strong><span class="coach-limit">Bookings up to 180 days ahead · 可預約未來 180 日</span></div><div class="coach-head-actions"><a class="coach-audit-link" href="/coach-states" title="Coaching states">States</a><a class="coach-audit-link" href="/coach-audit" title="Hidden directives">Audit</a><button id="coach-minimize" type="button" aria-label="Minimize chat" title="Minimize">−</button></div></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
     <div id="coach-suggestions" aria-label="Suggested next messages"></div>
     <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>
@@ -950,6 +1129,7 @@ function renderChatBubble(): string {
       if (!monthGrid) return;
       const month = monthGrid.getAttribute('data-month');
       if (!month) return;
+      closeActivityPeek(false);
       try {
         const response = await fetch('/calendar/data?month=' + encodeURIComponent(month));
         if (!response.ok) return;
@@ -970,6 +1150,13 @@ function renderChatBubble(): string {
             const isRecord = item.type === 'record';
             pill.className = isRecord ? 'cal-pill record' : 'cal-pill plan kind-' + String(item.kind || 'easy');
             pill.title = typeof item.tooltip === 'string' ? item.tooltip : '';
+            if (isRecord) {
+              pill.setAttribute('role', 'button');
+              pill.tabIndex = 0;
+              pill.setAttribute('aria-haspopup', 'dialog');
+              if (typeof item.activityId === 'string') pill.dataset.activityId = item.activityId;
+              pill.setAttribute('aria-label', 'Recorded run: ' + (typeof item.label === 'string' ? item.label : '') + '. Show run details');
+            }
             const prefix = document.createElement('span');
             prefix.className = 'sr-only';
             prefix.textContent = isRecord ? 'Recorded run: ' : 'Planned session: ';
@@ -1076,7 +1263,7 @@ function renderChatBubble(): string {
         suggestions.appendChild(chip);
       }
     };
-    const setRetry = (text) => {
+    const setRetry = (text, intent) => {
       suggestions.replaceChildren();
       suggestionsSet = true;
       const value = typeof text === 'string' ? text.trim() : '';
@@ -1085,14 +1272,96 @@ function renderChatBubble(): string {
       chip.type = 'button';
       chip.className = 'suggestion';
       chip.textContent = 'Try again';
-      chip.addEventListener('click', () => { void send(value); });
+      chip.addEventListener('click', () => { void send(value, intent); });
       suggestions.appendChild(chip);
     };
     const showStarters = () => {
       if (suggestionsSet || suggestions.childElementCount > 0) return;
       setSuggestions(STARTERS);
     };
-    const send = async (raw) => {
+    const addStateCards = (states) => {
+      if (!Array.isArray(states) || states.length === 0) return;
+      for (const state of states) {
+        if (!state || typeof state.stateId !== 'string') continue;
+        if (state.action === 'resolve') {
+          add('system', 'Coaching state resolved · 狀態已解除');
+          continue;
+        }
+        const card = document.createElement('div');
+        card.className = 'bubble state-card';
+        card.setAttribute('role', 'status');
+        const head = document.createElement('div');
+        head.className = 'state-bubble-head';
+        const title = document.createElement('strong');
+        title.textContent = state.label || state.key || 'Coaching state';
+        const chip = document.createElement('span');
+        chip.className = 'chip state-status state-' + (state.status || 'active');
+        chip.textContent = state.status === 'observing' ? 'proposed' : 'active';
+        head.append(title, chip);
+        const detail = document.createElement('p');
+        detail.className = 'muted small';
+        detail.textContent = state.status === 'observing'
+          ? 'The coach proposed a durable state. Confirm it or dismiss it; it is not a diagnosis.'
+          : 'Saved to your coaching states.';
+        card.append(head, detail);
+        if (Array.isArray(state.evidence) && state.evidence.length > 0) {
+          const evidence = document.createElement('ul');
+          evidence.className = 'state-bubble-evidence';
+          for (const line of state.evidence) {
+            const item = document.createElement('li');
+            item.textContent = String(line);
+            evidence.appendChild(item);
+          }
+          card.appendChild(evidence);
+        }
+        if (state.uiNote) {
+          const note = document.createElement('p');
+          note.className = 'state-note';
+          note.textContent = String(state.uiNote);
+          card.appendChild(note);
+        }
+        const actions = document.createElement('div');
+        actions.className = 'state-bubble-actions';
+        const dismiss = document.createElement('button');
+        dismiss.type = 'button';
+        dismiss.className = 'btn ghost';
+        dismiss.textContent = state.status === 'observing' ? 'Dismiss · 略過' : 'Resolve · 解除';
+        dismiss.addEventListener('click', async () => {
+          dismiss.disabled = true;
+          try {
+            const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/resolve', { method: 'POST' });
+            if (!result.ok) throw new Error('resolve failed');
+            card.remove();
+            add('system', 'Coaching state resolved · 狀態已解除');
+          } catch {
+            dismiss.disabled = false;
+          }
+        });
+        if (state.status === 'observing') {
+          const confirm = document.createElement('button');
+          confirm.type = 'button';
+          confirm.className = 'btn';
+          confirm.textContent = 'Confirm · 確認';
+          confirm.addEventListener('click', async () => {
+            confirm.disabled = true;
+            try {
+              const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/confirm', { method: 'POST' });
+              if (!result.ok) throw new Error('confirm failed');
+              card.remove();
+              add('system', 'Coaching state confirmed · 狀態已確認');
+            } catch {
+              confirm.disabled = false;
+            }
+          });
+          actions.appendChild(confirm);
+        }
+        actions.appendChild(dismiss);
+        card.appendChild(actions);
+        log.appendChild(card);
+        scrollToLatest();
+      }
+    };
+    const send = async (raw, intent) => {
       const text = typeof raw === 'string' ? raw.trim() : '';
       if (text.length === 0) return;
       add('user', text);
@@ -1109,7 +1378,7 @@ function renderChatBubble(): string {
       const postChat = () => fetch('/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-poc3-request-id': requestId },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify(intent ? { message: text, intent } : { message: text }),
       });
       try {
         let response;
@@ -1124,7 +1393,7 @@ function renderChatBubble(): string {
         typing.remove();
         if (!response.ok) {
           add('error', data && data.error ? data.error.detail : 'The coach could not answer.');
-          setRetry(text);
+          setRetry(text, intent);
           return;
         }
         add('coach', data.reply);
@@ -1134,11 +1403,19 @@ function renderChatBubble(): string {
           await animateChanges(data.changes || []);
           add('system', 'Calendar updated · 日曆已更新');
         }
-        addFailureCard(data.failures, text);
+        if (data.writesAllowed === false && data.blockedWrites > 0) {
+          add('system', 'Comment-only · calendar unchanged · 日曆未有更改');
+        }
+        addStateCards(data.states);
+        if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
+          const labels = data.blockedByStates.map((state) => state && state.label ? String(state.label) : 'a coaching state');
+          add('system', 'Calendar unchanged — ' + labels.join(', ') + ' guardrail · 日曆未有更改');
+        }
+        addFailureCard(data.failures, text, intent);
       } catch {
         typing.remove();
         add('error', 'Network error. Try again.');
-        setRetry(text);
+        setRetry(text, intent);
       }
     };
     const dayMenu = document.createElement('div');
@@ -1157,7 +1434,7 @@ function renderChatBubble(): string {
     });
     const failureLabel = (action) => action === 'remove' ? 'Delete' : action === 'update' ? 'Update' : 'Add';
     const failureReason = (reason) => reason === 'missing-session-id' ? 'no session was specified' : 'session not found';
-    const addFailureCard = (failures, retryText) => {
+    const addFailureCard = (failures, retryText, retryIntent) => {
       if (!Array.isArray(failures) || failures.length === 0) return;
       const card = document.createElement('div');
       card.className = 'bubble failure';
@@ -1186,7 +1463,7 @@ function renderChatBubble(): string {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Show ' + formatShortDay(day);
-        button.addEventListener('click', () => { void send('What is planned on ' + day + '?'); });
+        button.addEventListener('click', () => { void send('What is planned on ' + day + '?', { kind: 'review-day', day, source: 'day-menu' }); });
         actions.appendChild(button);
       }
       const retry = typeof retryText === 'string' ? retryText.trim() : '';
@@ -1194,18 +1471,33 @@ function renderChatBubble(): string {
         const button = document.createElement('button');
         button.type = 'button';
         button.textContent = 'Try again';
-        button.addEventListener('click', () => { void send(retry); });
+        button.addEventListener('click', () => { void send(retry, retryIntent); });
         actions.appendChild(button);
       }
       if (actions.childElementCount > 0) card.appendChild(actions);
       log.appendChild(card);
       scrollToLatest();
     };
-    const openCoach = (text, sendNow) => {
+    let pendingIntent;
+    let pendingPrefix = '';
+    const parseIntent = (value) => {
+      if (typeof value !== 'string' || value.length === 0) return undefined;
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? parsed : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const openCoach = (text, sendNow, intent) => {
       show();
       if (sendNow) {
-        void send(text);
+        pendingIntent = undefined;
+        pendingPrefix = '';
+        void send(text, intent);
       } else {
+        pendingIntent = intent;
+        pendingPrefix = text;
         input.value = text;
         input.focus();
       }
@@ -1256,10 +1548,10 @@ function renderChatBubble(): string {
       if (button === null) return;
       const action = button.dataset.action;
       closeDayMenu();
-      if (action === 'add') openCoach('Add a session on ' + menuDay + ': ', false);
-      if (action === 'move') openCoach('Move a session to ' + menuDay + ': ', false);
-      if (action === 'delete') openCoach('Delete the session on ' + menuDay + '.', true);
-      if (action === 'ask') openCoach('What is planned on ' + menuDay + '? Review it and suggest changes.', true);
+      if (action === 'add') openCoach('Add a session on ' + menuDay + ': ', false, { kind: 'plan', day: menuDay, source: 'day-menu' });
+      if (action === 'move') openCoach('Move a session to ' + menuDay + ': ', false, { kind: 'plan', day: menuDay, source: 'day-menu' });
+      if (action === 'delete') openCoach('Delete the session on ' + menuDay + '.', true, { kind: 'plan', day: menuDay, source: 'day-menu' });
+      if (action === 'ask') openCoach('What is planned on ' + menuDay + '?', true, { kind: 'review-day', day: menuDay, source: 'day-menu' });
       if (action === 'view') location.href = '/day/' + menuDay;
     });
     document.addEventListener('click', (event) => {
@@ -1273,14 +1565,27 @@ function renderChatBubble(): string {
     for (const cell of document.querySelectorAll('.cell[data-day]')) {
       cell.addEventListener('click', (event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        const target = event.target instanceof Element ? event.target : null;
+        const record = target === null ? null : target.closest('.cal-pill.record[data-activity-id]');
         event.preventDefault();
+        if (record !== null) {
+          void openActivityPeek(record, cell);
+          return;
+        }
+        closeActivityPeek(false);
         openDayMenu(cell, cell.dataset.day || '');
       });
       cell.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          openDayMenu(cell, cell.dataset.day || '');
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        const target = event.target instanceof Element ? event.target : null;
+        const record = target === null ? null : target.closest('.cal-pill.record[data-activity-id]');
+        event.preventDefault();
+        if (record !== null) {
+          void openActivityPeek(record, cell);
+          return;
         }
+        closeActivityPeek(false);
+        openDayMenu(cell, cell.dataset.day || '');
       });
     }
     const monthCurrent = document.getElementById('month-current');
@@ -1369,6 +1674,231 @@ function renderChatBubble(): string {
     });
     document.body.appendChild(monthPicker);
 
+    const peek = document.createElement('div');
+    peek.id = 'activity-peek';
+    peek.hidden = true;
+    peek.tabIndex = -1;
+    peek.setAttribute('role', 'dialog');
+    peek.setAttribute('aria-labelledby', 'activity-peek-title');
+    const peekHead = document.createElement('header');
+    peekHead.className = 'peek-head';
+    const peekHeadText = document.createElement('div');
+    peekHeadText.className = 'peek-head-text';
+    const peekDay = document.createElement('p');
+    peekDay.className = 'peek-eyebrow';
+    peekDay.id = 'activity-peek-day';
+    const peekTitle = document.createElement('h2');
+    peekTitle.id = 'activity-peek-title';
+    peekHeadText.append(peekDay, peekTitle);
+    const peekClose = document.createElement('button');
+    peekClose.type = 'button';
+    peekClose.className = 'peek-close';
+    peekClose.setAttribute('aria-label', 'Close run details');
+    peekClose.textContent = '×';
+    peekHead.append(peekHeadText, peekClose);
+    const peekBody = document.createElement('div');
+    peekBody.className = 'peek-body';
+    const peekActions = document.createElement('footer');
+    peekActions.className = 'peek-actions';
+    peek.append(peekHead, peekBody, peekActions);
+    document.body.appendChild(peek);
+
+    let peekTrigger = null;
+    let peekRequest = 0;
+    let peekFailed = false;
+    const closeActivityPeek = (restoreFocus = true) => {
+      if (peek.hidden) return;
+      peek.hidden = true;
+      peekRequest += 1;
+      peekFailed = false;
+      const trigger = peekTrigger;
+      peekTrigger = null;
+      if (restoreFocus !== false && trigger !== null && typeof trigger.focus === 'function') trigger.focus();
+    };
+    peekClose.addEventListener('click', () => closeActivityPeek());
+
+    const positionActivityPeek = (anchor) => {
+      const width = Math.min(360, innerWidth - 16);
+      const height = peek.offsetHeight || 320;
+      if (innerWidth <= 640) {
+        peek.style.left = '8px';
+        peek.style.width = Math.max(0, innerWidth - 16) + 'px';
+        peek.style.top = Math.max(8, innerHeight - height - 8) + 'px';
+        return;
+      }
+      const rect = anchor.getBoundingClientRect();
+      peek.style.left = Math.max(8, Math.min(rect.left, innerWidth - width - 8)) + 'px';
+      peek.style.width = width + 'px';
+      const below = rect.bottom + 8;
+      const above = rect.top - height - 8;
+      const fitsBelow = below + height <= innerHeight - 8;
+      const fitsAbove = above >= 8;
+      peek.style.top = (fitsBelow || !fitsAbove ? Math.max(8, Math.min(below, innerHeight - height - 8)) : above) + 'px';
+    };
+
+    const peekNote = (text) => {
+      const note = document.createElement('p');
+      note.className = 'peek-note';
+      note.textContent = text;
+      return note;
+    };
+    const peekChip = (className, text) => {
+      const chip = document.createElement('span');
+      chip.className = className;
+      chip.textContent = text;
+      return chip;
+    };
+    const peekLink = (className, href, text) => {
+      const link = document.createElement('a');
+      link.className = className;
+      link.href = typeof href === 'string' && href.startsWith('/') ? href : '/calendar';
+      link.textContent = text;
+      return link;
+    };
+    const renderPeekLoading = (title, day) => {
+      peekTitle.textContent = title.length > 0 ? title : 'Recorded run';
+      peekDay.textContent = day.length > 0 ? formatDay(day) : '';
+      peekBody.replaceChildren(peekNote('Loading run details…'));
+      peekActions.replaceChildren();
+    };
+    const renderPeekError = (activityId, day) => {
+      peekBody.replaceChildren(peekNote('Could not load this run just now. Open the full detail or tap the pill again.'));
+      peekActions.replaceChildren(
+        peekLink('btn peek-primary', '/activity/' + encodeURIComponent(activityId), 'Open full detail →'),
+        peekLink('chip', '/day/' + day, 'View day'),
+      );
+    };
+    const renderPeek = (data) => {
+      peekTitle.textContent = typeof data.title === 'string' ? data.title : 'Recorded run';
+      peekDay.textContent = typeof data.dayLabel === 'string' ? data.dayLabel : '';
+      peekBody.replaceChildren();
+      peekActions.replaceChildren();
+      const meta = document.createElement('div');
+      meta.className = 'peek-meta';
+      const source = data.source === 'chat' ? 'chat' : 'garmin';
+      meta.append(peekChip('chip source-' + source, source === 'garmin' ? 'Garmin' : 'Reported'));
+      if (typeof data.metrics === 'string' && data.metrics.length > 0) {
+        const metrics = document.createElement('strong');
+        metrics.className = 'peek-metrics';
+        metrics.textContent = data.metrics;
+        meta.append(metrics);
+      }
+      peekBody.append(meta);
+      const plan = data.plan !== null && typeof data.plan === 'object' ? data.plan : null;
+      if (plan !== null) {
+        const planRow = document.createElement('div');
+        planRow.className = 'peek-plan';
+        const status = typeof plan.status === 'string' ? plan.status : 'unplanned';
+        planRow.append(peekChip('chip match-' + status, typeof plan.label === 'string' ? plan.label : 'Unplanned'));
+        const planText = document.createElement('span');
+        const hasPlan = typeof plan.title === 'string' && plan.title.length > 0;
+        planText.className = hasPlan ? 'peek-plan-text' : 'peek-plan-text muted';
+        planText.textContent = hasPlan
+          ? plan.title + (typeof plan.planned === 'string' && plan.planned.length > 0 ? ' · ' + plan.planned : '')
+          : 'No planned session matched this run.';
+        planRow.append(planText);
+        peekBody.append(planRow);
+      }
+      const extra = Array.isArray(data.extra) ? data.extra : [];
+      if (extra.length > 0) {
+        const grid = document.createElement('div');
+        grid.className = 'peek-grid';
+        for (const item of extra) {
+          if (!item || typeof item !== 'object') continue;
+          const stat = document.createElement('div');
+          stat.className = 'peek-stat';
+          const label = document.createElement('span');
+          label.textContent = typeof item.label === 'string' ? item.label : '';
+          const value = document.createElement('strong');
+          value.textContent = typeof item.value === 'string' ? item.value : '';
+          stat.append(label, value);
+          grid.append(stat);
+        }
+        if (grid.childElementCount > 0) peekBody.append(grid);
+      }
+      const efforts = Array.isArray(data.efforts) ? data.efforts : [];
+      if (efforts.length > 0) {
+        const row = document.createElement('div');
+        row.className = 'peek-efforts';
+        for (const effort of efforts) {
+          if (!effort || typeof effort !== 'object') continue;
+          const chip = document.createElement('span');
+          chip.className = 'peek-effort' + (effort.pr === true ? ' pr' : '');
+          const label = document.createElement('span');
+          label.textContent = 'Fastest ' + (typeof effort.label === 'string' ? effort.label : '');
+          const value = document.createElement('strong');
+          value.textContent = typeof effort.value === 'string' ? effort.value : '';
+          chip.append(label, value);
+          if (effort.pr === true) chip.append(peekChip('chip pr-chip', 'PR'));
+          row.append(chip);
+        }
+        if (row.childElementCount > 0) peekBody.append(row);
+      }
+      const links = data.links !== null && typeof data.links === 'object' ? data.links : {};
+      const ask = document.createElement('button');
+      ask.type = 'button';
+      ask.className = 'coach-ask';
+      ask.textContent = 'Ask coach';
+      if (typeof data.coachPrompt === 'string' && data.coachPrompt.length > 0) ask.setAttribute('data-coach-message', data.coachPrompt);
+      else ask.disabled = true;
+      if (data.coachIntent !== null && typeof data.coachIntent === 'object' && !Array.isArray(data.coachIntent)) {
+        ask.setAttribute('data-coach-intent', JSON.stringify(data.coachIntent));
+      }
+      peekActions.append(
+        peekLink('btn peek-primary', links.detail, 'Open full detail →'),
+        ask,
+        peekLink('chip', links.day, 'View day'),
+        peekLink('chip', links.week, 'Training log week'),
+      );
+    };
+    const openActivityPeek = async (pill, cell) => {
+      const activityId = typeof pill.dataset.activityId === 'string' ? pill.dataset.activityId : '';
+      if (activityId.length === 0) return;
+      const day = cell.dataset.day || '';
+      const titleNode = pill.querySelector('.cal-text');
+      const title = titleNode !== null && titleNode.textContent !== null ? titleNode.textContent : '';
+      if (!peek.hidden && peekTrigger === pill && !peekFailed) {
+        closeActivityPeek();
+        return;
+      }
+      closeDayMenu();
+      peekTrigger = pill;
+      peekFailed = false;
+      peekRequest += 1;
+      const request = peekRequest;
+      renderPeekLoading(title, day);
+      peek.hidden = false;
+      positionActivityPeek(pill);
+      peek.focus();
+      try {
+        const response = await fetch('/activity/' + encodeURIComponent(activityId) + '/peek', { headers: { accept: 'application/json' } });
+        if (request !== peekRequest) return;
+        if (!response.ok) throw new Error('peek failed');
+        const payload = await response.json();
+        if (request !== peekRequest) return;
+        if (!payload || typeof payload !== 'object' || !payload.peek || typeof payload.peek !== 'object') throw new Error('peek missing');
+        renderPeek(payload.peek);
+        positionActivityPeek(pill);
+      } catch {
+        if (request !== peekRequest) return;
+        peekFailed = true;
+        renderPeekError(activityId, day);
+        positionActivityPeek(pill);
+      }
+    };
+    document.addEventListener('click', (event) => {
+      if (peek.hidden) return;
+      if (event.target instanceof Node && (peek.contains(event.target) || (event.target instanceof Element && event.target.closest('.cal-pill.record[data-activity-id]') !== null))) return;
+      closeActivityPeek(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeActivityPeek();
+    });
+    window.addEventListener('resize', () => {
+      if (!peek.hidden && peekTrigger !== null) positionActivityPeek(peekTrigger);
+    });
+    window.addEventListener('scroll', () => closeActivityPeek(false), { passive: true });
+
     bubble.addEventListener('click', show);
     minimize.addEventListener('click', minimizePanel);
     document.addEventListener('click', (event) => {
@@ -1376,15 +1906,20 @@ function renderChatBubble(): string {
       if (trigger === null) return;
       const message = trigger.getAttribute('data-coach-message') ?? '';
       if (message.length === 0) return;
+      const intent = parseIntent(trigger.getAttribute('data-coach-intent') ?? '');
       event.preventDefault();
-      openCoach(message, true);
+      closeActivityPeek(false);
+      openCoach(message, true, intent);
     });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const text = input.value.trim();
       if (text.length === 0) return;
       input.value = '';
-      void send(text);
+      const intent = pendingIntent !== undefined && text.startsWith(pendingPrefix) ? pendingIntent : undefined;
+      pendingIntent = undefined;
+      pendingPrefix = '';
+      void send(text, intent);
     });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
@@ -1446,6 +1981,8 @@ function renderProfile(user: AuthUser, saved: boolean, error?: string): string {
         <button class="btn" type="submit">Save profile</button>
       </form>
       <p class="muted small">Member since ${escapeHtml(user.createdAt.slice(0, 10))}.</p>
+      <p class="muted small"><a href="/coach-states">Coach states — durable context</a></p>
+      <p class="muted small"><a href="/coach-audit">Coach audit — hidden directives</a></p>
     </section>`,
     user,
     "none",
@@ -1530,6 +2067,11 @@ export function createWeb(options: WebOptions): WebApp {
     void (async (): Promise<void> => {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method ?? "GET";
+
+      if (method === "POST" && !isSameOriginPost(request)) {
+        sendHtml(response, 403, layout("Forbidden", `<p>Cross-origin form submission is not allowed.</p>`, undefined));
+        return;
+      }
 
       if (url.pathname === "/static/app.css") {
         response.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "no-store" });
@@ -1677,6 +2219,97 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      if (url.pathname === "/coach-audit") {
+        if (method === "GET") {
+          const nowIso = now();
+          const directives = options.store.listCoachDirectives(user.userId, 50);
+          const states = options.store.getActiveCoachStates(user.userId, nowIso);
+          const legacyModes = options.store
+            .listMemories(user.userId, 100)
+            .filter((memory) => memory.text.trim().toLowerCase().startsWith("mode:"));
+          const stateEvents = options.store.listCoachStateEvents(user.userId, 20);
+          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout }));
+          return;
+        }
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, user));
+        return;
+      }
+
+      if (url.pathname === "/coach-states/refresh") {
+        if (method !== "POST") {
+          sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, user));
+          return;
+        }
+        refreshCoachStates(options.store, user.userId, now(), today, {
+          detect: options.autoStates !== false,
+        });
+        redirect(response, "/coach-states");
+        return;
+      }
+
+      if (url.pathname === "/coach-states") {
+        if (method === "GET") {
+          const nowIso = now();
+          const states = options.store.getActiveCoachStates(user.userId, nowIso);
+          const history = options.store.listCoachStates(user.userId, 100);
+          sendHtml(
+            response,
+            200,
+            renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout }),
+          );
+          return;
+        }
+        if (method === "POST") {
+          const form = await readForm(request);
+          const key = form.get("key") ?? "";
+          if (!isCoachStateKey(key)) {
+            redirect(response, "/coach-states?error=invalid-key");
+            return;
+          }
+          const ttlDays = Number(form.get("ttlDays") ?? "7");
+          if (!Number.isInteger(ttlDays) || ttlDays < 1 || ttlDays > 365) {
+            redirect(response, "/coach-states?error=invalid-ttl");
+            return;
+          }
+          const note = (form.get("note") ?? "").trim();
+          if (note.length > 200) {
+            redirect(response, "/coach-states?error=invalid-note");
+            return;
+          }
+          options.store.transaction(() => setManualCoachState(options.store, user.userId, key, ttlDays, note, now()));
+          redirect(response, "/coach-states");
+          return;
+        }
+        sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, user));
+        return;
+      }
+
+      const stateAction = /^\/coach-states\/([^/]+)\/(confirm|resolve)$/.exec(url.pathname);
+      if (stateAction !== null) {
+        if (method !== "POST") {
+          sendHtml(response, 405, layout("Method not allowed", `<p>Method not allowed</p>`, user));
+          return;
+        }
+        let stateId = "";
+        try {
+          stateId = decodeURIComponent(stateAction[1] ?? "");
+        } catch {
+          stateId = "";
+        }
+        const action = stateAction[2];
+        const ok =
+          stateId.length > 0 &&
+          (action === "confirm"
+            ? options.store.transaction(() => confirmCoachState(options.store, user.userId, stateId, now()))
+            : options.store.transaction(() => resolveCoachState(options.store, user.userId, stateId, now())));
+        if (!ok) {
+          redirect(response, "/coach-states?error=not-found");
+          return;
+        }
+        redirect(response, "/coach-states");
+        return;
+      }
+
       if (url.pathname === "/chat" && method === "POST") {
         let body: unknown;
         try {
@@ -1686,14 +2319,35 @@ export function createWeb(options: WebOptions): WebApp {
           response.end(JSON.stringify({ error: { detail: "invalid body" } }));
           return;
         }
-        const message = typeof body === "object" && body !== null && typeof (body as Record<string, unknown>)["message"] === "string"
-          ? String((body as Record<string, unknown>)["message"]).trim()
-          : "";
+        const record = typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
+        const message = typeof record["message"] === "string" ? record["message"].trim() : "";
         if (message.length === 0 || message.length > 1000) {
           response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
           response.end(JSON.stringify({ error: { detail: "message must be 1..1000 characters" } }));
           return;
         }
+        const intentResult = parseCoachIntent(record["intent"]);
+        if (!intentResult.ok) {
+          response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ error: { detail: intentResult.detail } }));
+          return;
+        }
+        const intent = intentResult.intent;
+        let activityDay: string | undefined;
+        if (intent.kind === "review-activity") {
+          const activity = options.store.getActivity(user.userId, intent.activityId);
+          if (activity === undefined) {
+            response.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+            response.end(JSON.stringify({ error: { detail: "activity not found" } }));
+            return;
+          }
+          activityDay = activity.day;
+        }
+        const weekStart = intent.kind === "review-week" ? weekStartOf(intent.weekStart) : undefined;
+        const directive = buildDirectiveForIntent(intent, {
+          ...(activityDay === undefined ? {} : { activityDay }),
+          ...(weekStart === undefined ? {} : { weekStart }),
+        });
         const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
         const requestId = request.headers["x-poc3-request-id"];
         try {
@@ -1704,7 +2358,12 @@ export function createWeb(options: WebOptions): WebApp {
               "x-poc3-user": user.userId,
               ...(typeof requestId === "string" ? { "x-poc3-request-id": requestId } : {}),
             },
-            body: JSON.stringify({ model: options.modelId ?? "poc3-coach", stream: false, messages: [{ role: "user", content: message }] }),
+            body: JSON.stringify({
+              model: options.modelId ?? "poc3-coach",
+              stream: false,
+              messages: [{ role: "user", content: message }],
+              ...(directive === undefined ? {} : { poc3: { directive } }),
+            }),
           });
           const payload = (await upstream.json()) as {
             choices?: Array<{ message?: { content?: unknown } }>;
@@ -1719,6 +2378,12 @@ export function createWeb(options: WebOptions): WebApp {
               attempts?: number;
               outcome?: string;
               validationCode?: string | null;
+              mode?: string | null;
+              writesAllowed?: boolean;
+              blockedWrites?: number;
+              directiveId?: string | null;
+              states?: unknown[];
+              blockedByStates?: unknown[];
             };
             error?: { detail?: string };
           };
@@ -1743,6 +2408,47 @@ export function createWeb(options: WebOptions): WebApp {
                   reason: failure["reason"] === "missing-session-id" ? "missing-session-id" : "session-not-found",
                 }))
             : [];
+          const rawStates = Array.isArray(payload.poc3?.states) ? payload.poc3.states : [];
+          const states: Array<{
+            stateId: string;
+            key: CoachStateKey;
+            label: string;
+            status: string;
+            action: string;
+            source: string;
+            confidence: number;
+            evidence: string[];
+            expiresAt: string | null;
+            uiNote: string;
+          }> = [];
+          for (const value of rawStates) {
+            if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+            const record = value as Record<string, unknown>;
+            const stateId = typeof record["stateId"] === "string" ? record["stateId"] : "";
+            const key = record["key"];
+            if (stateId.length === 0 || !isCoachStateKey(key)) continue;
+            const stored = options.store.getCoachState(user.userId, stateId);
+            const definition = getCoachStateDefinition(key);
+            states.push({
+              stateId,
+              key,
+              label: definition.label,
+              status: stored?.status ?? (typeof record["status"] === "string" ? record["status"] : "active"),
+              action: record["action"] === "resolve" ? "resolve" : "activate",
+              source: stored?.source ?? "chat",
+              confidence: stored?.confidence ?? 0,
+              evidence: stored?.evidence ?? [],
+              expiresAt: stored?.expiresAt ?? null,
+              uiNote: definition.uiNote,
+            });
+          }
+          const rawBlocked = Array.isArray(payload.poc3?.blockedByStates) ? payload.poc3.blockedByStates : [];
+          const blockedByStates: Array<{ key: CoachStateKey; label: string }> = [];
+          for (const value of rawBlocked) {
+            if (typeof value === "string" && isCoachStateKey(value)) {
+              blockedByStates.push({ key: value, label: getCoachStateDefinition(value).label });
+            }
+          }
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(JSON.stringify({
             reply,
@@ -1756,6 +2462,12 @@ export function createWeb(options: WebOptions): WebApp {
             attempts: payload.poc3?.attempts ?? 1,
             outcome: payload.poc3?.outcome ?? "committed",
             validationCode: payload.poc3?.validationCode ?? null,
+            mode: payload.poc3?.mode ?? null,
+            writesAllowed: payload.poc3?.writesAllowed !== false,
+            blockedWrites: typeof payload.poc3?.blockedWrites === "number" ? payload.poc3.blockedWrites : 0,
+            directiveId: typeof payload.poc3?.directiveId === "string" ? payload.poc3.directiveId : null,
+            states,
+            blockedByStates,
           }));
         } catch (error) {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
@@ -1898,19 +2610,19 @@ export function createWeb(options: WebOptions): WebApp {
             ? ""
             : `<p class="history-plan muted small">No matching run: ${unmatched.map(sessionChip).join(" ")}</p>`;
           const activityHtml = dayActivities.map((activity) => {
-            const message = coachPromptForActivity(activity, daySessions);
+            const message = coachPromptForActivity(activity);
             return `<article class="history-activity">
               <div class="history-activity-main">
                 <div class="history-activity-head"><strong>${escapeHtml(activity.title)}</strong><span class="chip source-${escapeHtml(activity.source)}">${activity.source === "garmin" ? "Garmin" : "Coach"}</span>${matchLabel(matchByActivity.get(activity.activityId))}</div>
                 <p class="history-metrics">${escapeHtml(activityMetrics(activity))}</p>
               </div>
-              <div class="history-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}">Ask coach</button><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a><a class="chip" href="/calendar?month=${escapeHtml(day.slice(0, 7))}">View plan</a></div>
+              <div class="history-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "history" }))}">Ask coach</button><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a><a class="chip" href="/calendar?month=${escapeHtml(day.slice(0, 7))}">View plan</a></div>
             </article>`;
           }).join("");
           const missed = dayActivities.length > 0
             ? ""
             : daySessions.length > 0
-              ? `<div class="history-missed"><span class="muted">No activity recorded.</span><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForMissed(day, daySessions))}">Ask coach</button></div>`
+              ? `<div class="history-missed"><span class="muted">No activity recorded.</span><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForMissed(day, daySessions))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day, source: "history" }))}">Ask coach</button></div>`
               : `<p class="muted small">No session or activity.</p>`;
           return `<section class="history-day">
             <header class="history-day-head"><a href="/day/${escapeHtml(day)}">${escapeHtml(formatDayLabel(day))}</a></header>
@@ -1985,7 +2697,7 @@ export function createWeb(options: WebOptions): WebApp {
         let loadCard = "";
         if (load !== null) {
           const prompt = coachPromptForWeek(periodLabel, load, activities, sessions);
-          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div><div class="load-grid"><div class="load-stat"><strong>${load.hasLoad ? load.weekLoad : "—"}</strong><span>load</span></div><div class="load-stat"><strong>${load.acwr === null ? "—" : load.acwr.toFixed(2)}</strong><span>ACWR</span></div><div class="load-stat"><strong>${load.weekChangePct === null ? "—" : `${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%`}</strong><span>vs last week</span></div><div class="load-stat"><strong>${load.hasIntensity ? `${load.hardDistanceKm} / ${load.easyDistanceKm} km` : "—"}</strong><span>hard / easy</span></div></div>${load.hasIntensity ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>` : ""}<p class="muted small">${escapeHtml(load.note)} ACWR compares this week with the 28-day average; a soft signal, not medical advice.</p><div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}">Review my week with the coach</button></div></section>`;
+          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div><div class="load-grid"><div class="load-stat"><strong>${load.hasLoad ? load.weekLoad : "—"}</strong><span>load</span></div><div class="load-stat"><strong>${load.acwr === null ? "—" : load.acwr.toFixed(2)}</strong><span>ACWR</span></div><div class="load-stat"><strong>${load.weekChangePct === null ? "—" : `${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%`}</strong><span>vs last week</span></div><div class="load-stat"><strong>${load.hasIntensity ? `${load.hardDistanceKm} / ${load.easyDistanceKm} km` : "—"}</strong><span>hard / easy</span></div></div>${load.hasIntensity ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>` : ""}<p class="muted small">${escapeHtml(load.note)} ACWR compares this week with the 28-day average; a soft signal, not medical advice.</p><div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-week", weekStart: periodStart, source: "load-card" }))}">Review my week with the coach</button></div></section>`;
         }
 
         let bestEffortsCard = "";
@@ -1997,7 +2709,7 @@ export function createWeb(options: WebOptions): WebApp {
         const reviewSessions = latestForReview === null ? [] : options.store.listSessions(user.userId, latestForReview.day, latestForReview.day);
         const reviewCard = latestForReview === null
           ? ""
-          : `<section class="card review-card"><p class="eyebrow">New run synced</p><h2>${escapeHtml(latestForReview.title)}</h2><p class="muted">${escapeHtml(formatDayLabel(latestForReview.day))} · ${escapeHtml(activityMetrics(latestForReview))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(latestForReview, reviewSessions))}">Review this run with the coach</button><a class="chip" href="/activity/${encodeURIComponent(latestForReview.activityId)}">Detail</a></div></section>`;
+          : `<section class="card review-card"><p class="eyebrow">New run synced</p><h2>${escapeHtml(latestForReview.title)}</h2><p class="muted">${escapeHtml(formatDayLabel(latestForReview.day))} · ${escapeHtml(activityMetrics(latestForReview))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(latestForReview))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: latestForReview.activityId, source: "auto-sync" }))}">Review this run with the coach</button><a class="chip" href="/activity/${encodeURIComponent(latestForReview.activityId)}">Detail</a></div></section>`;
         const noActivities = activities.length === 0
           ? `<p class="muted small period-empty">No Garmin activities in this ${view} yet.</p>`
           : "";
@@ -2030,6 +2742,14 @@ export function createWeb(options: WebOptions): WebApp {
         const start = monthStart(month);
         const end = addDays(start, daysInMonth(month) - 1);
         await autoSync(user.userId, today);
+        const nowIso = now();
+        const activeStates = sortCoachStates(options.store.getActiveCoachStates(user.userId, nowIso))
+          .filter((state) => state.status === "active" && state.key !== "no_key")
+          .slice(0, 3);
+        const stateChips =
+          activeStates.length === 0
+            ? ""
+            : `<div class="state-chips">${activeStates.map((state) => stateChipHtml(state)).join("")}<a class="chip" href="/coach-states">All states</a></div>`;
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         const firstWeekday = weekdayIndex(start);
@@ -2052,7 +2772,7 @@ export function createWeb(options: WebOptions): WebApp {
         const savedKey = options.store.getGarminKey(user.userId);
         const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
         const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
-          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Planned sessions are colored by kind; green ✓ pills are recorded runs.</p></header>
+          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}. Planned sessions are colored by kind; green ✓ pills are recorded runs.</p>${stateChips}</header>
           <section class="card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
             <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
@@ -2060,6 +2780,33 @@ export function createWeb(options: WebOptions): WebApp {
           </section>
           ${garminPanel}`;
         sendHtml(response, 200, layout("Calendar", body, user));
+        return;
+      }
+
+      const peekPath = /^\/activity\/(.+)\/peek$/.exec(url.pathname);
+      if (peekPath !== null) {
+        if (method !== "GET") {
+          sendJson(response, 405, { error: { detail: "method not allowed" } });
+          return;
+        }
+        let peekActivityId = "";
+        try {
+          peekActivityId = decodeURIComponent(peekPath[1] ?? "");
+        } catch {
+          sendJson(response, 404, { error: { detail: "activity not found" } });
+          return;
+        }
+        const peekActivity = options.store.getActivity(user.userId, peekActivityId);
+        if (peekActivity === undefined) {
+          sendJson(response, 404, { error: { detail: "activity not found" } });
+          return;
+        }
+        const peekSessions = options.store.listSessions(user.userId, peekActivity.day, peekActivity.day);
+        const peekPrDistances = prDistancesFor(
+          options.store.listActivities(user.userId, 1000),
+          peekActivity.activityId,
+        );
+        sendJson(response, 200, { peek: buildActivityPeek(peekActivity, peekSessions, peekPrDistances) });
         return;
       }
 
@@ -2079,7 +2826,7 @@ export function createWeb(options: WebOptions): WebApp {
         const sessions = options.store.listSessions(user.userId, activity.day, activity.day);
         const match = matchActivity(activity, sessions);
         const unmatched = unmatchedSessions([match], sessions);
-        const message = coachPromptForActivity(activity, sessions);
+        const message = coachPromptForActivity(activity);
         const weekHref = historyHref("week", weekStartOf(activity.day));
         let splits: ActivitySplit[] = [];
         let splitError: string | null = null;
@@ -2103,12 +2850,7 @@ export function createWeb(options: WebOptions): WebApp {
             }
           }
         }
-        const allBests = personalBests(options.store.listActivities(user.userId, 1000));
-        const prDistances = new Set<BestEffortDistance>(
-          allBests
-            .filter((best) => best.activity.activityId === activity.activityId)
-            .map((best) => best.distance),
-        );
+        const prDistances = prDistancesFor(options.store.listActivities(user.userId, 1000), activity.activityId);
         const extraMetrics = activityExtraMetrics(activity);
         const efforts = fastestEfforts(activity, prDistances);
         const metricsCard = extraMetrics.length === 0 && efforts.length === 0
@@ -2135,7 +2877,7 @@ export function createWeb(options: WebOptions): WebApp {
           ${splitsHtml}
           ${lapsHtml}
           ${zonesHtml}
-          <section class="card"><h2>Ask the coach about this run</h2><p class="muted">The coach sees your last 30 activities and planned sessions, and this run's metrics are in the message.</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}">Ask coach</button><a class="chip" href="/day/${escapeHtml(activity.day)}">View day</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">View plan</a></div></section>
+          <section class="card"><h2>Ask the coach about this run</h2><p class="muted">The coach sees your last 30 activities and the plan for that day. This review is comment-only.</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">Ask coach</button><a class="chip" href="/day/${escapeHtml(activity.day)}">View day</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">View plan</a></div></section>
           ${otherSessions}`;
         sendHtml(response, 200, layout("Activity", body, user, "history"));
         return;

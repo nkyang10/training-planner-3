@@ -11,6 +11,8 @@ import type {
   AppNotification,
   ChangeEntry,
   ChangeSet,
+  CoachStateEvent,
+  CoachStateRecord,
   GarminKey,
   Memory,
   Message,
@@ -673,6 +675,7 @@ describe("coach turn audit", () => {
     validationCode: null,
     outcome: null,
     responseJson: null,
+    directiveHash: null,
   });
 
   it("claims a request once, completes it, and never reclaims a completed turn", () => {
@@ -712,6 +715,156 @@ describe("coach turn audit", () => {
       completedAt: null,
       responseJson: null,
     });
+    close();
+  });
+
+  it("stores the directive hash on a claim and lets a failed retry replace it", () => {
+    const { store, close } = createStore(":memory:");
+    expect(store.claimCoachTurn({ ...record("req-hash"), directiveHash: "hash-a" })).toBe(true);
+    expect(store.getCoachTurn("u1", "req-hash")?.directiveHash).toBe("hash-a");
+    store.failCoachTurn("u1", "req-hash", "2026-02-01T08:00:02.000Z");
+    expect(store.claimCoachTurn({ ...record("req-hash"), directiveHash: "hash-b" })).toBe(true);
+    expect(store.getCoachTurn("u1", "req-hash")?.directiveHash).toBe("hash-b");
+    close();
+  });
+
+  it("appends and lists hidden directives newest first, scoped to one runner", () => {
+    const { store, close } = createStore(":memory:");
+    const directive = {
+      mode: "review" as const,
+      allowCalendarWrites: false,
+      allowMemoryWrites: true,
+      focus: ["schedule" as const],
+      references: { activityId: "garmin:1", day: "2026-11-04" },
+      background: "Comment only.",
+      source: "run-peek" as const,
+      style: { language: "auto" as const, tone: "supportive" as const },
+    };
+    store.appendCoachDirective({
+      directiveId: "directive:1",
+      userId: "u1",
+      requestId: "req-1",
+      messageId: "m-1",
+      visible: "How did my run go?",
+      directive,
+      blockedWrites: 0,
+      createdAt: "2026-02-01T08:00:00.000Z",
+    });
+    store.appendCoachDirective({
+      directiveId: "directive:2",
+      userId: "u1",
+      requestId: "req-2",
+      messageId: "m-2",
+      visible: "Review this week",
+      directive: { ...directive, mode: "review", allowCalendarWrites: false },
+      blockedWrites: 1,
+      createdAt: "2026-02-01T09:00:00.000Z",
+    });
+    store.appendCoachDirective({
+      directiveId: "directive:3",
+      userId: "u2",
+      requestId: "req-3",
+      messageId: "m-3",
+      visible: "Foreign",
+      directive,
+      blockedWrites: 0,
+      createdAt: "2026-02-01T10:00:00.000Z",
+    });
+    const rows = store.listCoachDirectives("u1");
+    expect(rows.map((row) => row.directiveId)).toEqual(["directive:2", "directive:1"]);
+    expect(rows[0]?.blockedWrites).toBe(1);
+    expect(rows[0]?.visible).toBe("Review this week");
+    expect(rows[0]?.directive.references?.activityId).toBe("garmin:1");
+    expect(store.listCoachDirectives("u1", 1)).toHaveLength(1);
+    expect(store.listCoachDirectives("u2").map((row) => row.directiveId)).toEqual(["directive:3"]);
+    close();
+  });
+
+  it("appends, patches, lists and scopes coaching states", () => {
+    const { store, close } = memoryStore();
+    const base: CoachStateRecord = {
+      stateId: "state:1",
+      userId: "u1",
+      key: "race_week",
+      status: "active",
+      source: "auto",
+      confidence: 0.9,
+      evidence: ["Race in 3 days"],
+      activatedAt: "2026-02-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T09:00:00.000Z",
+      expiresAt: "2026-02-10T00:00:00.000Z",
+      resolvedAt: null,
+    };
+    store.appendCoachState(base);
+    store.appendCoachState({ ...base, stateId: "state:2", key: "heat", updatedAt: "2026-02-01T10:00:00.000Z" });
+    expect(store.getCoachState("u1", "state:1")).toMatchObject({ key: "race_week", evidence: ["Race in 3 days"] });
+    expect(store.listCoachStates("u1").map((row) => row.stateId)).toEqual(["state:2", "state:1"]);
+    expect(store.updateCoachState("u1", "state:1", { status: "resolved", resolvedAt: "2026-02-01T11:00:00.000Z" })).toBe(true);
+    expect(store.getCoachState("u1", "state:1")).toMatchObject({ status: "resolved", resolvedAt: "2026-02-01T11:00:00.000Z" });
+    expect(store.updateCoachState("u2", "state:1", { status: "active" })).toBe(false);
+    expect(store.updateCoachState("u1", "state:missing", { status: "active" })).toBe(false);
+    expect(store.listCoachStates("u2")).toHaveLength(0);
+    expect(store.listCoachStates("u1", 1)).toHaveLength(1);
+    close();
+  });
+
+  it("appends, lists and prunes coaching state events", () => {
+    const { store, close } = memoryStore();
+    const event = (eventId: string, userId: string, createdAt: string, action: "activate" | "resolve"): CoachStateEvent => ({
+      eventId,
+      userId,
+      stateId: "state:1",
+      key: "race_week",
+      action,
+      fromStatus: action === "resolve" ? "active" : null,
+      toStatus: action === "resolve" ? "resolved" : "active",
+      source: "auto",
+      confidence: 0.9,
+      evidence: ["Race"],
+      createdAt,
+    });
+    store.appendCoachStateEvent(event("state-event:1", "u1", "2026-02-01T00:00:00.000Z", "activate"));
+    store.appendCoachStateEvent(event("state-event:2", "u1", "2026-02-02T00:00:00.000Z", "resolve"));
+    store.appendCoachStateEvent(event("state-event:3", "u2", "2026-02-03T00:00:00.000Z", "activate"));
+    expect(store.listCoachStateEvents("u1").map((row) => row.eventId)).toEqual(["state-event:2", "state-event:1"]);
+    expect(store.listCoachStateEvents("u1", 1).map((row) => row.eventId)).toEqual(["state-event:2"]);
+    expect(store.listCoachStateEvents("u2").map((row) => row.eventId)).toEqual(["state-event:3"]);
+
+    store.pruneCoachStates("u1", "2026-02-01T12:00:00.000Z");
+    expect(store.listCoachStateEvents("u1").map((row) => row.eventId)).toEqual(["state-event:2"]);
+    close();
+  });
+
+  it("returns only active or observing unexpired states, newest first", () => {
+    const { store, close } = memoryStore();
+    const base: CoachStateRecord = {
+      stateId: "state:active",
+      userId: "u1",
+      key: "race_week",
+      status: "active",
+      source: "auto",
+      confidence: 0.9,
+      evidence: ["Race"],
+      activatedAt: "2026-02-01T00:00:00.000Z",
+      updatedAt: "2026-02-01T09:00:00.000Z",
+      expiresAt: "2026-02-10T00:00:00.000Z",
+      resolvedAt: null,
+    };
+    store.appendCoachState(base);
+    store.appendCoachState({ ...base, stateId: "state:observing", key: "pain_injury", status: "observing", source: "chat", updatedAt: "2026-02-01T10:00:00.000Z" });
+    store.appendCoachState({ ...base, stateId: "state:resolved", status: "resolved", updatedAt: "2026-02-01T11:00:00.000Z", resolvedAt: "2026-02-01T11:00:00.000Z" });
+    store.appendCoachState({ ...base, stateId: "state:expired", updatedAt: "2026-02-01T12:00:00.000Z", expiresAt: "2026-02-04T00:00:00.000Z" });
+    store.appendCoachState({ ...base, stateId: "state:foreign", userId: "u2", updatedAt: "2026-02-01T13:00:00.000Z" });
+    expect(store.getActiveCoachStates("u1", "2026-02-05T00:00:00.000Z").map((row) => row.stateId)).toEqual([
+      "state:observing",
+      "state:active",
+    ]);
+    expect(store.listCoachStates("u1").map((row) => row.stateId)).toEqual([
+      "state:expired",
+      "state:resolved",
+      "state:observing",
+      "state:active",
+    ]);
     close();
   });
 });

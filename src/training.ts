@@ -61,6 +61,8 @@ export function matchActivitiesToPlan(
   const candidates: Candidate[] = [];
   for (const activity of activities) {
     for (const session of sessions) {
+      // Plan-vs-actual is a same-day comparison; a Thursday run cannot satisfy Tuesday's plan.
+      if (activity.day !== session.day) continue;
       if (!withinTolerance(activity, session)) continue;
       const gap = distanceGap(activity, session);
       if (gap === null) continue;

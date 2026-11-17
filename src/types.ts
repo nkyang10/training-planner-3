@@ -146,6 +146,170 @@ export interface ChangeSet {
 
 export type CoachTurnStatus = "in_progress" | "completed" | "failed";
 
+/** What a coach turn is for. The mode is background metadata, never shown in the chat. */
+export type CoachMode = "chat" | "review" | "plan" | "undo";
+
+/** What a review should look at. */
+export type CoachFocus =
+  | "schedule"
+  | "pace"
+  | "hr"
+  | "load"
+  | "race_execution"
+  | "recovery"
+  | "consistency";
+
+/** Where an action-originated turn came from; used for audit, never rendered in the chat. */
+export type CoachSource =
+  | "composer"
+  | "run-peek"
+  | "day-menu"
+  | "history"
+  | "load-card"
+  | "auto-sync"
+  | "activity-detail";
+
+export type CoachLanguage = "auto" | "en" | "zh-Hant";
+export type CoachTone = "supportive" | "direct" | "brief";
+
+/** Server-resolved references; the gateway loads the actual rows. */
+export interface CoachDirectiveReferences {
+  activityId?: string;
+  day?: string;
+  weekStart?: string;
+  sessionIds?: string[];
+}
+
+export interface CoachDirectiveStyle {
+  language?: CoachLanguage;
+  tone?: CoachTone;
+}
+
+/**
+ * The hidden stage direction for one coach turn. The browser never supplies this object: the web server builds it
+ * from a typed intent and the gateway validates and enforces it. It is not part of the visible conversation.
+ */
+export interface CoachDirective {
+  mode: CoachMode;
+  /** When false, the gateway refuses every session/revert proposal for this turn. */
+  allowCalendarWrites: boolean;
+  /** Defaults to true; false makes a review strictly side-effect-free. */
+  allowMemoryWrites?: boolean;
+  focus?: CoachFocus[];
+  references?: CoachDirectiveReferences;
+  /** Short server-authored context; never shown to the runner. */
+  background?: string;
+  source: CoachSource;
+  style?: CoachDirectiveStyle;
+}
+
+/** Audit record for one hidden directive; shown only on the owner's audit page. */
+export interface CoachDirectiveRecord {
+  directiveId: string;
+  userId: string;
+  requestId: string | null;
+  messageId: string | null;
+  /** The visible message this directive accompanied. */
+  visible: string;
+  directive: CoachDirective;
+  /** Calendar writes the gateway refused because the directive forbade them. */
+  blockedWrites: number;
+  createdAt: string;
+}
+
+/** Durable coaching situations. These are separate from a turn's review/plan/undo intent. */
+export type CoachStateKey =
+  | "race_day"
+  | "race_week"
+  | "taper"
+  | "post_race"
+  | "load_spike"
+  | "high_risk"
+  | "under_load"
+  | "hard_easy_imbalance"
+  | "consistency_guard"
+  | "plan_stale"
+  | "data_stale"
+  | "no_key"
+  | "pain_injury"
+  | "illness"
+  | "return_to_run"
+  | "medical_red_flag"
+  | "travel"
+  | "heat"
+  | "time_crunch"
+  | "sleep_debt"
+  | "high_stress"
+  | "motivation_dip"
+  | "altitude"
+  | "air_quality"
+  | "cold_ice"
+  | "indoor_treadmill"
+  | "beginner"
+  | "returning"
+  | "masters"
+  | "strength_focus"
+  | "speed_focus"
+  | "pregnancy_postpartum"
+  | "menstrual_cycle_support"
+  | "low_energy_availability";
+
+export type CoachStateFamily =
+  | "race_phase"
+  | "load"
+  | "consistency"
+  | "safety"
+  | "life"
+  | "wellbeing"
+  | "environment"
+  | "data"
+  | "setup"
+  | "runner";
+
+export type CoachStateStatus = "observing" | "active" | "resolved";
+export type CoachStateSource = "auto" | "chat" | "user";
+
+/** One durable coaching state for one runner. History is kept; only active/observing rows are current. */
+export interface CoachStateRecord {
+  stateId: string;
+  userId: string;
+  key: CoachStateKey;
+  status: CoachStateStatus;
+  source: CoachStateSource;
+  /** 0..1; deterministic detectors are high-confidence, chat proposals lower, user-set 1. */
+  confidence: number;
+  /** Short, human-readable evidence lines; never a diagnosis. */
+  evidence: string[];
+  activatedAt: string;
+  updatedAt: string;
+  expiresAt: string | null;
+  resolvedAt: string | null;
+}
+
+export type CoachStatePatch = Partial<
+  Pick<
+    CoachStateRecord,
+    "status" | "source" | "confidence" | "evidence" | "expiresAt" | "resolvedAt" | "updatedAt"
+  >
+>;
+
+export type CoachStateEventAction = "activate" | "update" | "confirm" | "resolve" | "expire" | "set";
+
+/** Immutable transition log; the state row keeps only the latest snapshot. */
+export interface CoachStateEvent {
+  eventId: string;
+  userId: string;
+  stateId: string;
+  key: CoachStateKey;
+  action: CoachStateEventAction;
+  fromStatus: CoachStateStatus | null;
+  toStatus: CoachStateStatus;
+  source: CoachStateSource;
+  confidence: number;
+  evidence: string[];
+  createdAt: string;
+}
+
 /**
  * Durable idempotency and audit record for one gateway request. The response is cached only after the turn is
  * committed, so a network retry cannot write the same booking twice.
@@ -160,6 +324,8 @@ export interface CoachTurnRecord {
   validationCode: string | null;
   outcome: string | null;
   responseJson: string | null;
+  /** Stable hash of the hidden directive; a replay with a different directive is refused. */
+  directiveHash: string | null;
 }
 
 export interface CoachTurnCompletion {
@@ -225,6 +391,24 @@ export interface Store {
   failCoachTurn(userId: string, requestId: string, completedAt: string): void;
   /** Read a turn audit record, scoped to one user. */
   getCoachTurn(userId: string, requestId: string): CoachTurnRecord | undefined;
+  /** Append one hidden-directive audit record. */
+  appendCoachDirective(record: CoachDirectiveRecord): void;
+  /** Newest first. */
+  listCoachDirectives(userId: string, limit?: number): CoachDirectiveRecord[];
+  /** Append one coaching state; history is kept. */
+  appendCoachState(record: CoachStateRecord): void;
+  /** Patch one state row; false when the row is missing or foreign. */
+  updateCoachState(userId: string, stateId: string, patch: CoachStatePatch): boolean;
+  /** One state row, scoped to one runner. */
+  getCoachState(userId: string, stateId: string): CoachStateRecord | undefined;
+  /** Newest first, including resolved history. */
+  listCoachStates(userId: string, limit?: number): CoachStateRecord[];
+  /** Active/observing states whose expiry has not passed, newest first. */
+  getActiveCoachStates(userId: string, at: string): CoachStateRecord[];
+  appendCoachStateEvent(event: CoachStateEvent): void;
+  listCoachStateEvents(userId: string, limit?: number): CoachStateEvent[];
+  /** Remove resolved state rows and events older than the retention cutoff. */
+  pruneCoachStates(userId: string, before: string): void;
   /** Run a write batch atomically. The callback must not perform HTTP or model calls. */
   transaction<T>(work: () => T): T;
   close(): void;
