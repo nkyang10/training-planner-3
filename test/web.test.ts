@@ -1208,6 +1208,20 @@ describe("training log", () => {
     expect(html).toContain("Garmin load 200");
   });
 
+  it("omits empty load stats when Garmin did not provide load data", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedActivity(store, runner.userId, "garmin:no-load", "2026-11-03", "Easy run", 5),
+    });
+    const html = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
+    expect(html).toContain("Week load");
+    expect(html).toContain("No load data");
+    expect(html).toContain("Garmin did not provide training load for these runs.");
+    expect(html).not.toContain('class="load-grid"');
+    expect(html).not.toContain('class="load-stat"');
+    expect(html).not.toContain("ACWR");
+    expect(html).toContain("Review my week with the coach");
+  });
+
   it("renders an activity detail with plan-vs-actual and coach action", async () => {
     const { base, cookie } = await start({
       seed: (store, runner) => {

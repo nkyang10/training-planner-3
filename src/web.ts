@@ -2706,7 +2706,19 @@ export function createWeb(options: WebOptions): WebApp {
         let loadCard = "";
         if (load !== null) {
           const prompt = coachPromptForWeek(periodLabel, load, activities, sessions);
-          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div><div class="load-grid"><div class="load-stat"><strong>${load.hasLoad ? load.weekLoad : "—"}</strong><span>load</span></div><div class="load-stat"><strong>${load.acwr === null ? "—" : load.acwr.toFixed(2)}</strong><span>ACWR</span></div><div class="load-stat"><strong>${load.weekChangePct === null ? "—" : `${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%`}</strong><span>vs last week</span></div><div class="load-stat"><strong>${load.hasIntensity ? `${load.hardDistanceKm} / ${load.easyDistanceKm} km` : "—"}</strong><span>hard / easy</span></div></div>${load.hasIntensity ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>` : ""}<p class="muted small">${escapeHtml(load.note)} ACWR compares this week with the 28-day average; a soft signal, not medical advice.</p><div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-week", weekStart: periodStart, source: "load-card" }))}">Review my week with the coach</button></div></section>`;
+          const loadStats = [
+            load.hasLoad ? `<div class="load-stat"><strong>${load.weekLoad}</strong><span>load</span></div>` : "",
+            load.acwr === null ? "" : `<div class="load-stat"><strong>${load.acwr.toFixed(2)}</strong><span>ACWR</span></div>`,
+            load.weekChangePct === null ? "" : `<div class="load-stat"><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>vs last week</span></div>`,
+            load.hasIntensity ? `<div class="load-stat"><strong>${load.hardDistanceKm} / ${load.easyDistanceKm} km</strong><span>hard / easy</span></div>` : "",
+          ].filter((part) => part.length > 0).join("");
+          const intensityLine = load.hasIntensity
+            ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>`
+            : "";
+          const acwrNote = load.acwr === null
+            ? ""
+            : `<p class="muted small">ACWR compares this week with the 28-day average; a soft signal, not medical advice.</p>`;
+          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div>${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}<p class="muted small">${escapeHtml(load.note)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-week", weekStart: periodStart, source: "load-card" }))}">Review my week with the coach</button></div></section>`;
         }
 
         let bestEffortsCard = "";
