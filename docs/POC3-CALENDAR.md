@@ -51,8 +51,8 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
    sign in.
 2. Land on **November 2026** (or the current month). Empty days are dashed; booked days carry colored plan pills; recorded
    runs carry green `✓` pills with the run's description. The nav shows your display name, a **sync icon**, a
-   **notification bell**, and links to **/profile**.
-   The coach header shows the booking limit: **Bookings up to 180 days ahead · 可預約未來 180 日**.
+   **notification bell**, and links to **/profile**. The coach enforces a 180-day booking horizon and explains it when a
+   requested date is beyond it; the header itself stays minimal.
 3. Click **💬 Coach** (bottom-right). Tell it a goal or a constraint:
    - "I want to run a 10k in 8 weeks."
    - "Move Tuesday's run to Wednesday and delete Sunday's."
@@ -292,7 +292,7 @@ Rules enforced by `src/coach.ts`:
 - If the runner names a day but not a specific session and the day has several sessions, the coach asks which one and
   writes nothing.
 - If a proposed target is not in the facts, the gateway applies the rest of the batch and returns structured `failures`;
-  the UI renders them as a "Not applied · 未套用" card instead of appending an English note to the reply.
+  the UI renders them as a "Could not apply · 未套用" card instead of appending an English note to the reply.
 - `revertChangeSetId` is optional: an existing change-set id, or `"last"` for the newest non-reverted batch. A turn cannot
   combine a revert with `sessions`; that is rejected with zero writes.
 - Unknown keys, wrong types, invalid kinds and malformed days reject the whole turn.
@@ -479,7 +479,7 @@ revert path. There is no direct revert API shortcut.
   endpoint returns each day's `items` with `{ type: "plan" | "record", kind, label, tooltip }` and, on record items,
   `activityId`; the same server helpers compute the first render and the refresh, so the refreshed grid cannot drift from
   the HTML. Re-rendered record pills keep their peek wiring, and an open peek closes when the grid refreshes.
-- **Not applied card**: when a proposed target is missing, the reply stays clean and a card lists the action, title, day
+- **Could not apply card**: when a proposed target is missing, the reply stays clean and a card lists the action, title, day
   and reason, with `Show {day}` and `Try again`. A short localized note is stored with the message so the failure survives
   a history reload.
 
@@ -492,7 +492,7 @@ name, activity title or coach conversation is used.
 
 ![Starter suggestions on first open](design/coach-starter-demo.png)
 
-![Structured Not applied card above the suggestion rail](design/coach-not-applied-demo.png)
+![Structured Could not apply card above the suggestion rail](design/coach-not-applied-demo.png)
 
 ![Delete applied in place: the deleted day is empty while the rest of the week keeps its sessions](design/coach-delete-demo.png)
 
@@ -504,7 +504,7 @@ name, activity title or coach conversation is used.
 
 ![Activity detail: rich metrics, fastest efforts with PR badges, per-kilometre splits, Garmin laps and HR zones](design/activity-detail-demo.png)
 
-![Coach states manager: active race-week and heat states, a proposed pain state with Confirm/Dismiss, Refresh detection, the set-state form and the non-diagnosis copy](design/coach-states-demo.png)
+![Coaching states manager: active race-week and heat states, a proposed pain state with Confirm/Dismiss, Refresh, the set-state form and the non-diagnosis copy](design/coach-states-demo.png)
 
 ![Coach state card in the chat bubble: a travel state with evidence and Resolve, plus the race-week guardrail system line](design/coach-state-bubble-demo.png)
 
@@ -617,14 +617,14 @@ The intents are `chat`, `review-activity`, `review-day`, `review-week`, `plan` a
 `focus` and `style` values from a fixed allowlist. The visible message stays conversational (action buttons add the run's
 day and metrics, never hidden instructions); the directive is app metadata, not a substitute for user intent.
 
-`GET /coach-audit` (linked from the profile page and the coach header) shows the owner's recent directives, a
+`GET /coach-audit` (an owner-only internal page, not linked in the end-user UI) shows the owner's recent directives, a
 comment-only/blocked-writes summary, active coaching states and any legacy `mode:` memories. New durable context uses
 structured coaching states; legacy `mode:` memories remain in the coach's facts and are still shown for transparency.
 
 The chat response adds `mode`, `writesAllowed`, `blockedWrites`, `directiveId`, `states` and `blockedByStates`. The
 bubble shows the reply as usual, adds a state card for each state change, and adds
-`Comment-only · calendar unchanged · 日曆未有更改` only when the gateway had to block a proposed write. A guardrail
-fallback adds `Calendar unchanged — <state> guardrail · 日曆未有更改`.
+`Calendar unchanged · 日曆未有更改` only when the gateway had to block a proposed write. A state guardrail adds
+`Calendar unchanged — <state> · 日曆未有更改`.
 
 #### Coaching states (durable context beyond one turn)
 
@@ -649,7 +649,7 @@ through `stateProposals` or set by the runner on `/coach-states`.
   blocks intensity/race/racewalk for 7 days after; injury/return block intensity/racing/racewalk; illness blocks all
   training except rest; a red flag blocks every booking. A repair attempt is allowed; a failed repair returns a fallback
   and writes nothing to the calendar, while proposed states are still stored so a confirmation card is not lost.
-- Pages are read-only; auto detection is persisted by a gateway turn or the explicit **Refresh detection** action. Active
+- Pages are read-only; auto detection is persisted by a gateway turn or the explicit **Refresh** action. Active
   states render as calendar chips, bubble cards and on `/coach-states`; the audit page shows active states, an immutable
   State activity log and any legacy `mode:` memories. The prompt block is server-authored background and is never shown in
   the chat; evidence/notes are rendered as data, never instructions.
@@ -811,7 +811,7 @@ Never commit real keys or `.env` files; the live secrets stay in the gitignored 
 `sqlite:data/poc3-auth.sqlite`, refuses to stop a process whose command line does not contain `src/index.ts`, starts
 `pnpm dev` with the live model/env, and waits for the gateway `/health`, the calendar `/login` and the new stylesheet. It
 fails if the auth secret or model key is missing, or if the deployed CSS lacks `.cal-pill.record`, `.state-card`,
-`.state-form` or `.state-refresh`, or the login page does not reference `app.css?v=11`. Runtime logs:
+`.state-form` or `.state-refresh`, or the login page does not reference `app.css?v=12`. Runtime logs:
 `data/poc3-live.out.log` and `data/poc3-live.err.log`; deploy history: `data/poc3-deploy.log`.
 
 ---

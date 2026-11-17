@@ -281,7 +281,7 @@ function recordItem(activity: Activity): CalendarItem {
     activity.durationMin === null ? "" : formatMinutes(activity.durationMin),
     formatPace(activity.paceSecPerKm),
     activity.avgHr === null ? "" : `${activity.avgHr} bpm`,
-    activity.source === "garmin" ? "Garmin" : "Reported",
+    activitySourceLabel(activity),
   ]
     .filter((part) => part.length > 0)
     .join(" · ");
@@ -317,11 +317,16 @@ function calendarItemsHtml(items: readonly CalendarItem[]): string {
   return `${shown.map(calendarItemHtml).join("")}${more}`;
 }
 
+/** How a recorded activity reached the calendar; "Reported" is the runner telling the coach about it. */
+function activitySourceLabel(activity: Activity): string {
+  return activity.source === "garmin" ? "Garmin" : "Reported";
+}
+
 function activityLine(activity: Activity): string {
   const amount = [activity.distanceKm === null ? "" : `${activity.distanceKm} km`, activity.durationMin === null ? "" : `${activity.durationMin} min`, activity.paceSecPerKm === null ? "" : `${Math.floor(activity.paceSecPerKm / 60)}:${String(activity.paceSecPerKm % 60).padStart(2, "0")}/km`, activity.avgHr === null ? "" : `${activity.avgHr} bpm`]
     .filter((part) => part.length > 0)
     .join(" · ");
-  return `<li><span class="tick">✓</span> ${escapeHtml(activity.title)}${amount.length === 0 ? "" : ` — ${escapeHtml(amount)}`} <span class="muted">(${escapeHtml(activity.source)})</span> <a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a></li>`;
+  return `<li><span class="tick">✓</span> ${escapeHtml(activity.title)}${amount.length === 0 ? "" : ` — ${escapeHtml(amount)}`} <span class="muted">(${escapeHtml(activitySourceLabel(activity))})</span> <a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a></li>`;
 }
 
 function formatDayLabel(day: string): string {
@@ -722,7 +727,7 @@ function buildActivityPeek(
     day: activity.day,
     dayLabel: formatDayLabel(activity.day),
     source: activity.source,
-    sourceLabel: activity.source === "garmin" ? "Garmin" : "Reported",
+    sourceLabel: activitySourceLabel(activity),
     metrics: activityMetrics(activity),
     extra: activityPeekMetrics(activity),
     efforts: fastestEffortItems(activity, prDistances).map((effort) => ({
@@ -1065,7 +1070,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
   const bubble = user === undefined ? "" : renderChatBubble();
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=11"></head>
+  <title>${escapeHtml(title)}</title><link rel="stylesheet" href="/static/app.css?v=12"></head>
   <body>${nav}${viewBar}<main>${body}</main>${bubble}${notificationScript}</body></html>`;
 }
 
@@ -1073,7 +1078,7 @@ function layout(title: string, body: string, user: AuthUser | undefined, activeV
 function renderChatBubble(): string {
   return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
   <section id="coach-panel" hidden aria-label="Coach chat">
-    <header><div><strong>AI Coach</strong><span class="coach-limit">Bookings up to 180 days ahead · 可預約未來 180 日</span></div><div class="coach-head-actions"><a class="coach-audit-link" href="/coach-states" title="Coaching states">States</a><a class="coach-audit-link" href="/coach-audit" title="Hidden directives">Audit</a><button id="coach-minimize" type="button" aria-label="Minimize chat" title="Minimize">−</button></div></header>
+    <header><strong>AI Coach</strong><div class="coach-head-actions"><button id="coach-minimize" type="button" aria-label="Minimize chat" title="Minimize">−</button></div></header>
     <div id="coach-log" role="log" aria-live="polite"></div>
     <div id="coach-suggestions" aria-label="Suggested next messages"></div>
     <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>
@@ -1293,10 +1298,10 @@ function renderChatBubble(): string {
         const head = document.createElement('div');
         head.className = 'state-bubble-head';
         const title = document.createElement('strong');
-        title.textContent = state.label || state.key || 'Coaching state';
+        title.textContent = state.label || 'Coaching state';
         const chip = document.createElement('span');
         chip.className = 'chip state-status state-' + (state.status || 'active');
-        chip.textContent = state.status === 'observing' ? 'proposed' : 'active';
+        chip.textContent = state.status === 'observing' ? 'Proposed' : 'Active';
         head.append(title, chip);
         const detail = document.createElement('p');
         detail.className = 'muted small';
@@ -1392,7 +1397,12 @@ function renderChatBubble(): string {
         const data = await response.json();
         typing.remove();
         if (!response.ok) {
-          add('error', data && data.error ? data.error.detail : 'The coach could not answer.');
+          const reason = response.status === 404
+            ? 'That run could not be found.'
+            : response.status === 400
+              ? 'That message could not be sent.'
+              : 'The coach is unavailable right now. Try again.';
+          add('error', reason);
           setRetry(text, intent);
           return;
         }
@@ -1404,12 +1414,12 @@ function renderChatBubble(): string {
           add('system', 'Calendar updated · 日曆已更新');
         }
         if (data.writesAllowed === false && data.blockedWrites > 0) {
-          add('system', 'Comment-only · calendar unchanged · 日曆未有更改');
+          add('system', 'Calendar unchanged · 日曆未有更改');
         }
         addStateCards(data.states);
         if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
           const labels = data.blockedByStates.map((state) => state && state.label ? String(state.label) : 'a coaching state');
-          add('system', 'Calendar unchanged — ' + labels.join(', ') + ' guardrail · 日曆未有更改');
+          add('system', 'Calendar unchanged — ' + labels.join(', ') + ' · 日曆未有更改');
         }
         addFailureCard(data.failures, text, intent);
       } catch {
@@ -1433,14 +1443,14 @@ function renderChatBubble(): string {
       day: 'numeric', month: 'short', timeZone: 'UTC',
     });
     const failureLabel = (action) => action === 'remove' ? 'Delete' : action === 'update' ? 'Update' : 'Add';
-    const failureReason = (reason) => reason === 'missing-session-id' ? 'no session was specified' : 'session not found';
+    const failureReason = (reason) => reason === 'missing-session-id' ? 'no session was specified' : 'that session no longer exists';
     const addFailureCard = (failures, retryText, retryIntent) => {
       if (!Array.isArray(failures) || failures.length === 0) return;
       const card = document.createElement('div');
       card.className = 'bubble failure';
       card.setAttribute('role', 'status');
       const head = document.createElement('strong');
-      head.textContent = 'Not applied · 未套用';
+      head.textContent = 'Could not apply · 未套用';
       card.appendChild(head);
       const list = document.createElement('ul');
       const days = [];
@@ -1981,8 +1991,7 @@ function renderProfile(user: AuthUser, saved: boolean, error?: string): string {
         <button class="btn" type="submit">Save profile</button>
       </form>
       <p class="muted small">Member since ${escapeHtml(user.createdAt.slice(0, 10))}.</p>
-      <p class="muted small"><a href="/coach-states">Coach states — durable context</a></p>
-      <p class="muted small"><a href="/coach-audit">Coach audit — hidden directives</a></p>
+      <p class="muted small"><a href="/coach-states">Coaching states</a> — travel, heat, pain or a focus block</p>
     </section>`,
     user,
     "none",
@@ -2613,7 +2622,7 @@ export function createWeb(options: WebOptions): WebApp {
             const message = coachPromptForActivity(activity);
             return `<article class="history-activity">
               <div class="history-activity-main">
-                <div class="history-activity-head"><strong>${escapeHtml(activity.title)}</strong><span class="chip source-${escapeHtml(activity.source)}">${activity.source === "garmin" ? "Garmin" : "Coach"}</span>${matchLabel(matchByActivity.get(activity.activityId))}</div>
+                <div class="history-activity-head"><strong>${escapeHtml(activity.title)}</strong><span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity))}</span>${matchLabel(matchByActivity.get(activity.activityId))}</div>
                 <p class="history-metrics">${escapeHtml(activityMetrics(activity))}</p>
               </div>
               <div class="history-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "history" }))}">Ask coach</button><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a><a class="chip" href="/calendar?month=${escapeHtml(day.slice(0, 7))}">View plan</a></div>
@@ -2711,13 +2720,13 @@ export function createWeb(options: WebOptions): WebApp {
           ? ""
           : `<section class="card review-card"><p class="eyebrow">New run synced</p><h2>${escapeHtml(latestForReview.title)}</h2><p class="muted">${escapeHtml(formatDayLabel(latestForReview.day))} · ${escapeHtml(activityMetrics(latestForReview))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(latestForReview))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: latestForReview.activityId, source: "auto-sync" }))}">Review this run with the coach</button><a class="chip" href="/activity/${encodeURIComponent(latestForReview.activityId)}">Detail</a></div></section>`;
         const noActivities = activities.length === 0
-          ? `<p class="muted small period-empty">No Garmin activities in this ${view} yet.</p>`
+          ? `<p class="muted small period-empty">No recorded activities in this ${view} yet.</p>`
           : "";
         const lastImportText = lastImport.length === 0
           ? "No Garmin import yet."
           : `Last import: ${localDateTime(lastImport, user.timezone)}`;
 
-        const body = `<header class="page-head"><p class="eyebrow">Training log · 訓練紀錄</p><h1>Past training</h1><p class="muted">What actually happened, from Garmin. Pick a week, month or year; the plan stays on the calendar.</p></header>
+        const body = `<header class="page-head"><p class="eyebrow">Training log · 訓練紀錄</p><h1>Past training</h1><p class="muted">What actually happened, from Garmin and reported runs. Pick a week, month or year; the plan stays on the calendar.</p></header>
           ${periodBar}
           ${garminPanel}
           <section class="history-summary">
@@ -2865,7 +2874,7 @@ export function createWeb(options: WebOptions): WebApp {
         const otherSessions = unmatched.length === 0
           ? ""
           : `<section class="card"><h2>Other planned sessions that day</h2><p class="muted small">No matching run was recorded for these.</p><p class="history-plan">${unmatched.map(sessionChip).join(" ")}</p></section>`;
-        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← Training log</a> · Activity</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${activity.source === "garmin" ? "Garmin" : "Coach"}</span></p></header>
+        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← Training log</a> · Activity</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity))}</span></p></header>
           <section class="history-summary detail-summary">
             <div class="stat"><strong>${activity.distanceKm === null ? "—" : `${activity.distanceKm} km`}</strong><span>distance</span></div>
             <div class="stat"><strong>${activity.durationMin === null ? "—" : formatMinutes(activity.durationMin)}</strong><span>time</span></div>
@@ -2877,7 +2886,7 @@ export function createWeb(options: WebOptions): WebApp {
           ${splitsHtml}
           ${lapsHtml}
           ${zonesHtml}
-          <section class="card"><h2>Ask the coach about this run</h2><p class="muted">The coach sees your last 30 activities and the plan for that day. This review is comment-only.</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">Ask coach</button><a class="chip" href="/day/${escapeHtml(activity.day)}">View day</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">View plan</a></div></section>
+          <section class="card"><h2>Ask the coach about this run</h2><p class="muted">The coach will compare this run with your plan for the day and comment on effort, pace and what to keep in mind. Your calendar will not change.</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">Ask coach</button><a class="chip" href="/day/${escapeHtml(activity.day)}">View day</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">View plan</a></div></section>
           ${otherSessions}`;
         sendHtml(response, 200, layout("Activity", body, user, "history"));
         return;
@@ -2894,7 +2903,7 @@ export function createWeb(options: WebOptions): WebApp {
         const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← Calendar</a></p><h1>${escapeHtml(day)}</h1>
           <p class="muted">${escapeHtml(user.displayName)} · <a href="/profile">Profile</a></p></header>
           <section class="card"><h2>Booked by the coach</h2>${sessions.length === 0 ? `<p class="muted">No session booked.</p>` : `<ul class="sessions">${sessions.map((session) => `<li><strong>${escapeHtml(session.title)}</strong> <span class="chip kind-${escapeHtml(session.kind)}">${escapeHtml(session.kind)}</span>${session.distanceKm === null ? "" : ` · ${session.distanceKm} km`}${session.durationMin === null ? "" : ` · ${session.durationMin} min`}${session.note === null ? "" : `<p class="note">${escapeHtml(session.note)}</p>`}</li>`).join("")}</ul>`}</section>
-          <section class="card"><h2>Done (Garmin / reported)</h2>${activities.length === 0 ? `<p class="muted">Nothing recorded yet.</p>` : `<ul class="sessions">${activities.map(activityLine).join("")}</ul>`}</section>`;
+          <section class="card"><h2>Recorded activities</h2>${activities.length === 0 ? `<p class="muted">Nothing recorded yet.</p>` : `<ul class="sessions">${activities.map(activityLine).join("")}</ul>`}</section>`;
         sendHtml(response, 200, layout(day, body, user));
         return;
       }

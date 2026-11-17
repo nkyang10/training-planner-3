@@ -28,8 +28,8 @@ export function renderCoachAudit(
   const activeCount = coachingStates.filter((state) => state.status === "active").length;
   const stateList =
     coachingStates.length === 0
-      ? `<p class="muted small">No active states. Auto states appear from the calendar and training; coach or runner states appear on the <a href="/coach-states">Coach states</a> page.</p>`
-      : sortCoachStates(coachingStates).map((state) => stateCardHtml(state, { timezone: user.timezone })).join("");
+      ? `<p class="muted small">No active states. Auto states appear from the calendar and training; coach or runner states appear on the <a href="/coach-states">Coaching states</a> page.</p>`
+      : sortCoachStates(coachingStates).map((state) => stateCardHtml(state, { timezone: user.timezone, internal: true })).join("");
   const eventList =
     stateEvents.length === 0
       ? `<p class="muted small">No state transitions yet.</p>`
@@ -82,7 +82,7 @@ export function renderCoachAudit(
           .join("");
   return deps.layout(
     "Coach audit",
-    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a> · <a href="/coach-states">Coach states</a></p><h1>Coach audit</h1><p class="muted">The chat shows only your message and the coach's reply. Each action also sends a hidden directive that guides the coach; it is never rendered in the chat. This page shows those directives and the coaching states.</p></section>
+    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a> · <a href="/coach-states">Coaching states</a></p><h1>Coach audit</h1><p class="muted">The chat shows only your message and the coach's reply. Each action also sends a hidden directive that guides the coach; it is never rendered in the chat. This page shows those directives and the coaching states.</p></section>
     <section class="card audit-summary"><div class="audit-stats">${auditMetric("recent directives", directives.length)}${auditMetric("comment-only", reviewOnly)}${auditMetric("blocked writes", blocked)}${auditMetric("active states", activeCount)}</div></section>
     <section class="card"><h2>Active coaching states</h2><p class="muted small">Auto, coach-proposed and runner-set states. <a href="/coach-states">Manage states</a>.</p>${stateList}</section>
     <section class="card"><h2>State activity</h2><p class="muted small">Immutable transitions: activation, confirmation, resolution and expiry. Routine auto-refreshes are not logged.</p>${eventList}</section>
@@ -138,7 +138,7 @@ function stateErrorMessage(code?: string): string | undefined {
 }
 
 function stateStatusChip(state: CoachStateRecord): string {
-  const label = state.status === "active" ? "active" : state.status === "observing" ? "proposed" : "resolved";
+  const label = state.status === "active" ? "Active" : state.status === "observing" ? "Proposed" : "Resolved";
   return `<span class="chip state-status state-${state.status}">${label}</span>`;
 }
 
@@ -147,21 +147,29 @@ export function stateChipHtml(state: CoachStateRecord): string {
   return `<a class="chip state-chip state-${state.status}" href="/coach-states" title="${escapeHtml(definition.description)}">${escapeHtml(definition.shortLabel)}</a>`;
 }
 
-function stateCardHtml(state: CoachStateRecord, options: { proposed?: boolean; timezone?: string } = {}): string {
+function stateCardHtml(
+  state: CoachStateRecord,
+  options: { proposed?: boolean; timezone?: string; internal?: boolean } = {},
+): string {
   const definition = getCoachStateDefinition(state.key);
+  const internal = options.internal === true;
   const proposed = options.proposed === true || state.status === "observing";
   const evidence =
     state.evidence.length === 0
       ? ""
       : `<ul class="state-evidence">${state.evidence.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+  const keyChip = internal ? `<span class="chip">${escapeHtml(state.key)}</span>` : "";
   const guardrails =
-    definition.guardrails.length === 0
-      ? ""
-      : `<p class="state-guardrail">Guardrail: ${escapeHtml(definition.guardrails.map((rule) => rule.rule).join(" "))}</p>`;
+    internal && definition.guardrails.length > 0
+      ? `<p class="state-guardrail">Guardrail: ${escapeHtml(definition.guardrails.map((rule) => rule.rule).join(" "))}</p>`
+      : "";
+  const expiry = formatCoachStateDate(state.expiresAt, options.timezone ?? "UTC");
+  const expiryText = expiry === "no expiry" ? "no expiry" : `until ${expiry}`;
+  const confidence = internal ? `confidence ${state.confidence.toFixed(2)} · ` : "";
   const confirm = `<form method="post" action="/coach-states/${encodeURIComponent(state.stateId)}/confirm" class="state-actions"><button class="btn" type="submit">Confirm · 確認</button><button class="btn ghost" type="submit" formaction="/coach-states/${encodeURIComponent(state.stateId)}/resolve">Dismiss · 略過</button></form>`;
   const resolve = `<form method="post" action="/coach-states/${encodeURIComponent(state.stateId)}/resolve" class="state-actions"><button class="btn ghost" type="submit">Resolve · 解除</button></form>`;
   return `<article class="state-card state-${state.status}">
-    <div class="state-head"><strong>${escapeHtml(definition.label)}</strong><span class="chip">${escapeHtml(state.key)}</span>${stateStatusChip(state)}<span class="chip">${escapeHtml(coachStateSourceLabel(state.source))}</span><span class="muted small">confidence ${state.confidence.toFixed(2)} · ${escapeHtml(formatCoachStateDate(state.expiresAt, options.timezone ?? "UTC"))}</span></div>
+    <div class="state-head"><strong>${escapeHtml(definition.label)}</strong>${keyChip}${stateStatusChip(state)}<span class="chip">${escapeHtml(coachStateSourceLabel(state.source))}</span><span class="muted small">${confidence}${escapeHtml(expiryText)}</span></div>
     <p class="muted small">${escapeHtml(definition.description)}</p>
     ${evidence}
     ${guardrails}
@@ -186,12 +194,12 @@ export function renderCoachStates(
       : `<section class="card"><h2>Setup · 設定</h2><p class="muted small">No Garmin key is saved. <a href="/profile">Add it on Profile</a> to coach from recorded runs.</p></section>`;
   const activeHtml =
     active.length === 0
-      ? `<p class="muted small">No active states. Auto states appear from the calendar and training; use Refresh detection or set one below.</p>`
+      ? `<p class="muted small">No active states. Automatic states appear from your calendar and training; use Refresh or set one below.</p>`
       : active.map((state) => stateCardHtml(state, { timezone: user.timezone })).join("");
   const observingHtml =
     observing.length === 0
       ? ""
-      : `<section class="card"><h2>Proposed by the coach · 教練建議</h2><p class="muted small">These wait for your confirmation. Their guardrails do not apply until you confirm; dismiss one that does not fit.</p>${observing.map((state) => stateCardHtml(state, { proposed: true, timezone: user.timezone })).join("")}</section>`;
+      : `<section class="card"><h2>Proposed by the coach · 教練建議</h2><p class="muted small">These wait for your confirmation. They do not change your plan until you confirm; dismiss one that does not fit.</p>${observing.map((state) => stateCardHtml(state, { proposed: true, timezone: user.timezone })).join("")}</section>`;
   const families = new Map<string, string[]>();
   for (const definition of COACH_STATE_DEFINITIONS) {
     if (definition.family === "setup") continue;
@@ -211,22 +219,22 @@ export function renderCoachStates(
       : `<ul class="state-history">${resolved
           .map((state) => {
             const definition = getCoachStateDefinition(state.key);
-            return `<li><span class="chip">${escapeHtml(definition.label)}</span> ${escapeHtml(state.status)} · ${escapeHtml(coachStateSourceLabel(state.source))} · ${escapeHtml(localDateTime(state.resolvedAt ?? state.updatedAt, user.timezone))}</li>`;
+            return `<li><span class="chip">${escapeHtml(definition.label)}</span> ${escapeHtml(coachStateSourceLabel(state.source))} · ${escapeHtml(localDateTime(state.resolvedAt ?? state.updatedAt, user.timezone))}</li>`;
           })
           .join("")}</ul>`;
   const resolvedCount = resolved.length;
   const errorMessage = stateErrorMessage(error);
   return deps.layout(
-    "Coach states",
-    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a> · <a href="/coach-audit">Coach audit</a></p><h1>Coach states · 教練狀態</h1><p class="muted">Durable context for the coach: race phase and load states are detected automatically; travel, heat, pain, illness and focus blocks are proposed by the coach or set by you. States are not diagnoses.</p><p class="muted small">Active ${active.length} · Proposed ${observing.length} · Resolved ${resolvedCount}</p>${errorBanner(errorMessage)}</section>
+    "Coaching states",
+    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a></p><h1>Coaching states · 教練狀態</h1><p class="muted">Temporary situations that change your training — race phase, load, travel, heat, pain, illness or a focus block. Some are detected automatically; others are suggested by the coach or set by you. States are not diagnoses.</p><p class="muted small">Active ${active.length} · Proposed ${observing.length} · Resolved ${resolvedCount}</p>${errorBanner(errorMessage)}</section>
     ${setupHtml}
-    <section class="card"><h2>Active states · 生效狀態</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit">Refresh detection · 重新偵測</button></form>${activeHtml}</section>
+    <section class="card"><h2>Active states · 生效狀態</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit" title="Re-check automatic states">Refresh · 更新</button></form>${activeHtml}</section>
     ${observingHtml}
     <section class="card"><h2>Set a state · 設定狀態</h2><p class="muted small">Use this for travel, heat, time pressure, pain, illness, sleep debt or a focus block. Sensitive states are never inferred; they are yours to set.</p>
       <form method="post" action="/coach-states" class="state-form">
         <label for="state-key">State</label><select id="state-key" name="key" required>${stateOptions}</select>
         <label for="state-ttl">Days</label><input id="state-ttl" name="ttlDays" type="number" min="1" max="365" value="7" required>
-        <label for="state-note">Note <span class="muted small">(optional evidence)</span></label><input id="state-note" name="note" maxlength="200" autocomplete="off" placeholder="e.g. travelling to Tokyo 20-24 Nov">
+        <label for="state-note">Note <span class="muted small">(optional)</span></label><input id="state-note" name="note" maxlength="200" autocomplete="off" placeholder="e.g. travelling to Tokyo 20-24 Nov">
         <button class="btn" type="submit">Set state · 儲存</button>
       </form>
       <p class="state-note">Not medical advice. For chest pain, fainting, severe breathlessness, pregnancy/postpartum or a worsening injury, seek a clinician.</p>

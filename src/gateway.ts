@@ -316,7 +316,7 @@ function fallbackFor(code: string | null): string {
     return "I kept this turn to a comment and did not change your calendar. Ask again if you want a schedule change.";
   }
   if (code === "mode-guardrail") {
-    return "I did not book that session because a coaching-state guardrail protects you. The calendar is unchanged. If the state is wrong, resolve it on the Coach states page.";
+    return "I did not book that session because your current coaching state does not allow it. The calendar is unchanged. If that state is wrong, you can resolve it on the Coaching states page.";
   }
   if (code === "past-session") {
     return `${FALLBACK_REPLY}\n\nI tried to book a date that has already passed, so I did not move it to today automatically.`;
@@ -385,8 +385,8 @@ function summarizeChanges(changes: readonly ChangeEntry[]): string {
 function failureNote(failures: readonly TurnFailure[], reply: string): string {
   const count = failures.length;
   const chinese = /[\u3400-\u9fff]/.test(reply);
-  if (chinese) return `註：有 ${count} 個項目找不到，該部分未有套用。`;
-  return `Note: ${count} item${count === 1 ? "" : "s"} could not be found, so that part was not applied.`;
+  if (chinese) return `註：有 ${count} 個項目找不到，該部分未有更改。`;
+  return `Note: ${count} item${count === 1 ? "" : "s"} could not be found, so I left that part unchanged.`;
 }
 
 /** "last" means the newest change set that still stands, so an undo cannot pick an already undone batch. */

@@ -1277,7 +1277,7 @@ describe("coaching states in the gateway", () => {
     expect(body.poc3.validationCode).toBe("mode-guardrail");
     expect(body.poc3.blockedByStates).toEqual(["race_week"]);
     expect(body.poc3.sessions).toBe(0);
-    expect(body.choices[0]?.message.content).toContain("coaching-state guardrail");
+    expect(body.choices[0]?.message.content).toContain("coaching state does not allow it");
     expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06")).toHaveLength(0);
   });
 
@@ -1606,7 +1606,7 @@ describe("coaching states in the gateway", () => {
     expect(body.poc3.validationCode).toBe("mode-guardrail");
     expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
     expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
-    expect(body.choices[0]?.message.content).toContain("coaching-state guardrail");
+    expect(body.choices[0]?.message.content).toContain("coaching state does not allow it");
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").find((state) => state.key === "pain_injury")).toMatchObject({
       status: "observing",
       source: "chat",

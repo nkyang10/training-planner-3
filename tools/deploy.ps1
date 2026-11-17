@@ -131,8 +131,8 @@ try {
         throw 'The deployed stylesheet does not contain the coaching-state styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=11') {
-        throw 'The deployed login page does not reference app.css?v=11.'
+    if ($loginText -notmatch 'app\.css\?v=12') {
+        throw 'The deployed login page does not reference app.css?v=12.'
     }
 
     $gatewayText = [string]$gateway.Content

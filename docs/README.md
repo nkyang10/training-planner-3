@@ -21,12 +21,12 @@ All screenshots use a fake demo runner (`Demo Runner`) and synthetic training da
 |---|---|
 | [Calendar pills](design/calendar-demo.png) | Plan pills and green recorded-run pills in the month grid |
 | [Run peek](design/activity-peek-demo.png) | A recorded-run pill opens a popup with metrics, plan match, load/effect, fastest efforts and four actions; Ask coach sends the natural question with the run's day and metrics plus a hidden review directive |
-| [Coach states](design/coach-states-demo.png) | Active and proposed coaching states, the Refresh detection action, set-state form, resolved history and clinician/safety copy; active states also appear as calendar chips and chat-bubble cards |
+| [Coaching states](design/coach-states-demo.png) | Active and proposed coaching states, the Refresh action, set-state form, resolved history and clinician/safety copy; active states also appear as calendar chips and chat-bubble cards |
 | [Coach state card](design/coach-state-bubble-demo.png) | A chat-bubble state card with evidence and Resolve, plus the race-week guardrail system line |
 | [Coach audit](design/coach-audit-demo.png) | The owner-only audit page: recent hidden directives, comment-only/blocked-write stats, active coaching states, the immutable State activity log and legacy `mode:` memories |
 | [Calendar CRUD animation](design/calendar-crud-demo.png) | A session pill flying into the bin while the deleted day pulses |
 | [Coach starter suggestions](design/coach-starter-demo.png) | Starter prompts on first open |
-| [Coach Not applied card](design/coach-not-applied-demo.png) | Structured failure card above the suggestion rail |
+| [Coach Could not apply card](design/coach-not-applied-demo.png) | Structured failure card above the suggestion rail |
 | [Coach delete in place](design/coach-delete-demo.png) | Delete applied in place |
 | [Training log month](design/training-log-month-demo.png) | Period selector, weekly volume, best efforts and week rows |
 | [Training log week](design/training-log-week-demo.png) | Load card, daily volume and plan-match badges |

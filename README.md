@@ -108,21 +108,22 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 ### 💬 Coach
 
 - Self-implemented same-origin bubble; restores the recent conversation after refresh.
-- Add / move / delete / revert sessions; 1–3 tappable follow-ups; starter prompts; a structured **Not applied** card.
-  Comment/review requests are **comment-only** and never write to the calendar.
+- Add / move / delete / revert sessions; 1–3 tappable follow-ups; starter prompts; a structured **Could not apply** card.
+  Review requests are read-only and never write to the calendar.
 - **Hidden directives** — every action-originated message carries a server-authored stage direction (mode, write
   permission, references, focus, style and a short background note) that goes into the coach prompt but never into the
   chat bubble. The gateway enforces `allowCalendarWrites: false`, so a comment-only turn cannot write even if the model
   proposes it. A typed intent comes from the browser; hidden prose never does.
-- **Coach audit** (`/coach-audit`, also linked in the panel header) shows the recent hidden directives, blocked writes,
-  active coaching states, an immutable state-transition log and any legacy `mode:` memories.
+- **Coach audit** (`/coach-audit`, an owner-only internal page that is not linked in the end-user UI) shows the recent
+  hidden directives, blocked writes, active coaching states, an immutable state-transition log and any legacy `mode:`
+  memories.
 - **Coaching states** (`/coach-states`) — durable context beyond one turn. Race phase (race day/week, taper, post-race),
   load (ACWR ramp, hard/easy mix, under-load), consistency and data freshness are detected from the calendar and Garmin;
   travel, heat, time pressure, pain, illness and focus blocks are proposed by the coach or set by the runner. Sensitive
   states (pain, illness, medical red flag, pregnancy/postpartum, menstrual-cycle support, low energy availability) are
   never inferred and need confirmation. Active states appear as calendar chips and bubble cards; the gateway enforces
   hard, day-aware guardrails over the effective post-turn calendar (including reverts and moved races) instead of
-  trusting the prompt. Pages are read-only; **Refresh detection** persists auto states explicitly, and `POC3_AUTO_STATES=false`
+  trusting the prompt. Pages are read-only; **Refresh** persists auto states explicitly, and `POC3_AUTO_STATES=false`
   disables auto detection while keeping manual/chat states.
 - The OpenAI-compatible `poc3-coach` gateway validates every proposal before writing, with one bounded
   repair/clarification loop and idempotent request replay.
@@ -195,7 +196,7 @@ Fake-data screenshots: [calendar CRUD animation](docs/design/calendar-crud-demo.
 [coach state card](docs/design/coach-state-bubble-demo.png) ·
 [coach audit](docs/design/coach-audit-demo.png) ·
 [coach starter suggestions](docs/design/coach-starter-demo.png) ·
-[coach Not applied card](docs/design/coach-not-applied-demo.png) ·
+[coach Could not apply card](docs/design/coach-not-applied-demo.png) ·
 [delete in place](docs/design/coach-delete-demo.png) ·
 [training log month](docs/design/training-log-month-demo.png) ·
 [training log week](docs/design/training-log-week-demo.png) ·
@@ -256,7 +257,7 @@ outside-click close and same-pill toggle (headless Chrome, fake demo data:
 [training log month](docs/design/training-log-month-demo.png),
 [week](docs/design/training-log-week-demo.png), [year](docs/design/training-log-year-demo.png),
 [activity detail](docs/design/activity-detail-demo.png), [run peek](docs/design/activity-peek-demo.png)); the coaching
-states manager with Refresh detection, active calendar chips, bubble state cards and guardrail system
+states manager with Refresh, active calendar chips, bubble state cards and guardrail system
 ([coach states](docs/design/coach-states-demo.png), [state card](docs/design/coach-state-bubble-demo.png)); the coach
 audit page with recent hidden directives, blocked-write badges, active states, the immutable State activity log and
 legacy `mode:` memories ([coach audit](docs/design/coach-audit-demo.png)); plan-vs-actual
@@ -280,7 +281,7 @@ wellness/HRV/sleep data, weather/air-quality providers, and clinical decision su
 - **Auth:** the cookie is signed with `POC3_AUTH_SECRET`; set a strong secret.
 - **State detection is heuristic:** ACWR, race-week and post-race detection are signals, not diagnoses. The runner can
   resolve any state; sensitive states are never inferred. The engine does not replace a clinician or coach.
-- **State pages are read-only:** auto detection is persisted by a gateway turn or the explicit **Refresh detection**
+- **State pages are read-only:** auto detection is persisted by a gateway turn or the explicit **Refresh**
   action, never by a GET. `POC3_AUTO_STATES=false` disables auto detection; manual/chat states still work.
 - **State retention:** resolved rows and transition events older than 180 days are pruned; the manager keeps the last
   100 rows for resolved history. State writes are serialized with `BEGIN IMMEDIATE`/`busy_timeout`; a future

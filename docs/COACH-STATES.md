@@ -89,7 +89,7 @@ carries a clinician disclaimer.
 Detection is pure and testable (`detectCoachStates` in `src/coach-states.ts`); the catalog lives in
 `src/coach-state-catalog.ts`, the state/audit page render in `src/web-coach-states.ts`, and shared HTML helpers in
 `src/web-html.ts`. The sync/lifecycle is separate (`syncCoachStates`). The gateway refreshes states before building the
-prompt. Pages read stored states; auto detection is persisted only by a gateway turn or the explicit **Refresh detection**
+prompt. Pages read stored states; auto detection is persisted only by a gateway turn or the explicit **Refresh**
 action on `/coach-states`, so a GET never mutates state. The sync runs in one `BEGIN IMMEDIATE` transaction, which
 prevents two concurrent refreshes from appending the same open key twice.
 
@@ -252,17 +252,20 @@ Prompt order:
 ## UI and routes
 
 - **`/coach-states`** — active states, proposed states with Confirm/Dismiss, a set-state form grouped by family, a
-  **Refresh detection** action, a setup card when no Garmin key is saved, a sensitive-state disclaimer, and resolved
-  history. Expiry dates and history timestamps render in the runner's timezone.
+  **Refresh** action, a setup card when no Garmin key is saved, a sensitive-state disclaimer, and resolved history.
+  Expiry dates and history timestamps render in the runner's timezone. The manager shows user-facing labels, status,
+  source, expiry, evidence and notes; raw catalog keys, confidence scores and guardrail rules stay on the internal
+  audit page.
 - **Calendar** — up to three active state chips under the welcome line, linking to the manager. No row when there are
   no active states.
 - **Chat bubble** — a state card after a turn that activates a state: label, status, evidence, the non-diagnosis note,
   and Confirm/Dismiss/Resolve buttons. A blocked guardrail adds a system line:
-  `Calendar unchanged — <state> guardrail · 日曆未有更改`.
-- **Coach header** — `States` and `Audit` links.
+  `Calendar unchanged — <state> · 日曆未有更改`.
+- **Coach header** — minimal: the title and minimize button only. The states page is reachable from Profile and the
+  calendar chips; `/coach-audit` is an owner-only internal page and is not linked in the end-user UI.
 - **`/coach-audit`** — active coaching states, an immutable **State activity** log, legacy `mode:` memories if any,
   hidden directives, and an active-state count in the audit metrics.
-- **`/profile`** — links to both pages.
+- **`/profile`** — links to the coaching states page; the audit page is internal.
 
 Screenshots: [manager page](design/coach-states-demo.png) · [chat state card](design/coach-state-bubble-demo.png).
 

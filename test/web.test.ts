@@ -373,6 +373,9 @@ describe("authentication pages", () => {
     expect(html).toContain(`value="${DISPLAY_NAME}"`);
     expect(html).toContain('action="/profile"');
     expect(html).toContain('data-active="none"');
+    expect(html).toContain('href="/coach-states"');
+    expect(html).not.toContain('href="/coach-audit"');
+    expect(html).not.toContain("hidden directives");
 
     const update = await fetch(`${base}/profile`, {
       method: "POST",
@@ -471,6 +474,9 @@ describe("private calendar", () => {
     const ownDay = await fetch(`${base}/day/2026-11-06`, { headers: { cookie } });
     const ownDayHtml = await ownDay.text();
     expect(ownDayHtml).toContain("Easy 5 km");
+    expect(ownDayHtml).toContain("Booked by the coach");
+    expect(ownDayHtml).toContain("Recorded activities");
+    expect(ownDayHtml).not.toContain("Done (Garmin / reported)");
     expect(ownDayHtml).toContain('href="/profile"');
     expect(ownDayHtml).toContain("Demo Runner");
 
@@ -787,7 +793,7 @@ describe("calendar run peek", () => {
     expect(html).toContain("Training log week");
     expect(html).toContain("View day");
     expect(html).toContain("Open full detail");
-    expect(html).toContain("app.css?v=11");
+    expect(html).toContain("app.css?v=12");
 
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain("#activity-peek");
@@ -1225,6 +1231,9 @@ describe("training log", () => {
     expect(html).toContain("On plan");
     expect(html).toContain("+0.2 km");
     expect(html).toContain("Ask coach");
+    expect(html).toContain("The coach will compare this run with your plan for the day and comment on effort, pace and what to keep in mind. Your calendar will not change.");
+    expect(html).not.toContain("last 30 activities");
+    expect(html).not.toContain("This review is comment-only");
     expect(html).toContain('data-active="history"');
     expect(html).toContain('href="/history?view=week&period=2026-11-02"');
     expect(html).toContain('aria-label="Planned 5 km versus actual 5.2 km"');
@@ -1561,7 +1570,9 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain(">−</button>");
     expect(html).not.toContain('aria-label="Close chat"');
     expect(html).toContain("minimizePanel");
-    expect(html).toContain("Bookings up to 180 days ahead");
+    expect(html).not.toContain("Bookings up to 180 days ahead");
+    expect(html).not.toContain('href="/coach-audit"');
+    expect(html).not.toContain('title="Hidden directives"');
     expect(html).toContain('id="coach-suggestions"');
     expect(html).not.toContain('id="coach-undo"');
     expect(html).not.toContain("undo the last change");
@@ -1573,7 +1584,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("showStarters");
     expect(html).toContain("setRetry");
     expect(html).toContain("addFailureCard");
-    expect(html).toContain("Not applied · 未套用");
+    expect(html).toContain("Could not apply · 未套用");
     expect(html).toContain("failure-actions");
     expect(html).toContain("fetch('/chat'");
     expect(html).toContain("fetch('/chat/history'");
@@ -1582,8 +1593,12 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("parseIntent");
     expect(html).toContain("pendingIntent");
     expect(html).toContain("blockedWrites");
-    expect(html).toContain("Comment-only · calendar unchanged");
-    expect(html).toContain("/coach-audit");
+    expect(html).toContain("Calendar unchanged · 日曆未有更改");
+    expect(html).toContain("That run could not be found.");
+    expect(html).toContain("The coach is unavailable right now. Try again.");
+    expect(html).not.toContain("data.error.detail");
+    expect(html).toContain("that session no longer exists");
+    expect(html).not.toContain('href="/coach-audit"');
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("monthGrid.querySelectorAll('.cell[data-day]')");
@@ -1608,7 +1623,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=11");
+    expect(html).toContain("app.css?v=12");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -1622,7 +1637,9 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain(".review-card");
     expect(css).toContain(".audit-item");
     expect(css).toContain(".audit-background");
-    expect(css).toContain(".coach-audit-link");
+    expect(css).toContain(".coach-head-actions");
+    expect(css).not.toContain(".coach-limit");
+    expect(css).not.toContain(".coach-audit-link");
     expect(css).toContain(".period-bar");
     expect(css).toContain(".period-mode");
     expect(css).toContain(".period-row");
@@ -1925,11 +1942,11 @@ describe("coach audit", () => {
     expect(html).not.toContain("Other secret");
     expect(html).not.toContain("Other secret state");
     expect(html).not.toContain("mode: secret taper");
-    expect(html).toContain("/coach-audit");
+    expect(html).toContain("confidence 0.90");
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain(".audit-item");
     expect(css).toContain(".audit-background");
-    expect(css).toContain(".coach-audit-link");
+    expect(css).toContain(".state-guardrail");
   });
 });
 
@@ -2014,7 +2031,7 @@ describe("coach states page", () => {
     const response = await fetch(`${base}/coach-states`, { headers: { cookie } });
     expect(response.status).toBe(200);
     const html = await response.text();
-    expect(html).toContain("Coach states");
+    expect(html).toContain("Coaching states");
     expect(html).toContain("Active states");
     expect(html).toContain("Heat");
     expect(html).toContain("Hot and humid");
@@ -2027,6 +2044,11 @@ describe("coach states page", () => {
     expect(html).toContain("Recent state history");
     expect(html).toContain("Travel");
     expect(html).toContain("state%3Apain");
+    expect(html).toContain("Temporary situations");
+    expect(html).not.toContain("confidence");
+    expect(html).not.toContain("Guardrail:");
+    expect(html).not.toContain('<span class="chip">heat</span>');
+    expect(html).not.toContain('href="/coach-audit"');
     expect(html).not.toContain("Other secret");
     expect(user.userId).not.toBe(other.userId);
   });
@@ -2083,7 +2105,7 @@ describe("coach states page", () => {
       },
     });
     const before = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
-    expect(before).toContain("Refresh detection");
+    expect(before).toContain("Refresh · 更新");
     expect(before).not.toContain("2026-11-08");
 
     const refreshed = await fetch(`${base}/coach-states/refresh`, {

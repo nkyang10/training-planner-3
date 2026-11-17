@@ -314,11 +314,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 #coach-panel header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--wash); border-bottom: 1px solid var(--line); }
 #coach-panel header button { border: 0; background: transparent; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 8px; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
 #coach-panel header button:hover { background: rgba(27, 18, 12, .06); color: var(--ink); }
-.coach-limit { display: block; margin-top: 2px; font-size: 10px; font-weight: 400; color: var(--muted); }
 .coach-head-actions { display: flex; align-items: center; gap: 6px; }
-.coach-audit-link { font-size: 11px; font-weight: 700; color: var(--muted); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 9px; }
-.coach-audit-link:hover { color: var(--ember); border-color: var(--ember); }
-.coach-audit-link:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 #coach-log { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .bubble.user { align-self: flex-end; background: var(--ember); color: #fff; border-bottom-right-radius: 4px; }
