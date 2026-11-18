@@ -5,6 +5,7 @@
  */
 import { createHash } from "node:crypto";
 
+import { isMuscleId } from "./muscles";
 import type {
   CoachDirective,
   CoachDirectiveReferences,
@@ -29,11 +30,17 @@ const FOCUSES: readonly CoachFocus[] = [
 const SOURCES: readonly CoachSource[] = [
   "composer",
   "run-peek",
+  "session-peek",
   "day-menu",
+  "today-strip",
   "history",
   "load-card",
   "auto-sync",
   "activity-detail",
+  "recent-changes",
+  "states-page",
+  "state-card",
+  "muscle-tab",
 ];
 const LANGUAGES: readonly CoachLanguage[] = ["auto", "en", "zh-Hant"];
 const TONES: readonly CoachTone[] = ["supportive", "direct", "brief"];
@@ -60,7 +67,10 @@ export type CoachIntent =
   | ({ kind: "review-day"; day: string } & CoachIntentBase)
   | ({ kind: "review-week"; weekStart: string } & CoachIntentBase)
   | ({ kind: "plan"; day?: string } & CoachIntentBase)
-  | ({ kind: "undo" } & CoachIntentBase);
+  | ({ kind: "undo" } & CoachIntentBase)
+  | ({ kind: "discuss-change"; changeSetId: string } & CoachIntentBase)
+  | ({ kind: "discuss-state"; stateId: string } & CoachIntentBase)
+  | ({ kind: "review-muscles"; muscleId?: string } & CoachIntentBase);
 
 export type CoachIntentResult =
   | { ok: true; intent: CoachIntent }
@@ -82,6 +92,12 @@ const REVIEW_WEEK_BACKGROUND =
 const PLAN_BACKGROUND =
   "The runner is asking for a schedule change; validate dates, session ids and the 180-day horizon before writing.";
 const UNDO_BACKGROUND = "The runner is asking to undo a recent change set; do not mix the revert with schedule edits.";
+const DISCUSS_CHANGE_BACKGROUND =
+  "Discuss what the referenced change set did and why the plan moved that way, using its summary and dates. Comment only: the calendar stays unchanged.";
+const DISCUSS_STATE_BACKGROUND =
+  "Discuss how the referenced coaching state should shape the coming week: offer options, not orders, and never diagnose. Comment only: the calendar stays unchanged.";
+const REVIEW_MUSCLES_BACKGROUND =
+  "The runner used the Muscle tab. Read their tags with the check-in guidance: normal soreness peaks 24-72 h and eases once moving; sharp pain, swelling or numbness are not soreness. Offer easy or mobility options, never diagnose, and refer warning signs. Comment only.";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -143,7 +159,7 @@ function parseStyle(value: unknown): { ok: true; style?: CoachDirectiveStyle } |
 }
 
 function parseIntentBase(raw: Record<string, unknown>): { ok: true; value: CoachIntentBase } | { ok: false; detail: string } {
-  const allowed = ["kind", "activityId", "day", "weekStart", "source", "focus", "style"];
+  const allowed = ["kind", "activityId", "day", "weekStart", "changeSetId", "stateId", "muscleId", "source", "focus", "style"];
   for (const key of Object.keys(raw)) {
     if (!allowed.includes(key)) return { ok: false, detail: `unexpected intent key: ${key}` };
   }
@@ -200,6 +216,27 @@ export function parseCoachIntent(raw: unknown): CoachIntentResult {
     }
     case "undo":
       return { ok: true, intent: { kind: "undo", ...common } };
+    case "discuss-change": {
+      const changeSetId = readId(raw["changeSetId"]);
+      if (changeSetId === undefined) return { ok: false, detail: "discuss-change needs a valid changeSetId" };
+      return { ok: true, intent: { kind: "discuss-change", changeSetId, ...common } };
+    }
+    case "discuss-state": {
+      const stateId = readId(raw["stateId"]);
+      if (stateId === undefined) return { ok: false, detail: "discuss-state needs a valid stateId" };
+      return { ok: true, intent: { kind: "discuss-state", stateId, ...common } };
+    }
+    case "review-muscles": {
+      const rawMuscle = raw["muscleId"];
+      if (rawMuscle === undefined || rawMuscle === null) {
+        return { ok: true, intent: { kind: "review-muscles", ...common } };
+      }
+      const muscleId = readId(rawMuscle);
+      if (muscleId === undefined || !isMuscleId(muscleId)) {
+        return { ok: false, detail: "review-muscles needs a valid muscleId when one is given" };
+      }
+      return { ok: true, intent: { kind: "review-muscles", muscleId, ...common } };
+    }
     default:
       return { ok: false, detail: `unknown intent kind: ${kind}` };
   }
@@ -266,6 +303,43 @@ export function buildDirectiveForIntent(
     if (intent.day !== undefined) directive.references = { day: intent.day };
     return directive;
   }
+  if (intent.kind === "discuss-change") {
+    return {
+      mode: "review",
+      allowCalendarWrites: false,
+      allowMemoryWrites: true,
+      focus: intent.focus ?? ["schedule"],
+      references: { changeSetId: intent.changeSetId },
+      background: DISCUSS_CHANGE_BACKGROUND,
+      source: intent.source ?? "recent-changes",
+      style,
+    };
+  }
+  if (intent.kind === "discuss-state") {
+    return {
+      mode: "review",
+      allowCalendarWrites: false,
+      allowMemoryWrites: true,
+      focus: intent.focus ?? ["load", "recovery"],
+      references: { stateId: intent.stateId },
+      background: DISCUSS_STATE_BACKGROUND,
+      source: intent.source ?? "state-card",
+      style,
+    };
+  }
+  if (intent.kind === "review-muscles") {
+    const references: CoachDirectiveReferences = intent.muscleId === undefined ? {} : { muscleId: intent.muscleId };
+    return {
+      mode: "review",
+      allowCalendarWrites: false,
+      allowMemoryWrites: true,
+      focus: intent.focus ?? ["recovery"],
+      ...(Object.keys(references).length === 0 ? {} : { references }),
+      background: REVIEW_MUSCLES_BACKGROUND,
+      source: intent.source ?? "muscle-tab",
+      style,
+    };
+  }
   return {
     mode: "undo",
     allowCalendarWrites: true,
@@ -281,7 +355,7 @@ function parseReferences(
 ): { ok: true; references?: CoachDirectiveReferences } | { ok: false; detail: string } {
   if (value === undefined) return { ok: true };
   if (!isObject(value)) return { ok: false, detail: "references must be an object" };
-  const allowed = ["activityId", "day", "weekStart", "sessionIds"];
+  const allowed = ["activityId", "day", "weekStart", "sessionIds", "changeSetId", "stateId", "muscleId"];
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) return { ok: false, detail: `unexpected reference key: ${key}` };
   }
@@ -303,6 +377,26 @@ function parseReferences(
     const parsed = readDay(weekStart);
     if (parsed === undefined) return { ok: false, detail: "weekStart reference must be an ISO day" };
     references.weekStart = parsed;
+  }
+  const changeSetId = value["changeSetId"];
+  if (changeSetId !== undefined) {
+    const parsed = readId(changeSetId);
+    if (parsed === undefined) return { ok: false, detail: "changeSetId reference must be a short string" };
+    references.changeSetId = parsed;
+  }
+  const stateId = value["stateId"];
+  if (stateId !== undefined) {
+    const parsed = readId(stateId);
+    if (parsed === undefined) return { ok: false, detail: "stateId reference must be a short string" };
+    references.stateId = parsed;
+  }
+  const muscleId = value["muscleId"];
+  if (muscleId !== undefined) {
+    // Format only, like changeSetId and stateId: existence is resolved (and rejected with a 404) at the gateway,
+    // so an unknown muscle id never reaches the model.
+    const parsed = readId(muscleId);
+    if (parsed === undefined) return { ok: false, detail: "muscleId reference must be a short string" };
+    references.muscleId = parsed;
   }
   const rawSessions = value["sessionIds"];
   if (rawSessions !== undefined) {
@@ -395,6 +489,9 @@ export function renderCoachDirective(directive: CoachDirective): string {
     if (references.activityId !== undefined) parts.push(`activity ${references.activityId}`);
     if (references.day !== undefined) parts.push(`day ${references.day}`);
     if (references.weekStart !== undefined) parts.push(`week ${references.weekStart}`);
+    if (references.changeSetId !== undefined) parts.push(`change set ${references.changeSetId}`);
+    if (references.stateId !== undefined) parts.push(`state ${references.stateId}`);
+    if (references.muscleId !== undefined) parts.push(`muscle ${references.muscleId}`);
     if (references.sessionIds !== undefined && references.sessionIds.length > 0) {
       parts.push(`sessions ${references.sessionIds.join(", ")}`);
     }

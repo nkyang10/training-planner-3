@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createStore, type StoreHandle } from "../src/store";
 import type {
   Activity,
+  ActivityWorkout,
   AppNotification,
   ChangeEntry,
   ChangeSet,
@@ -16,6 +17,7 @@ import type {
   GarminKey,
   Memory,
   Message,
+  MuscleCheckIn,
   TrainingSession,
   UserProfile,
 } from "../src/types";
@@ -88,6 +90,30 @@ function activity(activityId: string, userId: string, day: string, createdAt: st
 
 function garminKey(userId: string, apiKey: string, savedAt: string): GarminKey {
   return { userId, apiKey, savedAt };
+}
+
+function workout(
+  activityId: string,
+  userId: string,
+  day: string,
+  overrides: Partial<ActivityWorkout> = {},
+): ActivityWorkout {
+  return {
+    activityId,
+    userId,
+    day,
+    name: "Threshold 3 × 7:00",
+    label: "Threshold 3 × 7:00",
+    summary: "Warm-up 10:00 · 3 × (Run 7:00 @ 4:30–4:50/km, Recovery 2:00) · Cool-down 10:00",
+    steps: [
+      { index: 1, intensity: "Warm-up", intensityKey: "WARMUP", duration: "10:00", target: null },
+    ],
+    notes: null,
+    status: "ok",
+    attempts: 0,
+    fetchedAt: `${day}T09:00:00.000Z`,
+    ...overrides,
+  };
 }
 
 function notification(
@@ -340,6 +366,74 @@ describe("activities", () => {
   });
 });
 
+describe("activity workouts", () => {
+  it("saves, replaces and reads one workout per activity and runner", () => {
+    const { store } = memoryStore();
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-02"));
+
+    expect(store.getActivityWorkout("u1", "garmin:1")?.name).toBe("Threshold 3 × 7:00");
+    expect(store.getActivityWorkout("u2", "garmin:1")).toBeUndefined();
+    expect(store.getActivityWorkout("u1", "garmin:missing")).toBeUndefined();
+
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-03", { status: "none", name: null, steps: [] }));
+
+    const saved = store.getActivityWorkout("u1", "garmin:1");
+    expect(saved?.status).toBe("none");
+    expect(saved?.day).toBe("2026-11-03");
+    expect(saved?.steps).toEqual([]);
+  });
+
+  it("lists workouts by day range, oldest first", () => {
+    const { store } = memoryStore();
+    store.saveActivityWorkout(workout("garmin:2", "u1", "2026-11-03"));
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-01"));
+    store.saveActivityWorkout(workout("garmin:3", "u1", "2026-12-01"));
+
+    expect(store.listActivityWorkouts("u1", "2026-11-01", "2026-11-30").map((row) => row.activityId)).toEqual([
+      "garmin:1",
+      "garmin:2",
+    ]);
+    expect(store.listActivityWorkouts("u2", "2026-11-01", "2026-11-30")).toEqual([]);
+  });
+
+  it("offers missing and retryable activities as candidates, newest first", () => {
+    const { store } = memoryStore();
+    store.appendActivity(activity("garmin:1", "u1", "2026-11-01", "2026-11-01T07:00:00.000Z"));
+    store.appendActivity(activity("garmin:2", "u1", "2026-11-02", "2026-11-02T07:00:00.000Z"));
+    store.appendActivity(activity("garmin:3", "u1", "2026-11-03", "2026-11-03T07:00:00.000Z"));
+    store.appendActivity(activity("garmin:4", "u1", "2026-11-04", "2026-11-04T07:00:00.000Z"));
+    store.appendActivity(activity("chat:1", "u1", "2026-11-05", "2026-11-05T07:00:00.000Z"));
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-01"));
+    store.saveActivityWorkout(workout("garmin:2", "u1", "2026-11-02", { status: "none", steps: [] }));
+    store.saveActivityWorkout(workout("garmin:3", "u1", "2026-11-03", { status: "unavailable", attempts: 1 }));
+    store.saveActivityWorkout(workout("garmin:4", "u1", "2026-11-04", { status: "unavailable", attempts: 2 }));
+
+    expect(
+      store.listWorkoutCandidates("u1", "2026-11-01", "2026-11-30", 10, 2).map((candidate) => [
+        candidate.activity.activityId,
+        candidate.attempts,
+      ]),
+    ).toEqual([["garmin:3", 1]]);
+
+    expect(store.listWorkoutCandidates("u1", "2026-11-01", "2026-11-30", 1, 2)).toHaveLength(1);
+    expect(store.listWorkoutCandidates("u1", "2026-11-01", "2026-11-30", 0, 2)).toEqual([]);
+    expect(store.listWorkoutCandidates("u2", "2026-11-01", "2026-11-30", 10, 2)).toEqual([]);
+  });
+
+  it("turns a failed attempt into a found workout without duplicating the row", () => {
+    const { store } = memoryStore();
+    store.appendActivity(activity("garmin:1", "u1", "2026-11-01", "2026-11-01T07:00:00.000Z"));
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-01", { status: "unavailable", attempts: 1 }));
+
+    expect(store.listWorkoutCandidates("u1", "2026-11-01", "2026-11-30", 10, 2)).toHaveLength(1);
+
+    store.saveActivityWorkout(workout("garmin:1", "u1", "2026-11-01"));
+
+    expect(store.getActivityWorkout("u1", "garmin:1")?.status).toBe("ok");
+    expect(store.listWorkoutCandidates("u1", "2026-11-01", "2026-11-30", 10, 2)).toEqual([]);
+  });
+});
+
 describe("sync state", () => {
   it("records the last sync per runner", () => {
     const { store } = memoryStore();
@@ -365,6 +459,16 @@ describe("Garmin keys", () => {
     store.saveGarminKey(garminKey("u2", "other-key", "2026-02-03T07:00:00.000Z"));
     expect(store.getGarminKey("u1")?.apiKey).toBe("second-key");
     expect(store.getGarminKey("u2")?.apiKey).toBe("other-key");
+  });
+
+  it("deletes one runner's key without touching another runner", () => {
+    const { store } = memoryStore();
+    store.saveGarminKey(garminKey("u1", "first-key", "2026-02-01T07:00:00.000Z"));
+    store.saveGarminKey(garminKey("u2", "other-key", "2026-02-03T07:00:00.000Z"));
+    expect(store.deleteGarminKey("u1")).toBe(true);
+    expect(store.getGarminKey("u1")).toBeUndefined();
+    expect(store.getGarminKey("u2")?.apiKey).toBe("other-key");
+    expect(store.deleteGarminKey("u1")).toBe(false);
   });
 });
 
@@ -866,6 +970,51 @@ describe("coach turn audit", () => {
       "state:active",
     ]);
     close();
+  });
+});
+
+describe("muscle check-ins", () => {
+  const checkIn = (checkInId: string, userId: string, day: string, createdAt: string): MuscleCheckIn => ({
+    checkInId,
+    userId,
+    day,
+    activityId: null,
+    muscles: [
+      { muscleId: "calves", soreness: 6, conditions: ["tight"], side: "left", warmUp: null },
+      { muscleId: "quads", soreness: 2, conditions: [], side: "both", warmUp: null },
+    ],
+    note: null,
+    createdAt,
+  });
+
+  it("appends, fetches and lists newest first without crossing runners", () => {
+    const { store, close } = memoryStore();
+    store.appendMuscleCheckIn(checkIn("checkin:1", "u1", "2026-11-03", "2026-11-03T08:00:00.000Z"));
+    store.appendMuscleCheckIn(checkIn("checkin:2", "u1", "2026-11-05", "2026-11-05T08:00:00.000Z"));
+    store.appendMuscleCheckIn(checkIn("checkin:other", "u2", "2026-11-05", "2026-11-05T08:00:00.000Z"));
+    expect(store.listMuscleCheckIns("u1").map((row) => row.checkInId)).toEqual(["checkin:2", "checkin:1"]);
+    expect(store.listMuscleCheckIns("u1", 1).map((row) => row.checkInId)).toEqual(["checkin:2"]);
+    expect(store.listMuscleCheckIns("u2").map((row) => row.checkInId)).toEqual(["checkin:other"]);
+    expect(store.listMuscleCheckIns("u1", 0)).toEqual([]);
+    expect(store.getMuscleCheckIn("u1", "checkin:1")?.day).toBe("2026-11-03");
+    expect(store.getMuscleCheckIn("u1", "checkin:1")?.muscles[0]).toMatchObject({ muscleId: "calves", soreness: 6, side: "left" });
+    expect(store.getMuscleCheckIn("u2", "checkin:1")).toBeUndefined();
+    close();
+  });
+
+  it("keeps muscle check-ins across a reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "poc3-muscle-"));
+    const dbPath = join(directory, "muscle.sqlite");
+    const handle = createStore(`sqlite:${dbPath}`);
+    handle.store.appendMuscleCheckIn(checkIn("checkin:persist", "u1", "2026-11-05", "2026-11-05T08:00:00.000Z"));
+    handle.close();
+    const reopened = createStore(`sqlite:${dbPath}`);
+    const rows = reopened.store.listMuscleCheckIns("u1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.muscles[0]?.muscleId).toBe("calves");
+    expect(rows[0]?.muscles[1]?.soreness).toBe(2);
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
   });
 });
 

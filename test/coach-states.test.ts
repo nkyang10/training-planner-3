@@ -262,19 +262,57 @@ describe("deterministic state detection", () => {
     expect(keysOf(states)).toContain("consistency_guard");
   });
 
-  it("detects missed planned sessions, a stale plan, stale Garmin data and a missing key", () => {
+  it("detects missed planned sessions, stale Garmin data and a missing key", () => {
     const consistency = detect({
       pastSessions: [session("2026-11-03", "easy"), session("2026-11-04", "easy")],
     });
     expect(keysOf(consistency)).toContain("consistency_guard");
-    const stalePlan = detect({ goal: "10k in December" });
-    expect(keysOf(stalePlan)).toContain("plan_stale");
     const staleData = detect({ hasGarminKey: true });
     expect(keysOf(staleData)).toContain("data_stale");
     expect(keysOf(staleData)).not.toContain("no_key");
     const noKey = detect({ hasGarminKey: false });
     expect(keysOf(noKey)).toContain("no_key");
     expect(keysOf(noKey)).not.toContain("data_stale");
+  });
+
+  it("never flags a brand-new runner who has no plan at all", () => {
+    const fresh = detect({ goal: "10k in December" });
+    expect(fresh.filter((state) => state.key === "plan_stale")).toEqual([]);
+    expect(keysOf(fresh)).toEqual(["no_key"]);
+  });
+
+  it("flags a stale plan only for a runner with plan history, using the stale framing", () => {
+    expect(getCoachStateDefinition("plan_stale")).toMatchObject({
+      defaultTtlDays: 14,
+      priority: 35,
+      uiNote: "The plan went stale, not the runner; a fresh block restarts it.",
+    });
+    const stale = detect({ goal: "10k in December", pastSessions: [session("2026-11-03", "easy")] });
+    const planStale = stale.find((state) => state.key === "plan_stale");
+    expect(planStale?.evidence).toEqual(["The plan went stale: nothing booked in the next 14 days."]);
+    expect(planStale?.ttlDays).toBe(14);
+    expect(planStale?.confidence).toBe(0.8);
+  });
+
+  it("treats a session booked within the next 35 days as plan history", () => {
+    const distant = detect({ goal: "10k in December", sessions: [session("2026-11-30", "easy")] });
+    expect(distant.find((state) => state.key === "plan_stale")?.evidence).toEqual([
+      "The plan went stale: nothing booked in the next 14 days.",
+    ]);
+  });
+
+  it("does not treat a lone far-future session as recent plan history", () => {
+    const far = detect({ goal: "10k in December", sessions: [session("2026-12-20", "race", "Spring marathon")] });
+    expect(far.filter((state) => state.key === "plan_stale")).toEqual([]);
+  });
+
+  it("does not flag a stale plan when sessions are booked in the next 14 days", () => {
+    const booked = detect({
+      goal: "10k in December",
+      pastSessions: [session("2026-11-03", "easy")],
+      sessions: [session("2026-11-08", "easy")],
+    });
+    expect(booked.filter((state) => state.key === "plan_stale")).toEqual([]);
   });
 });
 
@@ -335,6 +373,13 @@ describe("coaching state lifecycle", () => {
     const states = refreshCoachStates(handle.store, USER, NOW, TODAY);
     expect(states.some((state) => state.key === "race_week")).toBe(true);
     expect(states.find((state) => state.key === "race_week")?.source).toBe("auto");
+  });
+
+  it("never proposes plan_stale on refresh for a brand-new account with no sessions", () => {
+    const handle = makeStore();
+    const states = refreshCoachStates(handle.store, USER, NOW, TODAY);
+    expect(states.filter((state) => state.key === "plan_stale")).toEqual([]);
+    expect(states.map((state) => state.key)).toEqual(["no_key"]);
   });
 
   it("serializes repeated syncs and records lifecycle events without duplicate open rows", () => {

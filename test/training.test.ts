@@ -137,6 +137,19 @@ const loaded = (
   anaerobicTrainingEffect: anaerobic,
 });
 
+/** A run logged by hand with a post-run RPE: no Garmin load, no Garmin training-effect data. */
+const reported = (
+  activityId: string,
+  day: string,
+  distanceKm: number,
+  durationMin: number,
+  rpe: number,
+): Activity => ({
+  ...activity(activityId, day, distanceKm, durationMin),
+  source: "chat",
+  rpe,
+});
+
 describe("weekly load summary", () => {
   it("summarises a steady week with hard/easy kilometres", () => {
     const summary = loadSummaryForWeek(
@@ -216,6 +229,92 @@ describe("weekly load summary", () => {
     expect(summary.hasIntensity).toBe(true);
     expect(summary.hardDistanceKm).toBe(4);
     expect(summary.easyDistanceKm).toBe(0);
+  });
+
+  it("counts a week of manual runs with RPE instead of reporting no data", () => {
+    const summary = loadSummaryForWeek(
+      [reported("m1", "2026-11-10", 5, 30, 6), reported("m2", "2026-11-12", 8, 50, 7)],
+      "2026-11-09",
+    );
+
+    expect(summary.weekLoad).toBe(530);
+    expect(summary.hasLoad).toBe(true);
+    expect(summary.hasIntensity).toBe(true);
+    expect(summary.acwr).toBeNull();
+    expect(summary.signal).toBe("insufficient");
+    expect(summary.label).toBe("Not enough history");
+    expect(summary.hardDistanceKm).toBe(8);
+    expect(summary.easyDistanceKm).toBe(5);
+    expect(summary.hardRuns).toBe(1);
+    expect(summary.easyRuns).toBe(1);
+    expect(summary.note).toContain("Reported effort (duration x RPE) is included for runs without Garmin load.");
+  });
+
+  it("sums Garmin load and reported effort in a mixed week", () => {
+    const summary = loadSummaryForWeek(
+      [
+        loaded("a1", "2026-10-20", 5, 200, "AEROBIC_BASE"),
+        loaded("a2", "2026-10-27", 5, 200, "AEROBIC_BASE"),
+        loaded("a3", "2026-11-03", 5, 200, "AEROBIC_BASE"),
+        loaded("a4", "2026-11-10", 5, 100, "AEROBIC_BASE"),
+        reported("m1", "2026-11-12", 6, 40, 7.5),
+      ],
+      "2026-11-09",
+    );
+
+    expect(summary.weekLoad).toBe(400);
+    expect(summary.previousWeekLoad).toBe(200);
+    expect(summary.fourWeekLoad).toBe(1000);
+    expect(summary.acwr).toBe(1.6);
+    expect(summary.weekChangePct).toBe(100);
+    expect(summary.signal).toBe("high");
+    expect(summary.hardDistanceKm).toBe(6);
+    expect(summary.easyDistanceKm).toBe(5);
+    expect(summary.note).toContain("Reported effort (duration x RPE) is included for runs without Garmin load.");
+  });
+
+  it("treats a reported effort of 7 or more as hard and a lower one as easy", () => {
+    const summary = loadSummaryForWeek(
+      [reported("m1", "2026-11-10", 4, 30, 7.5), reported("m2", "2026-11-12", 10, 60, 6.5)],
+      "2026-11-09",
+    );
+
+    expect(summary.hardDistanceKm).toBe(4);
+    expect(summary.easyDistanceKm).toBe(10);
+    expect(summary.hardMinutes).toBe(30);
+    expect(summary.easyMinutes).toBe(60);
+    expect(summary.hardRuns).toBe(1);
+    expect(summary.easyRuns).toBe(1);
+  });
+
+  it("keeps the Garmin intensity verdict when a run also carries an RPE", () => {
+    const summary = loadSummaryForWeek(
+      [
+        { ...loaded("g1", "2026-11-10", 5, 100, "AEROBIC_BASE"), rpe: 9 },
+        { ...loaded("g2", "2026-11-12", 5, 100, "TEMPO"), rpe: 3 },
+      ],
+      "2026-11-09",
+    );
+
+    expect(summary.weekLoad).toBe(200);
+    expect(summary.easyDistanceKm).toBe(5);
+    expect(summary.hardDistanceKm).toBe(5);
+    expect(summary.note).not.toContain("Reported effort");
+  });
+
+  it("needs a duration before reported effort can become load", () => {
+    const summary = loadSummaryForWeek(
+      [{ ...activity("m1", "2026-11-10", 8), durationMin: null, rpe: 8 }],
+      "2026-11-09",
+    );
+
+    expect(summary.weekLoad).toBe(0);
+    expect(summary.hasLoad).toBe(false);
+    expect(summary.signal).toBe("no-data");
+    expect(summary.hasIntensity).toBe(true);
+    expect(summary.hardRuns).toBe(1);
+    expect(summary.hardDistanceKm).toBe(8);
+    expect(summary.note).toBe("Garmin did not provide training load for these runs.");
   });
 });
 

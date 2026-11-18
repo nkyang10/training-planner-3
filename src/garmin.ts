@@ -16,6 +16,11 @@ export interface GarminClient {
   getActivityDetails?(activityId: string): Promise<unknown>;
   /** Raw activity summary/laps for one activity; optional so simple test doubles stay small. */
   getActivitySummary?(activityId: string): Promise<unknown>;
+  /**
+   * The workout an activity followed, from `GET /activity-service/activity/{id}/workouts`; optional so simple test
+   * doubles stay small. An empty list means the run followed no planned workout.
+   */
+  getActivityWorkouts?(activityId: string): Promise<unknown>;
 }
 
 /** One computed per-kilometre split from the Garmin activity-detail sample stream. */
@@ -197,6 +202,32 @@ export function createGarminClient(options: GarminClientOptions): GarminClient {
         return (await response.json()) as unknown;
       } catch {
         throw new GarminError("Garmin activity summary response was not valid JSON", response.status);
+      }
+    },
+
+    async getActivityWorkouts(activityId: string): Promise<unknown> {
+      const bearer = await token();
+      const url = `${baseUrl}${ACTIVITY_DETAILS_PATH}/${encodeURIComponent(activityId)}/workouts`;
+      let response: Response;
+      try {
+        response = await fetchImpl(url, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${bearer}` },
+        });
+      } catch (error) {
+        throw new GarminError(
+          `Garmin activity workouts request failed: ${error instanceof Error ? error.message : String(error)}`,
+          0,
+        );
+      }
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new GarminError(`Garmin activity workouts request failed with status ${response.status}`, response.status, body);
+      }
+      try {
+        return (await response.json()) as unknown;
+      } catch {
+        throw new GarminError("Garmin activity workouts response was not valid JSON", response.status);
       }
     },
   };

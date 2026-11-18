@@ -277,11 +277,19 @@ export function detectCoachStates(input: CoachStateDetectionInput): DetectedStat
   const upcoming = input.sessions.filter(
     (session) => session.day >= input.today && session.day <= addDays(input.today, 13),
   );
-  if (upcoming.length === 0 && input.goal !== null && input.goal.trim().length > 0) {
+  // A plan can only go stale for a runner who had one; a brand-new, sessionless account is never to blame.
+  // Plan history = a session in the recent-past window the input already carries (pastSessions) or a session
+  // booked within the next 35 days.
+  const hasPlanHistory =
+    input.pastSessions.length > 0 ||
+    input.sessions.some(
+      (session) => session.day >= input.today && session.day <= addDays(input.today, 35),
+    );
+  if (upcoming.length === 0 && hasPlanHistory && input.goal !== null && input.goal.trim().length > 0) {
     detected.push({
       key: "plan_stale",
       confidence: 0.8,
-      evidence: ["No planned sessions in the next 14 days."],
+      evidence: ["The plan went stale: nothing booked in the next 14 days."],
       ttlDays: 14,
     });
   }

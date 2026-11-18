@@ -178,8 +178,9 @@ export function personalBestsForPeriod(
 export type LoadSignal = "steady" | "watch" | "high" | "insufficient" | "no-data";
 
 /**
- * A soft weekly load signal. The load is Garmin's training load when present; ACWR is the selected week against the
- * 28-day average (coupled rolling average). It is deliberately not a diagnosis or an injury prediction.
+ * A soft weekly load signal. The load is Garmin's training load when present, else the runner's reported effort
+ * (session-RPE: duration x RPE); ACWR is the selected week against the 28-day average (coupled rolling average).
+ * It is deliberately not a diagnosis or an injury prediction.
  */
 export interface LoadSummary {
   weekLoad: number;
@@ -204,15 +205,41 @@ function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-function activityLoad(activity: Activity): number {
+/** The runner's reported effort, 0-10 in half steps; null when the run carries no usable RPE. */
+function activityRpe(activity: Activity): number | null {
+  const rpe = activity.rpe;
+  return typeof rpe === "number" && Number.isFinite(rpe) && rpe >= 0 && rpe <= 10 ? rpe : null;
+}
+
+/** Garmin's proprietary training load; 0 when Garmin did not supply a positive one. */
+function garminLoad(activity: Activity): number {
   const load = activity.trainingLoad;
   return typeof load === "number" && Number.isFinite(load) && load > 0 ? load : 0;
 }
 
+/** Session-RPE load (durationMin x rpe) for a run the runner rated; 0 without a usable duration or RPE. */
+function sessionRpeLoad(activity: Activity): number {
+  const rpe = activityRpe(activity);
+  if (rpe === null) return 0;
+  const minutes = activity.durationMin;
+  return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0 ? minutes * rpe : 0;
+}
+
+/** Garmin load when present, else session-RPE load, so every run source reaches the weekly total. */
+function activityLoad(activity: Activity): number {
+  const load = garminLoad(activity);
+  return load > 0 ? load : sessionRpeLoad(activity);
+}
+
 function isHardActivity(activity: Activity): boolean {
-  const label = activity.trainingEffectLabel?.toUpperCase() ?? "";
-  if (/TEMPO|THRESHOLD|VO2|ANAEROBIC|SPEED|RACE|INTERVAL/.test(label)) return true;
-  return (activity.anaerobicTrainingEffect ?? 0) >= 2.5;
+  const label = activity.trainingEffectLabel;
+  if (/TEMPO|THRESHOLD|VO2|ANAEROBIC|SPEED|RACE|INTERVAL/.test(label?.toUpperCase() ?? "")) return true;
+  const garminIntensity =
+    (label !== null && label !== undefined)
+    || (activity.anaerobicTrainingEffect !== null && activity.anaerobicTrainingEffect !== undefined);
+  if (garminIntensity) return (activity.anaerobicTrainingEffect ?? 0) >= 2.5;
+  // No Garmin intensity data: the runner's report decides (session-RPE convention, 7 and up is hard work).
+  return (activityRpe(activity) ?? 0) >= 7;
 }
 
 /**
@@ -233,8 +260,13 @@ export function loadSummaryForWeek(activities: readonly Activity[], weekStart: s
   const fourWeekLoad = round1(fourWeekActivities.reduce((sum, activity) => sum + activityLoad(activity), 0));
   const hasLoad = weekActivities.some((activity) => activityLoad(activity) > 0);
   const hasIntensity = weekActivities.some(
-    (activity) => activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined
-      || activity.anaerobicTrainingEffect !== null && activity.anaerobicTrainingEffect !== undefined,
+    (activity) =>
+      (activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined)
+      || (activity.anaerobicTrainingEffect !== null && activity.anaerobicTrainingEffect !== undefined)
+      || activityRpe(activity) !== null,
+  );
+  const includesReportedEffort = weekActivities.some(
+    (activity) => garminLoad(activity) === 0 && sessionRpeLoad(activity) > 0,
   );
   const hasBaseline = previousWeekLoad > 0 && fourWeekLoad > 0;
   const acwr = hasBaseline && hasLoad ? Math.round((weekLoad / (fourWeekLoad / 4)) * 100) / 100 : null;
@@ -285,6 +317,9 @@ export function loadSummaryForWeek(activities: readonly Activity[], weekStart: s
     insufficient: "A previous week and four weeks of load are needed before judging the ramp.",
     "no-data": "Garmin did not provide training load for these runs.",
   };
+  // D10: a week whose load includes reported effort says so, instead of presenting sRPE as if it were Garmin load.
+  const REPORTED_EFFORT_NOTE = "Reported effort (duration x RPE) is included for runs without Garmin load.";
+  const note = includesReportedEffort ? `${notes[signal]} ${REPORTED_EFFORT_NOTE}` : notes[signal];
 
   return {
     weekLoad,
@@ -302,6 +337,6 @@ export function loadSummaryForWeek(activities: readonly Activity[], weekStart: s
     hasIntensity,
     signal,
     label: labels[signal],
-    note: notes[signal],
+    note,
   };
 }

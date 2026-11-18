@@ -1,4 +1,4 @@
-<h1 align="center">⚡ POC3</h1>
+<h1 align="center">??POC3</h1>
 
 <p align="center">
   <strong>A calendar-first AI coach for runners.</strong><br>
@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 257 passing" src="https://img.shields.io/badge/tests-257%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 439 passing" src="https://img.shields.io/badge/tests-439%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -15,25 +15,19 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick start</a> ·
-  <a href="#what-is-in-the-box">Features</a> ·
-  <a href="#architecture">Architecture</a> ·
-  <a href="#docs">Docs</a> ·
-  <a href="#deploy-the-live-process">Deploy</a> ·
-  <a href="#status">Status</a> ·
-  <a href="#honest-limits">Limits</a>
+  <a href="#quick-start">Quick start</a> 蝜?  <a href="#what-is-in-the-box">Features</a> 蝜?  <a href="#architecture">Architecture</a> 蝜?  <a href="#docs">Docs</a> 蝜?  <a href="#deploy-the-live-process">Deploy</a> 蝜?  <a href="#status">Status</a> 蝜?  <a href="#honest-limits">Limits</a>
 </p>
 
 <p align="center">
-  <img src="docs/design/calendar-demo.png" alt="POC3 November calendar with fake demo data, colored plan pills and green recorded-run pills" width="900">
+  <img src="docs/design/calendar-demo.png" alt="POC3 November calendar with fake demo data, colored plan rows, green run rows and paired green/purple run+workout rows" width="900">
 </p>
 
-<p align="center"><em>Plan pills are colored by kind; green ✓ pills are recorded runs. All screenshots use a fake demo runner and synthetic training data.</em></p>
+<p align="center"><em>Planned rows are colored by kind; a green-and-purple row pairs a recorded run with the Garmin workout it followed. Every row adds the amount its title omits, so repeated titles stay distinct. All screenshots use a fake demo runner and synthetic training data.</em></p>
 
 > **POC3** is a proof of concept: a private training calendar owned by the system, with an LLM coach behind a validating
 > gateway. Accounts are independent; every runner keeps their own profile, plan, training log and coach conversation.
 
-**Stack:** TypeScript · Node.js 24 · SQLite (`node:sqlite`) · vanilla HTML/CSS/JS · Vitest · OpenAI-compatible gateway.
+**Stack:** TypeScript 蝜?Node.js 24 蝜?SQLite (`node:sqlite`) 蝜?vanilla HTML/CSS/JS 蝜?Vitest 蝜?OpenAI-compatible gateway.
 
 ## Quick start
 
@@ -56,7 +50,8 @@ PowerShell is shown above; on macOS/Linux use `export NAME=value` instead.
 | Surface | Default URL |
 |---|---|
 | Calendar / sign-up | **http://127.0.0.1:8091/signup** (then `/login`) |
-| Coach bubble | bottom-right **💬 Coach** on the calendar |
+| Muscle tab | third app-bar tab, **http://127.0.0.1:8091/muscle** |
+| Coach bubble | bottom-right **???Coach** on the calendar |
 | Gateway health | **http://127.0.0.1:8090/health** |
 
 The live deployment runs the calendar on **:8093** and the gateway on **:8092**; the defaults above are **:8091/:8090**.
@@ -67,7 +62,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (257 tests in 11 files). |
+| `pnpm test` | Run the Vitest suite (439 tests in 17 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -75,49 +70,99 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 
 ## What is in the box
 
-### 🗓️ Plan
+### ????Plan
 
-- **Private month calendar** — Monday-first grid, today ring, colored plan pills, green `✓` recorded-run pills, hover
-  tooltips and a `+n more` hint for busy days.
-- **Day actions** — click a day to add, move, delete, ask the coach or open the day detail; the middle nav opens a
+- **Private month calendar** ??Monday-first grid, today ring, and typed calendar rows: a colored planned-session row, a
+  green recorded-run row, and a **paired** green/purple row that puts a run and the Garmin workout it followed in one entry
+  (a green run line above a purple workout line, when Garmin supplies the workout; the whole row is one click target).
+  Every row adds the amount its title
+  omits: the distance when the title does not state it, otherwise the duration only when no distance is known. Three runs
+  with the same title therefore keep three different distances; hover tooltips carry the full kind, metrics and note, and a
+  `+n more` hint keeps a busy day bounded.
+- **Day actions** ??click a day to add, move, delete, ask the coach or open the day detail; the middle nav opens a
   year/month picker.
-- **Run peek** — click a green recorded-run pill for a popup with the run's key metrics, plan match, training load/effect,
-  fastest efforts and PR badges, plus **Open full detail**, **Ask coach**, **View day** and **Training log week**. Ask coach
-  sends the natural question with the run's day and metrics ("How did my Tempo run go? (Thu, 12 Nov 2026 · 8 km · 50 min)")
+- **Run peek** ??click a recorded-run row, or anywhere on a paired run+workout row, for one popup with the run's key
+  metrics, plan match, the **Training program · Garmin** (name, summary, step table with duration and target, and coach
+  notes), training load/effect, fastest efforts and PR badges, plus **Open full detail**, **Ask coach**, **View day** and
+  **Training log week**. Ask coach
+  sends the natural question with the run's day and metrics ("How did my Tempo run go? (Thu, 12 Nov 2026 蝜?8 km 蝜?50 min)")
   plus a **hidden comment-only directive**: the coach checks that day's plan and comments without changing the calendar.
-  The visible reference keeps repeated titles unambiguous, including in later follow-up turns. Escape, outside click or the
-  × closes it; Escape returns focus to the pill, and the pill is keyboard reachable.
-- **In-place updates** — coach turns refresh the grid without a reload; changed pills animate into place.
+  The visible reference keeps repeated titles unambiguous, including in later follow-up turns. The paired row is one click
+  and one keyboard target: the run and its program are read together, not in two half-row popups. Escape, outside click or
+  the ? closes it; Escape returns focus to the row.
+- **Session peek** ??click a colored planned-session row for the same anchored popup with the plan's day, kind,
+  distance/duration and note, a **what this is for / how hard it should feel** line for the session kind, plus what
+  happened: **Completed** with the matched run, **Not matched**, **Not done** (the plan does not change; nothing to make
+  up), **Today/Upcoming**, or **Planned rest**. Actions are **View day**, **Ask coach** (the same comment-only review),
+  **Move** (prefills the composer), **Open run** when the popup links a run, and **Training log week**. Planned rows are
+  keyboard reachable and use the same
+  Escape/outside-click/? close, focus restore and same-trigger toggle as the run peek.
+- **In-place updates** ??coach turns refresh the grid without a reload; changed rows animate into place, and `prefers-reduced-motion` skips the
+  flourish.
+- **Log a run by hand** — the day page has a small form (day, title, distance, duration) for treadmill, commute or
+  non-Garmin runs. Reported runs use the same `Activity` record and same-day plan matching as Garmin runs, appear on the
+  calendar, day page, training log and peek, and a repeated submit reuses the same id instead of duplicating.
+- **Recent changes** — the calendar lists the last five coach batches with what changed and an **Undo this change**
+  button. Undo reuses the audited revert path and is itself recorded as a change.
 
-### 📈 Training log
+### ?? Training log
 
 - **Week / Month / Year** views with previous/next/current navigation and date/month/year pickers.
 - Week = seven day cards with plan-match badges; month = week rows; year = month rows.
-- Adaptive daily/weekly/monthly volume, pace/HR trends, consistency, weekly load/ACWR/hard-easy, period best efforts
+- Adaptive daily/weekly/monthly volume, one **metric-selectable trend graph** (pace, heart rate, cadence, load, distance,
+  time, elevation) with instant chip switching and no reload, consistency, weekly load/ACWR/hard-easy, period best efforts
   and PR badges.
+- A **Garmin workout** line on each week card when the recorded run followed a planned workout; the step card and the full
+  program live on the activity detail.
 - Per-activity **Ask coach** (a comment-only review), **Review my week** and auto-sync review prompts. Each action sends a
   typed intent; the server turns it into a hidden directive, so the visible message stays conversational.
 
-### 🏃 Activity detail
+### ?? Muscles
+
+- A third app-bar tab, **Muscles** (`/muscle`): an interactive front/back body map where the runner taps a muscle
+  (click, Enter/Space, or the grouped checkbox list) and tags how it feels — a 0-10 anchored soreness slider
+  (0 nothing · 5 noticeable · 7 sore to touch · 9-10 severe), condition tags (tight, cramp, fatigued, dull ache,
+  sharp pain, swelling, numbness, old-injury flare), a left/right/both side, and a "better once warmed up?" toggle.
+  A quick set applies one severity and tags to the whole selection, and the same controls are the no-JavaScript
+  submission path.
+- The heat ramp shows the latest check-in (legend included; a dashed outline marks tags that need care), and the
+  reading is deterministic: **ok → sore → heavy → watch → warning → urgent**, with copy that normalizes normal
+  soreness (peaks 24-72 h, eases with movement, not damage) and hands warning and urgent tags to a clinician —
+  sharp pain, swelling, numbness and the rhabdomyolysis pattern (severe + swelling) get a one-tap
+  **pain/injury** or **medical red flag** state that reuses the existing guardrails.
+- **Drill suggestions** matched to the tags and the muscle's own library (mobility / activation / recovery, with
+  dosage), each with an "ask the coach to work this in" button; warning and urgent levels deliberately suggest no
+  drills. A per-muscle knowledge panel (function, common issues, recovery) is one tap away in the tag editor.
+- **Muscles worked** appear on the activity detail (primary darker, helpers lighter) with a deep link that prefills
+  a check-in; the new-run review card gets a **Log muscle feel** link; the calendar shows a one-tap chip when the
+  latest check-in needs attention. `?activity=<id>` selects that run's muscles for you.
+- The coach reads the same facts: the latest check-in rides in every prompt, and the Muscle tab's
+  **Ask coach** buttons send a comment-only `review-muscles` intent (optionally zoomed to one muscle's knowledge
+  and tags). Check-ins are private per runner and included in `/export.json`.
+
+### ?? Activity detail
 
 - Full metrics, rich Garmin metrics, fastest 1 km / 1 mi / 5 km efforts, per-kilometre splits, Garmin laps/intervals and
   HR-zone time.
+- A **Training program 蝜?Garmin** card with the workout a run followed: the workout name, the grouped one-line summary
+  (`3 ? (Run 7:00 @ 4:14??:33/km, Recovery 2:00)`), a step table with duration and target, and Garmin's coach notes.
 - Planned-vs-actual comparison with distance/duration deltas and bars, plus a comment-only **Ask coach** and links back to
   the day and plan.
 
-### 💬 Coach
+### ???Coach
 
 - Self-implemented same-origin bubble; restores the recent conversation after refresh.
-- Add / move / delete / revert sessions; 1–3 tappable follow-ups; starter prompts; a structured **Could not apply** card.
+- Add / move / delete / revert sessions; 1?? tappable follow-ups; starter prompts; a structured **Could not apply** card.
   Review requests are read-only and never write to the calendar.
-- **Hidden directives** — every action-originated message carries a server-authored stage direction (mode, write
+- **Hidden directives** ??every action-originated message carries a server-authored stage direction (mode, write
   permission, references, focus, style and a short background note) that goes into the coach prompt but never into the
   chat bubble. The gateway enforces `allowCalendarWrites: false`, so a comment-only turn cannot write even if the model
   proposes it. A typed intent comes from the browser; hidden prose never does.
-- **Coach audit** (`/coach-audit`, an owner-only internal page that is not linked in the end-user UI) shows the recent
+- **Coach audit** (`/coach-audit`, an internal page that is not linked in the end-user UI and is scoped to the signed-in
+  runner) shows the recent
   hidden directives, blocked writes, active coaching states, an immutable state-transition log and any legacy `mode:`
   memories.
-- **Coaching states** (`/coach-states`) — durable context beyond one turn. Race phase (race day/week, taper, post-race),
+- **Coaching states** (`/coach-states`) ??durable context beyond one turn. Race phase (race day/week, taper, post-race),
   load (ACWR ramp, hard/easy mix, under-load), consistency and data freshness are detected from the calendar and Garmin;
   travel, heat, time pressure, pain, illness and focus blocks are proposed by the coach or set by the runner. Sensitive
   states (pain, illness, medical red flag, pregnancy/postpartum, menstrual-cycle support, low energy availability) are
@@ -127,33 +172,52 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
   disables auto detection while keeping manual/chat states.
 - The OpenAI-compatible `poc3-coach` gateway validates every proposal before writing, with one bounded
   repair/clarification loop and idempotent request replay.
-- Every batch is stored with before/after snapshots; undo is requested in chat, with no history panel.
+- The runner's profile goal is in the coach's facts, so the plan can be checked against it instead of being stored and
+  ignored.
+- Every batch is stored with before/after snapshots. Undo is available in chat and from the **Recent changes** card on the
+  calendar; both paths use the same audited revert and both record the undo as its own change set.
+- A pending sensitive-state card (pain, illness, pregnancy/postpartum, low energy availability) is replayed from
+  `/chat/history` after a refresh, so Confirm/Dismiss survives a reload instead of living only in the DOM.
 
-### 🔐 Accounts & Garmin
+### ?? Accounts & Garmin
 
-- Standalone accounts: signup, login, profile (display name, timezone, goal, password), per-user isolation.
-- Per-runner Garmin Personal API key, verified before storage and never shown again in full. The top-bar sync icon sits
-  next to the notification bell and opens the key guide when none is saved.
+- Standalone accounts: signup, login, profile (display name, timezone, goal, password), per-user isolation. The goal is
+  saved and passed to the coach prompt.
+- **Data ownership**: `/export.json` returns the profile, sessions, activities and change history as one bundle (no
+  password hash, no Garmin key); `/export.ics` returns the planned sessions as an all-day calendar. Both are linked from
+  the account menu and the profile page.
+- Per-runner Garmin Personal API key, verified before storage and never shown again in full. **Sync Garmin now** and
+  **Garmin key** live in the account menu behind the runner's name; syncing with no saved key opens the guide. The key can
+  be removed from the same popup; removal stops sync and returns the account to the manual-log path.
+- Manual sync results are rendered inline on the page (imported count or the Garmin error), not only in the bell.
 - Automatic sync on every new browser session (login or resumed auth cookie) plus page-load backoff. Pulls the last
   90 days, up to 100 activities per pull; repeated syncs upsert by `(user_id, activity_id)` and enrich
   load/cadence/elevation/effect/HR-zone fields.
-- The same Garmin activity can be synced independently by multiple accounts; run detail fetches per-kilometre samples
-  and lap summaries on demand.
+- The same Garmin activity can be synced independently by multiple accounts; run detail fetches per-kilometre samples,
+  lap summaries and the activity's planned workout on demand. Up to three workouts are enriched per sync, and a calendar
+  render fills up to six more for the visible month (2.5 s budget, 60 s throttle). They are stored in `activity_workouts`
+  and shown as the paired row's purple program line, the integrated training program in the run peek, the detail step
+  card, the week-card line and the day-page card.
+- **The workout a run followed is available; the future Garmin plan is not.** A Personal API key cannot read scheduled
+  workouts, Garmin Coach plans or the Garmin calendar ??that needs a separate Garmin SSO web session. The official Training
+  API is publish-only. See [Garmin training programs](docs/GARMIN-TRAINING-PROGRAMS.md).
 - Notification bell is the sync feed: manual/key syncs confirm, automatic no-change checks stay silent, errors always
   appear. Routine "Auto-synced N" and "Garmin sync: N imported" banners are gone; the review card appears only for a
   genuinely new activity.
+- Browser tab titles follow the active nav and page, e.g. `Training log 蝜?AI Coach Calendar (2)`. The unread count is
+  server-rendered, capped at `99+`, cleared when the bell is opened, and kept current by the bell poll.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    B["Browser<br/>calendar · training log · coach bubble"]
+    B["Browser<br/>calendar 蝜?training log 蝜?coach bubble"]
     W["POC3 web<br/>:8093"]
     G["POC3 gateway<br/>:8092"]
     M["LLM<br/>dgx/general"]
-    S[("SQLite<br/>accounts, plan, activities, messages, change sets, coach states, state events")]
+    S[("SQLite<br/>accounts, plan, activities, activity workouts, messages, change sets, coach states, state events")]
 
-    B -->|"/calendar · /history"| W
+    B -->|"/calendar 蝜?/history"| W
     B -->|"/chat"| W
     W -->|"x-poc3-user"| G
     G -->|"OpenAI-compatible"| M
@@ -163,8 +227,8 @@ flowchart LR
 
 One SQLite file, two processes:
 
-- **POC3 web** owns accounts, the calendar, the training log, activity detail, Garmin sync and the same-origin bubble
-  proxy.
+- **POC3 web** owns accounts, the calendar, the training log, activity detail, reported-run logging, export, Garmin sync
+  and the same-origin bubble proxy.
 - **POC3 gateway** owns the OpenAI-compatible contract, validates `propose_calendar_turn`, and writes validated change
   sets through the same store.
 - The bubble is not an iframe: it can read and animate the grid directly (ADR-0002).
@@ -174,7 +238,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 257 Vitest tests across 11 files. |
+| `test/` | 439 Vitest tests across 17 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -182,26 +246,17 @@ One SQLite file, two processes:
 
 | Document | What it answers |
 |---|---|
-| [Solution document](docs/POC3-CALENDAR.md) | Architecture, accounts, coach contract, CRUD/batch, change history/revert, suggestions, animation, training log, activity detail, trends, auto-sync, Garmin, API, runbook and limits. |
+| [Solution document](docs/POC3-CALENDAR.md) | Architecture, accounts, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, training log, activity detail, metric trend graph, Garmin workouts, auto-sync, Garmin, API, runbook and limits. |
 | [Coaching states](docs/COACH-STATES.md) | The durable-state model, catalog, detectors, chat/user proposals, precedence, guardrails, UI/API, research citations and what is needed versus deliberately skipped. |
-| [Training-log plan](docs/TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented load/ramp, rich-metrics, per-kilometre-split, lap/interval, HR-zone, best-efforts/PR and weekly-review slices. |
+| [Training-log plan](docs/TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented load/ramp, rich-metrics, per-kilometre-split, lap/interval, HR-zone, best-efforts/PR, metric-trend, Garmin-workout and weekly-review slices. |
+| [Muscle tab](docs/MUSCLE-TAB.md) | Research basis (scales, DOMS course, red flags), the check-in flow, the interpretation rules, drill suggestions, coach integration, accessibility and safety copy for the Muscles tab. |
+| [Garmin training programs](docs/GARMIN-TRAINING-PROGRAMS.md) | What the Garmin Personal API exposes about training programs (per-activity executed workout), what it does not (future scheduled workouts, Coach/adaptive plans), and what a full-plan import would require. |
 | [Feature backlog](docs/FEATURES-FOR-REVIEW.md) | Remaining candidate features, prioritised and waiting for owner review. |
 | [ADR-0001](docs/adr/0001-server-validated-coach.md) | LLM proposes; the server validates before writing. |
 | [ADR-0002](docs/adr/0002-calendar-first-bubble.md) | The calendar is the product; the bubble is same-origin, not an iframe. |
 | [ADR-0003](docs/adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back for one repair/clarification; turns are idempotent. |
 
-Fake-data screenshots: [calendar CRUD animation](docs/design/calendar-crud-demo.png) ·
-[run peek](docs/design/activity-peek-demo.png) ·
-[coach states](docs/design/coach-states-demo.png) ·
-[coach state card](docs/design/coach-state-bubble-demo.png) ·
-[coach audit](docs/design/coach-audit-demo.png) ·
-[coach starter suggestions](docs/design/coach-starter-demo.png) ·
-[coach Could not apply card](docs/design/coach-not-applied-demo.png) ·
-[delete in place](docs/design/coach-delete-demo.png) ·
-[training log month](docs/design/training-log-month-demo.png) ·
-[training log week](docs/design/training-log-week-demo.png) ·
-[training log year](docs/design/training-log-year-demo.png) ·
-[activity detail](docs/design/activity-detail-demo.png).
+Fake-data screenshots: [calendar CRUD animation](docs/design/calendar-crud-demo.png) 蝜?[run peek](docs/design/activity-peek-demo.png) 蝜?[session peek](docs/design/session-peek-demo.png) 蝜?[coach states](docs/design/coach-states-demo.png) 蝜?[coach state card](docs/design/coach-state-bubble-demo.png) 蝜?[coach audit](docs/design/coach-audit-demo.png) 蝜?[coach starter suggestions](docs/design/coach-starter-demo.png) 蝜?[coach Could not apply card](docs/design/coach-not-applied-demo.png) 蝜?[delete in place](docs/design/coach-delete-demo.png) 蝜?[training log month](docs/design/training-log-month-demo.png) 蝜?[training log week](docs/design/training-log-week-demo.png) 蝜?[training log cadence selected](docs/design/training-log-cadence-demo.png) 蝜?[training log year](docs/design/training-log-year-demo.png) 蝜?[activity detail](docs/design/activity-detail-demo.png) 蝜?[muscle tab](docs/design/muscle-tab-demo.png).
 
 ## Deploy the live process
 
@@ -222,11 +277,21 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 
 | Gate | State |
 |---|---|
-| Tests | **257 / 257** in 11 files |
+| Tests | **439 / 439** in 17 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (pid 29472, model key preserved) |
+| Live deployment | calendar **:8093**, gateway **:8092** (restarted 2026-11-19, CSS v20 — the Plan / Training log / **Muscles** switch now lives in the app bar and only on the pages that belong to a view; muscle check-ins live-verified with a temporary account that was removed afterwards; model key preserved) |
+
+**Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
+`.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
+rendered the plan title whole with its distance, three distinct run amounts and the purple workout line, so repeated titles
+no longer look identical. The paired row is one click target and one keyboard target: clicking its purple workout line
+opened the run peek with the run's metrics, plan match and the full **Training program · Garmin** (3 steps and notes), and
+Escape returned focus to the row; `/workout/<id>/peek` now returns 404, so there is no separate brief. `/calendar/data`
+returned the typed `plan | record | pair` items (pair: `activityId`, `run`, `workout`, `tooltip`) and the same
+server-rendered row fragment; a preview check found the first paint and the refresh fragment byte-identical. The live check
+was read-only.
 
 **Live-verified:** multi-user signup/login/profile/isolation; multi-day batch CRUD; in-place grid refresh including delete
 without reload; page-wide CRUD animation; conversation reload after refresh; LLM-driven undo; starter and follow-up
@@ -243,6 +308,14 @@ filter/upsert; enriched load/cadence/elevation/effect/HR-zone fields; the curren
 splits on a real run detail; Garmin laps/intervals; HR zones and PR badges; period best efforts; the auto-sync review
 prompt; and the week/month/year selector against the live database.
 
+**Live-verified honesty slice (2026-11-18):** a temporary account was created on the live :8093 process and removed
+afterwards. The live calendar showed the 180-day horizon, the empty-calendar card, the Garmin connect card, the Recent
+changes card and the Log-a-run link; `POST /activities` created a reported run that appeared on the day page; `/export.json`
+and `/export.ics` returned the bundle and a valid VCALENDAR; `?synced=2` rendered the inline sync banner; and
+`POST /garmin/key/delete` rendered the removal banner. The deployed stylesheet is `app.css?v=17` and contains the new
+banner, change-list, peek-intent, coach-horizon, log-row, typed calendar-row and reduced-motion rules. No temporary rows were left behind.
+The rest of the route-level behaviour is covered by the 337-test suite.
+
 **Cross-account:** two accounts can store the same Garmin activity independently, and a repeated sync leaves the
 notification count unchanged.
 
@@ -251,24 +324,33 @@ notification and the 2026-11-15 recorded run remain. Manual/key no-new confirmat
 test-covered.
 
 **Fixture-verified:** populated week, month and year training-log views plus the load card, weekly review prompt, period
-best efforts and activity detail with rich metrics, per-kilometre splits, laps, HR zones and PR badges, plus the calendar
-run-peek popup with its metrics, plan match, fastest efforts, four actions, Escape/focus restore, keyboard open,
-outside-click close and same-pill toggle (headless Chrome, fake demo data:
+best efforts, the metric trend card (with the Cadence chip selected in a second capture) and activity detail with rich
+metrics, per-kilometre splits, laps, HR zones, PR badges and the Garmin workout step card, plus the calendar
+run-peek popup with its metrics, plan match, integrated training program, fastest efforts, four actions, Escape/focus
+restore, keyboard open, outside-click close and same-row toggle, the planned-session peek with
+completed/missed/unmatched/upcoming/rest outcomes and its four actions, and the paired row that opens the one integrated
+run+program peek (headless Chrome, fake demo data:
 [training log month](docs/design/training-log-month-demo.png),
-[week](docs/design/training-log-week-demo.png), [year](docs/design/training-log-year-demo.png),
-[activity detail](docs/design/activity-detail-demo.png), [run peek](docs/design/activity-peek-demo.png)); the coaching
+[week](docs/design/training-log-week-demo.png),
+[cadence selected](docs/design/training-log-cadence-demo.png), [year](docs/design/training-log-year-demo.png),
+[activity detail](docs/design/activity-detail-demo.png), [run peek](docs/design/activity-peek-demo.png),
+[session peek](docs/design/session-peek-demo.png)); the coaching
 states manager with Refresh, active calendar chips, bubble state cards and guardrail system
 ([coach states](docs/design/coach-states-demo.png), [state card](docs/design/coach-state-bubble-demo.png)); the coach
 audit page with recent hidden directives, blocked-write badges, active states, the immutable State activity log and
 legacy `mode:` memories ([coach audit](docs/design/coach-audit-demo.png)); plan-vs-actual
-matcher; adaptive volume and pace/HR charts; load/ramp and hard/easy classification; split parsing; lap mapping; HR zones;
-personal bests; auto-sync backoff.
+matcher; adaptive volume and the metric-selectable trend graph; load/ramp and hard/easy classification; split parsing; lap mapping; HR zones;
+workout mapping, the workout enrichment cap/retry, the calendar fill and the paired-row/integrated-program wiring; personal bests; auto-sync backoff.
 
-**Calendar pills:** planned sessions and recorded runs render as colored descriptions in each day cell, with the full
-kind/metrics/note in the hover tooltip and a `+n more` hint when a day has more than four items. Recorded-run pills also
-open the run peek popup, with the full activity detail one tap away (headless Chrome, fake demo data:
+**Calendar rows:** planned sessions, recorded runs and paired run+workout entries render as one typed row anatomy in each
+day cell: a type rail, an optional glyph (`✓` run, `◈` workout), the title and the amount on the right. The amount is the
+distance when the title does not state it, otherwise the duration only when no distance is known, so three same-titled runs
+stay distinguishable without cutting a title that already carries its distance. The full kind/metrics/note is in the hover
+tooltip and a `+n more` hint keeps a day with more than four items bounded. A paired row is one click target: it opens the
+integrated run peek with the Garmin program inside it. Planned rows open the session peek popup, and the full activity
+detail is one tap away (headless Chrome, fake demo data:
 [calendar-demo.png](docs/design/calendar-demo.png), [run peek](docs/design/activity-peek-demo.png),
-[coach audit](docs/design/coach-audit-demo.png)).
+[session peek](docs/design/session-peek-demo.png), [coach audit](docs/design/coach-audit-demo.png)).
 
 **Not in scope:** admin console, Strava, payments, external calendar sync, production multi-tenant deployment, Garmin
 wellness/HRV/sleep data, weather/air-quality providers, and clinical decision support.
@@ -291,11 +373,21 @@ wellness/HRV/sleep data, weather/air-quality providers, and clinical decision su
 - **Gateway trust:** the gateway trusts the internal `x-poc3-user` header; it binds to `127.0.0.1` and must stay on a
   private network. The web surface binds to `0.0.0.0` behind session auth and same-origin state POST checks.
 - **SQLite:** single-process; run one app process per database.
-- **Code shape:** the state catalog lives in `src/coach-state-catalog.ts`, the state/audit page render in
-  `src/web-coach-states.ts`, and shared HTML helpers in `src/web-html.ts`. `src/web.ts` still holds the routes and the
-  inline client script, so a route/client-script split is a follow-up refactor, not a behavior change.
+- **Code shape:** the calendar-cell union and its single renderer live in `src/calendar-items.ts`; the state catalog in
+  `src/coach-state-catalog.ts`, the state/audit page render in `src/web-coach-states.ts`, and shared HTML helpers in
+  `src/web-html.ts`. The muscle domain (catalog, taxonomy, interpretation rules, drills, validation) lives in
+  `src/muscles.ts`, the SVG figures in `src/muscle-map.ts`, and the Muscle tab page in `src/web-muscle.ts`.
+  `src/web.ts` still holds the routes and the inline client script, so a route/client-script split is a
+  follow-up refactor, not a behavior change.
 - **Garmin:** capped at **100 activities per pull**; the Personal API key is stored per runner in SQLite in plaintext, so
   run this PoC on a private server.
+- **Garmin workouts:** the activity-workout DTO is only partly documented; the mapper is defensive and treats an unreadable
+  payload as "no planned workout". Enrichment is capped at three lookups per sync (two attempts), six more per calendar
+  render for the visible month (2.5 s budget, 60 s throttle) plus an on-demand retry; it is best-effort ??it never fails
+  the activity sync. A run with no known workout stays a plain green pill.
+- **No future Garmin plan import:** a Personal API key cannot read scheduled workouts, Garmin Coach / adaptive plans or the
+  Garmin calendar. The official Training API is publish-only. Importing the future plan needs a separate Garmin SSO web
+  session and a product/terms decision. See [Garmin training programs](docs/GARMIN-TRAINING-PROGRAMS.md).
 - **Training load:** Garmin's proprietary value; ACWR is a soft coupled 7/28-day signal, not medical advice.
 - **Splits and zones:** per-kilometre splits are computed on demand from Garmin detail samples; Garmin's own
   lap/interval summaries are separate; HR-zone time has no stored zone boundaries.

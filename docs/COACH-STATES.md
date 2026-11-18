@@ -96,16 +96,16 @@ prevents two concurrent refreshes from appending the same open key twice.
 ### Race phase
 
 - Next planned `race` or `racewalk` session:
-  - today → `race_day` (0.95)
-  - 1–7 days → `race_week` (0.90)
-  - 8–21 days → `taper` (0.80)
-- Latest race-like activity within 14 days → `post_race` (0.90 when the day had a planned race, 0.70 for a
-  conservative title match such as `Half marathon` or `北都半馬 2026`). Titles containing `race pace`, `tempo`,
+  - today ??`race_day` (0.95)
+  - 1?? days ??`race_week` (0.90)
+  - 8??1 days ??`taper` (0.80)
+- Latest race-like activity within 14 days ??`post_race` (0.90 when the day had a planned race, 0.70 for a
+  conservative title match such as `Half marathon` or `??收 2026`). Titles containing `race pace`, `tempo`,
   `interval` or `training` are excluded to avoid false positives.
 - The state TTL is tied to the race: race week expires after the race, taper expires on race day, post-race expires
   after the 14-day window.
 
-Why these windows: taper reviews consistently show volume reductions in the range of roughly 41–60% while intensity
+Why these windows: taper reviews consistently show volume reductions in the range of roughly 41??0% while intensity
 and frequency are largely maintained, with progressive rather than abrupt reductions and a taper of about two weeks or
 less for many race distances ([Wang 2023, taper systematic review](https://pmc.ncbi.nlm.nih.gov/articles/PMC10171681/)).
 Race-week advice commonly removes hard sessions in the final three days and prioritizes sleep, fuel and logistics
@@ -125,7 +125,7 @@ Garmin training load. The state engine maps:
   minutes.
 - No load state when there is no baseline (`insufficient`); the engine does not invent a ratio.
 
-ACWR is a soft signal, not an injury prediction. A 2016 BJSM review found a lower injury-risk window around 0.8–1.3
+ACWR is a soft signal, not an injury prediction. A 2016 BJSM review found a lower injury-risk window around 0.8??.3
 and higher risk above 1.5, but the method is contested and sensitive to how load is measured
 ([Gabbett 2016, BJSM](https://bjsm.bmj.com/content/50/5/273),
 [ACWR critique, PMC8138569](https://pmc.ncbi.nlm.nih.gov/articles/PMC8138569/)). The UI and prompt call it a signal,
@@ -135,7 +135,11 @@ not a diagnosis, and the state can be resolved by the runner.
 
 - `consistency_guard`: at least two planned running sessions in the last seven days have no same-day matched activity.
   Plan-vs-actual matching is day-aware, so a Thursday run cannot satisfy Tuesday's plan.
-- `plan_stale`: no planned session in the next 14 days and the runner has a goal.
+- `plan_stale`: nothing booked in the next 14 days, the runner has a goal, and the runner has plan history - at least
+  one past session in the recent window or one booked within the next 35 days. A brand-new account with no sessions
+  never fires it: an empty calendar is an onboarding state, not a stale plan. (Gated 2026-11-19 after the user-side
+  review found the zero-session case read as blame; evidence: "The plan went stale: nothing booked in the next 14
+  days.")
 - `no_key`: no Garmin Personal API key is saved. This is a setup state: the manager and audit keep it out of the coaching
   list and the calendar chips omit it; the manager shows a Setup card with a Profile link instead.
 - `data_stale`: a Garmin key is saved but there is no activity in the last 14 days.
@@ -159,8 +163,8 @@ The model's tool schema now includes an optional `stateProposals` array (maximum
 Rules:
 
 - Exact catalog key only; unknown keys are rejected with `invalid-state-key`.
-- `action` is `activate` or `resolve`; confidence is 0.5–1; evidence is 1–3 strings of 1–200 characters; TTL is null
-  (use the catalog default) or an integer 1–365 days; note is null or at most 280 characters. `ttlDays: 0` is rejected
+- `action` is `activate` or `resolve`; confidence is 0.5??; evidence is 1?? strings of 1??00 characters; TTL is null
+  (use the catalog default) or an integer 1??65 days; note is null or at most 280 characters. `ttlDays: 0` is rejected
   rather than silently treated as a default.
 - A `requiresConfirmation` state becomes `observing`; it is shown as a card in the chat bubble and on the states page
   with **Confirm** and **Dismiss**.
@@ -204,7 +208,7 @@ Lifecycle rules:
 
 The prompt tells the model the rules; the gateway also refuses a proposed session that violates an active state. This
 is the important difference from a pure prompt instruction. The gateway evaluates the **effective calendar after the
-turn** — current sessions plus adds, updates, removes and a revert — so a restored session cannot bypass a guardrail
+turn** ??current sessions plus adds, updates, removes and a revert ??so a restored session cannot bypass a guardrail
 and a moved race is seen at its new date. The window check uses the **proposed session's day**, not just the state's
 current race proximity: a tempo after the race or a long run after the taper is allowed.
 
@@ -251,23 +255,24 @@ Prompt order:
 
 ## UI and routes
 
-- **`/coach-states`** — active states, proposed states with Confirm/Dismiss, a set-state form grouped by family, a
+- **`/coach-states`** ??active states, proposed states with Confirm/Dismiss, a set-state form grouped by family, a
   **Refresh** action, a setup card when no Garmin key is saved, a sensitive-state disclaimer, and resolved history.
   Expiry dates and history timestamps render in the runner's timezone. The manager shows user-facing labels, status,
   source, expiry, evidence and notes; raw catalog keys, confidence scores and guardrail rules stay on the internal
   audit page.
-- **Calendar** — up to three active state chips under the welcome line, linking to the manager. No row when there are
+- **Calendar** ??up to three active state chips under the welcome line, linking to the manager. No row when there are
   no active states.
-- **Chat bubble** — a state card after a turn that activates a state: label, status, evidence, the non-diagnosis note,
+- **Chat bubble** ??a state card after a turn that activates a state: label, status, evidence, the non-diagnosis note,
   and Confirm/Dismiss/Resolve buttons. A blocked guardrail adds a system line:
-  `Calendar unchanged — <state> · 日曆未有更改`.
-- **Coach header** — minimal: the title and minimize button only. The states page is reachable from Profile and the
-  calendar chips; `/coach-audit` is an owner-only internal page and is not linked in the end-user UI.
-- **`/coach-audit`** — active coaching states, an immutable **State activity** log, legacy `mode:` memories if any,
+  `Calendar unchanged ??<state> 繚 ?交??芣??湔`.
+- **Coach header** ??minimal: the title and minimize button only. The states page is reachable from the account menu,
+  from Profile and from the calendar chips; `/coach-audit` is an owner-only internal page and is not linked in the
+  end-user UI.
+- **`/coach-audit`** ??active coaching states, an immutable **State activity** log, legacy `mode:` memories if any,
   hidden directives, and an active-state count in the audit metrics.
-- **`/profile`** — links to the coaching states page; the audit page is internal.
+- **`/profile`** ??links to the coaching states page; the audit page is internal.
 
-Screenshots: [manager page](design/coach-states-demo.png) · [chat state card](design/coach-state-bubble-demo.png).
+Screenshots: [manager page](design/coach-states-demo.png) 繚 [chat state card](design/coach-state-bubble-demo.png).
 
 Routes:
 
@@ -276,8 +281,8 @@ Routes:
 | GET | `/coach-states` | render stored states (no auto refresh; read-only) |
 | POST | `/coach-states` | set a state (`key`, `ttlDays`, `note`) |
 | POST | `/coach-states/refresh` | run auto detection, then redirect to the manager |
-| POST | `/coach-states/<id>/confirm` | observing → active |
-| POST | `/coach-states/<id>/resolve` | active/observing → resolved, source user |
+| POST | `/coach-states/<id>/confirm` | observing ??active |
+| POST | `/coach-states/<id>/resolve` | active/observing ??resolved, source user |
 | GET | `/coach-audit` | directives, active states, state events and legacy modes |
 
 All state POSTs are same-origin checked (Origin vs Host) in addition to the SameSite=Lax session cookie. Invalid form
@@ -293,7 +298,7 @@ Implemented in this pass:
 1. Typed state record, SQLite table and store CRUD/history, plus an immutable `coach_state_events` transition log.
 2. Catalog with 34 states across ten families (including the `setup` family).
 3. Deterministic race-phase, load, hard/easy, day-aware consistency, plan-stale, data-stale and no-key detection.
-4. Chat `stateProposals` with strict parsing, exact-key validation and a 1–365-day TTL.
+4. Chat `stateProposals` with strict parsing, exact-key validation and a 1??65-day TTL.
 5. Sensitive-state confirmation, user-set states and user precedence over chat proposals.
 6. TTL expiry, auto resolution, exclusive priority, seven-day user-dismissal cooldown and 180-day retention.
 7. Server-side guardrails over the effective post-turn calendar: reverts, moved/added races, day-aware windows and
@@ -302,7 +307,7 @@ Implemented in this pass:
 9. Manager page, calendar chips, bubble cards, audit integration, state activity log and links.
 10. Read-only GET pages plus an explicit refresh action; serialized sync; same-origin state POSTs; fixed error codes.
 11. Auto-detection kill switch (`POC3_AUTO_STATES=false`), `pnpm check` and CI workflow.
-12. Tests: **257 across 11 files**, including 27 state-engine tests and gateway guardrail/revert/fallback tests.
+12. Tests: **337 across 15 files**, including 27 state-engine tests and gateway guardrail/revert/fallback tests.
 13. CSS v11, deploy checks for state styles, live verification.
 
 ## What can be skipped, and why
@@ -340,14 +345,14 @@ Implemented in this pass:
 
 These sources informed the catalog and the conservative guardrails. They are not a substitute for clinical advice.
 
-- **Taper**: volume down roughly 41–60%, intensity/frequency maintained, progressive reduction, about two weeks or
+- **Taper**: volume down roughly 41??0%, intensity/frequency maintained, progressive reduction, about two weeks or
   less ([Wang 2023](https://pmc.ncbi.nlm.nih.gov/articles/PMC10171681/)).
-- **Heat**: acclimation takes about 5–14 days; finish heat training at least two days before the race; re-acclimatize
-  for 2–4 days after travel ([Pryor 2018](https://pmc.ncbi.nlm.nih.gov/articles/PMC6422510/)).
-- **ACWR**: 0.8–1.3 lower-risk window, >1.5 higher risk, method debated
+- **Heat**: acclimation takes about 5??4 days; finish heat training at least two days before the race; re-acclimatize
+  for 2?? days after travel ([Pryor 2018](https://pmc.ncbi.nlm.nih.gov/articles/PMC6422510/)).
+- **ACWR**: 0.8??.3 lower-risk window, >1.5 higher risk, method debated
   ([Gabbett 2016](https://bjsm.bmj.com/content/50/5/273),
   [critique](https://pmc.ncbi.nlm.nih.gov/articles/PMC8138569/)).
-- **Return to run**: pain during and 24–48 hours after, weekly volume and long-run progression of about 10%
+- **Return to run**: pain during and 24??8 hours after, weekly volume and long-run progression of about 10%
   ([CU Sports Medicine return-to-running protocol](https://www.rachelfrankmd.com/pdf/cu-sports-medicine-return-running-protocol.pdf),
   [Sanford Health return-to-running](https://www.sanfordhealth.org/-/media/org/files/medical-professionals/resources-and-education/return-to-running.pdf)).
 - **Overtraining**: mood, sleep and behaviour disruption; needs medical evaluation rather than an app diagnosis
@@ -399,4 +404,4 @@ These sources informed the catalog and the conservative guardrails. They are not
 | `test/gateway.test.ts` | auto detection in the prompt, effective-calendar guardrails, revert/race-move blocking, fallback state cards, proposal application, claim cleanup |
 | `test/web.test.ts` | manager page, read-only GET plus refresh action, set/confirm/resolve routes, CSRF origin rejection, calendar chips, bubble forwarding, audit events |
 
-Full suite: **257 tests across 11 files**.
+Full suite: **337 tests across 15 files**.

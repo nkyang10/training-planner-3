@@ -124,15 +124,21 @@ try {
     $css = Wait-HttpOk "http://127.0.0.1:$WebPort/static/app.css" $TimeoutSeconds
 
     $cssText = [string]$css.Content
-    if ($cssText -notmatch '\.cal-pill\.record') {
-        throw 'The deployed stylesheet does not contain the calendar pill styles.'
+    if ($cssText -notmatch '\.cal-pill\.record' -or $cssText -notmatch '\.cal-meta' -or $cssText -notmatch '\.cal-pair-run' -or $cssText -notmatch '\.peek-program') {
+        throw 'The deployed stylesheet does not contain the calendar item row styles or the integrated program section.'
     }
     if ($cssText -notmatch '\.state-card' -or $cssText -notmatch '\.state-form' -or $cssText -notmatch '\.state-refresh') {
         throw 'The deployed stylesheet does not contain the coaching-state styles.'
     }
+    if ($cssText -notmatch '\.account-menu' -or $cssText -notmatch '\.account-item') {
+        throw 'The deployed stylesheet does not contain the account-menu styles.'
+    }
+    if ($cssText -notmatch '\.muscle-region' -or $cssText -notmatch '\.muscle-editor' -or $cssText -notmatch '\.muscle-figure') {
+        throw 'The deployed stylesheet does not contain the muscle-tab styles.'
+    }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=12') {
-        throw 'The deployed login page does not reference app.css?v=12.'
+    if ($loginText -notmatch 'app\.css\?v=20') {
+        throw 'The deployed login page does not reference app.css?v=20.'
     }
 
     $gatewayText = [string]$gateway.Content

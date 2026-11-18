@@ -142,6 +142,11 @@ function stateStatusChip(state: CoachStateRecord): string {
   return `<span class="chip state-status state-${state.status}">${label}</span>`;
 }
 
+/** The visible question for one coaching state; the hidden discuss-state directive keeps the turn comment-only. */
+function coachPromptForState(label: string): string {
+  return `How should the ${label} state shape my coming week?`;
+}
+
 export function stateChipHtml(state: CoachStateRecord): string {
   const definition = getCoachStateDefinition(state.key);
   return `<a class="chip state-chip state-${state.status}" href="/coach-states" title="${escapeHtml(definition.description)}">${escapeHtml(definition.shortLabel)}</a>`;
@@ -168,6 +173,8 @@ function stateCardHtml(
   const confidence = internal ? `confidence ${state.confidence.toFixed(2)} · ` : "";
   const confirm = `<form method="post" action="/coach-states/${encodeURIComponent(state.stateId)}/confirm" class="state-actions"><button class="btn" type="submit">Confirm · 確認</button><button class="btn ghost" type="submit" formaction="/coach-states/${encodeURIComponent(state.stateId)}/resolve">Dismiss · 略過</button></form>`;
   const resolve = `<form method="post" action="/coach-states/${encodeURIComponent(state.stateId)}/resolve" class="state-actions"><button class="btn ghost" type="submit">Resolve · 解除</button></form>`;
+  // Every state card can reach the coach in one tap: the action sits beside the data and never chases the runner.
+  const askCoach = `<div class="state-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForState(definition.label))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-state", stateId: state.stateId, source: "states-page" }))}">Ask coach about this state · 問問教練</button></div>`;
   return `<article class="state-card state-${state.status}">
     <div class="state-head"><strong>${escapeHtml(definition.label)}</strong>${keyChip}${stateStatusChip(state)}<span class="chip">${escapeHtml(coachStateSourceLabel(state.source))}</span><span class="muted small">${confidence}${escapeHtml(expiryText)}</span></div>
     <p class="muted small">${escapeHtml(definition.description)}</p>
@@ -175,6 +182,7 @@ function stateCardHtml(
     ${guardrails}
     <p class="state-note">${escapeHtml(definition.uiNote)}</p>
     ${proposed ? confirm : resolve}
+    ${askCoach}
   </article>`;
 }
 
@@ -191,7 +199,7 @@ export function renderCoachStates(
   const setupHtml =
     setup === undefined
       ? ""
-      : `<section class="card"><h2>Setup · 設定</h2><p class="muted small">No Garmin key is saved. <a href="/profile">Add it on Profile</a> to coach from recorded runs.</p></section>`;
+      : `<section class="card"><h2>Setup · 設定</h2><p class="muted small">No Garmin key is saved. <a href="/calendar?garmin=setup">Connect Garmin</a> to coach from recorded runs, or <a href="/calendar">log a run by hand</a>.</p></section>`;
   const activeHtml =
     active.length === 0
       ? `<p class="muted small">No active states. Automatic states appear from your calendar and training; use Refresh or set one below.</p>`

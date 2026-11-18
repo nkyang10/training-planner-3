@@ -1,5 +1,9 @@
 /** Shared POC3 records. Every record belongs to exactly one runner. */
 
+import type { MuscleCheckIn } from "./muscles";
+
+export type { MuscleCheckIn };
+
 export type MessageRole = "user" | "assistant";
 
 /**
@@ -87,6 +91,62 @@ export interface Activity {
   hrZone3Sec?: number | null;
   hrZone4Sec?: number | null;
   hrZone5Sec?: number | null;
+  /**
+   * Runner-reported post-run effort on the Borg CR10 scale, 0-10 in half steps. The manual form sets it; Garmin
+   * rows and rows logged before the field existed leave it undefined. Session-RPE load (durationMin x rpe) is the
+   * fallback load for runs without a Garmin training load, and rpe >= 7 counts as hard work.
+   */
+  rpe?: number | null;
+}
+
+/** One step of the Garmin workout an activity followed. */
+export interface ActivityWorkoutStep {
+  /** 1-based position in the workout; repeat rows keep their own position too. */
+  index: number;
+  /** Human label for the step, e.g. "Warm-up", "Run", "Recovery" or "Repeat". */
+  intensity: string;
+  /** Raw Garmin intensity key, kept for styling and tests. */
+  intensityKey: string;
+  /** Time, distance or repeat text, e.g. "10:00", "1.0 km" or "3 ×". */
+  duration: string;
+  /** Target text, e.g. "5:30–5:50/km"; null when the step has no target. */
+  target: string | null;
+}
+
+/** "ok" = Garmin has a planned workout for the run; "none" = it has none; "unavailable" = the fetch failed. */
+export type ActivityWorkoutStatus = "ok" | "none" | "unavailable";
+
+/**
+ * The Garmin workout a completed activity followed, normalized for POC3. Garmin's Personal API returns this through
+ * `GET /activity-service/activity/{id}/workouts`; the field names of that payload are not fully published, so the
+ * mapper accepts the observed shape plus close variants. It is a read-only overlay: it never changes the activity.
+ */
+export interface ActivityWorkout {
+  activityId: string;
+  userId: string;
+  /** The activity's day; the calendar groups program pills by it. */
+  day: string;
+  /** Garmin's workout name, when the payload carries one. */
+  name: string | null;
+  /** Short pill/peek label: the workout name, else the main repeat group, else the first step. */
+  label: string;
+  /** One-line human summary of the steps, e.g. "Warm-up 10:00 · 3 × 7:00 @ 5:30–5:50/km". */
+  summary: string;
+  steps: ActivityWorkoutStep[];
+  /** Garmin's coach notes, when present. */
+  notes: string | null;
+  status: ActivityWorkoutStatus;
+  /** Failed fetch attempts; 0 for a found workout or a confirmed "none". */
+  attempts: number;
+  /** ISO timestamp of the last fetch attempt. */
+  fetchedAt: string;
+}
+
+/** One activity whose workout is missing or may be retried after a failed fetch. */
+export interface WorkoutCandidate {
+  activity: Activity;
+  /** Failed attempts so far; 0 when the activity has no workout row at all. */
+  attempts: number;
 }
 
 export type NotificationSource = "garmin";
@@ -163,11 +223,17 @@ export type CoachFocus =
 export type CoachSource =
   | "composer"
   | "run-peek"
+  | "session-peek"
   | "day-menu"
+  | "today-strip"
   | "history"
   | "load-card"
   | "auto-sync"
-  | "activity-detail";
+  | "activity-detail"
+  | "recent-changes"
+  | "states-page"
+  | "state-card"
+  | "muscle-tab";
 
 export type CoachLanguage = "auto" | "en" | "zh-Hant";
 export type CoachTone = "supportive" | "direct" | "brief";
@@ -178,6 +244,12 @@ export interface CoachDirectiveReferences {
   day?: string;
   weekStart?: string;
   sessionIds?: string[];
+  /** The change set a discuss-change turn talks about, resolved from the store. */
+  changeSetId?: string;
+  /** The coaching state a discuss-state turn talks about, resolved from the store. */
+  stateId?: string;
+  /** The catalog muscle a review-muscles turn zooms in on; validated against the muscle catalog. */
+  muscleId?: string;
 }
 
 export interface CoachDirectiveStyle {
@@ -361,6 +433,23 @@ export interface Store {
   getActivity(userId: string, activityId: string): Activity | undefined;
   /** Insert or replace one activity by activityId; a repeated Garmin sync updates the row instead of throwing. */
   appendActivity(activity: Activity): void;
+  /** The stored Garmin workout for one activity, or undefined when it was never fetched. */
+  getActivityWorkout(userId: string, activityId: string): ActivityWorkout | undefined;
+  /** Insert or replace one activity workout, including a failed attempt. */
+  saveActivityWorkout(workout: ActivityWorkout): void;
+  /** Workouts for activities whose day is in the inclusive range, oldest first. */
+  listActivityWorkouts(userId: string, fromDay: string, toDay: string): ActivityWorkout[];
+  /**
+   * Activities in the inclusive range whose workout is missing, or whose fetch failed fewer than maxAttempts times.
+   * Newest first, so a sync enriches the runs a runner is most likely to open.
+   */
+  listWorkoutCandidates(
+    userId: string,
+    fromDay: string,
+    toDay: string,
+    limit: number,
+    maxAttempts: number,
+  ): WorkoutCandidate[];
   /** ISO timestamp of the last completed Garmin sync for this runner, or null. */
   getLastSync(userId: string): string | null;
   /** Record a completed or attempted sync so automatic sync can back off. */
@@ -369,6 +458,8 @@ export interface Store {
   getGarminKey(userId: string): GarminKey | undefined;
   /** Insert or replace the runner's Garmin key. */
   saveGarminKey(key: GarminKey): void;
+  /** Remove the saved key; returns whether a row was deleted. */
+  deleteGarminKey(userId: string): boolean;
   /** Newest first. */
   listNotifications(userId: string, limit?: number): AppNotification[];
   countUnreadNotifications(userId: string): number;
@@ -376,6 +467,12 @@ export interface Store {
   markNotificationsRead(userId: string, at: string): void;
   /** Append one sync result to the runner's notification tray. */
   appendNotification(notification: AppNotification): void;
+  /** Append one muscle check-in; check-ins are append-only, history is kept. */
+  appendMuscleCheckIn(checkIn: MuscleCheckIn): void;
+  /** One check-in by id, scoped to its owner. */
+  getMuscleCheckIn(userId: string, checkInId: string): MuscleCheckIn | undefined;
+  /** Newest first. */
+  listMuscleCheckIns(userId: string, limit?: number): MuscleCheckIn[];
   /** Record one batch of calendar writes; a revert is recorded as its own change set. */
   appendChangeSet(changeSet: ChangeSet): void;
   /** Newest first. */

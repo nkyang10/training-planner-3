@@ -118,6 +118,8 @@ afterEach(async () => {
 interface BaseOptions {
   now?: () => string;
   timezone?: string;
+  /** The runner's saved free-text goal, when the test creates a profile. */
+  goal?: string | null;
   /** Simulate a state-store failure before the prompt is built. */
   failStateRefresh?: boolean;
 }
@@ -145,7 +147,7 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
       displayName: "Demo Runner",
       passwordHash: "not-used",
       timezone: options.timezone,
-      goal: null,
+      goal: options.goal ?? null,
       createdAt: `${TODAY}T00:00:00.000Z`,
     });
   }
@@ -309,6 +311,15 @@ describe("coach gateway", () => {
     expect(model.prompts[1]).toContain(changeSetId ?? "missing");
     expect(model.prompts[1]).toContain("suggestions");
     expect(handle.store.listChangeSets(USER)).toHaveLength(2);
+  });
+
+  it("puts the runner's saved goal into the coach prompt", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl, { timezone: "Asia/Hong_Kong", goal: "Half marathon in March" });
+    model.answers.push(VALID);
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "What should I focus on?" }] });
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain('"goal":"Half marathon in March"');
   });
 
   it("puts the last 30 activities into the coach prompt", async () => {
@@ -1213,6 +1224,260 @@ describe("hidden coach directives", () => {
   });
 });
 
+describe("discuss directives", () => {
+  const seedChangeSet = (handle: StoreHandle, changeSetId: string, userId = USER): void => {
+    handle.store.appendChangeSet({
+      changeSetId,
+      userId,
+      createdAt: `${TODAY}T07:00:00.000Z`,
+      summary: "move Long 8 km 2026-11-07 → 2026-11-09",
+      entries: [
+        {
+          action: "update",
+          sessionId: "session:b",
+          before: null,
+          after: null,
+          fromDay: "2026-11-07",
+          toDay: "2026-11-09",
+          title: "Long 8 km",
+          kind: "long",
+        },
+      ],
+      revertedAt: null,
+    });
+  };
+
+  const seedState = (handle: StoreHandle, stateId: string, userId = USER): void => {
+    handle.store.appendCoachState({
+      stateId,
+      userId,
+      key: "heat",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Hot week"],
+      activatedAt: `${TODAY}T07:00:00.000Z`,
+      updatedAt: `${TODAY}T07:00:00.000Z`,
+      expiresAt: "2026-11-12T00:00:00.000Z",
+      resolvedAt: null,
+    });
+  };
+
+  const discussChangeDirective = (changeSetId: string): Record<string, unknown> => ({
+    mode: "review",
+    allowCalendarWrites: false,
+    allowMemoryWrites: true,
+    references: { changeSetId },
+    background:
+      "Discuss what the referenced change set did and why the plan moved that way, using its summary and dates. Comment only: the calendar stays unchanged.",
+    source: "recent-changes",
+    style: { language: "auto", tone: "supportive" },
+  });
+
+  const discussStateDirective = (stateId: string): Record<string, unknown> => ({
+    mode: "review",
+    allowCalendarWrites: false,
+    allowMemoryWrites: true,
+    references: { stateId },
+    background:
+      "Discuss how the referenced coaching state should shape the coming week: offer options, not orders, and never diagnose. Comment only: the calendar stays unchanged.",
+    source: "state-card",
+    style: { language: "auto", tone: "supportive" },
+  });
+
+  it("rejects a missing or foreign change set reference before calling the model", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const missing = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Why did the plan change?" }],
+      poc3: { directive: discussChangeDirective("change:missing") },
+    });
+    expect(missing.status).toBe(404);
+    const missingBody = (await missing.json()) as { error?: { code?: string; detail?: string } };
+    expect(missingBody.error?.code).toBe("reference-not-found");
+    expect(missingBody.error?.detail).toContain("change:missing");
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listMessages(USER, 10)).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(0);
+
+    seedChangeSet(handle, "change:foreign", "someone-else");
+    const foreign = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Why did the plan change?" }],
+      poc3: { directive: discussChangeDirective("change:foreign") },
+    });
+    expect(foreign.status).toBe(404);
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(0);
+  });
+
+  it("rejects a missing or foreign state reference before calling the model", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const missing = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How should this state shape my week?" }],
+      poc3: { directive: discussStateDirective("state:missing") },
+    });
+    expect(missing.status).toBe(404);
+    const missingBody = (await missing.json()) as { error?: { code?: string; detail?: string } };
+    expect(missingBody.error?.code).toBe("reference-not-found");
+    expect(missingBody.error?.detail).toContain("state:missing");
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listMessages(USER, 10)).toHaveLength(0);
+
+    seedState(handle, "state:foreign", "someone-else");
+    const foreign = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How should this state shape my week?" }],
+      poc3: { directive: discussStateDirective("state:foreign") },
+    });
+    expect(foreign.status).toBe(404);
+    expect(model.prompts).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(0);
+  });
+
+  it("discusses a change set comment-only with the referenced rows in the prompt", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedChangeSet(handle, "change:9");
+    model.responses.push(
+      textResponse(
+        "That change moved the long run to Monday so it no longer lands on your race day; the rest of the week is untouched.",
+      ),
+    );
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Why did my long run move?" }],
+      poc3: { directive: discussChangeDirective("change:9") },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toContain("moved the long run");
+    expect(body.poc3).toMatchObject({
+      sessions: 0,
+      memories: 0,
+      changes: [],
+      changeSetId: null,
+      mode: "review",
+      writesAllowed: false,
+      blockedWrites: 0,
+      outcome: "clarified",
+    });
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("Turn directive");
+    expect(model.prompts[0]).toContain("references: change set change:9");
+    expect(model.prompts[0]).toContain("Discuss what the referenced change set did");
+    expect(model.prompts[0]).toContain("This turn is comment-only");
+    expect(model.prompts[0]).toContain("Referenced context");
+    expect(model.prompts[0]).toContain('"changeSetId":"change:9"');
+    expect(model.prompts[0]).toContain("Long 8 km");
+    expect(model.prompts[0]).toContain("2026-11-09");
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(1);
+  });
+
+  it("discusses a coaching state comment-only with the referenced rows in the prompt", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedState(handle, "state:heat");
+    model.responses.push(
+      textResponse(
+        "With the heat, I would move the long run to early morning or shorten it by a third and keep the effort easy; your call.",
+      ),
+    );
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How should the heat shape this week?" }],
+      poc3: { directive: discussStateDirective("state:heat") },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.poc3).toMatchObject({
+      sessions: 0,
+      changes: [],
+      changeSetId: null,
+      mode: "review",
+      writesAllowed: false,
+      blockedWrites: 0,
+      outcome: "clarified",
+    });
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("references: state state:heat");
+    expect(model.prompts[0]).toContain("Discuss how the referenced coaching state should shape the coming week");
+    expect(model.prompts[0]).toContain("This turn is comment-only");
+    expect(model.prompts[0]).toContain("Referenced context");
+    expect(model.prompts[0]).toContain('"stateId":"state:heat"');
+    expect(model.prompts[0]).toContain('"key":"heat"');
+    expect(model.prompts[0]).toContain("Hot week");
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listCoachDirectives(USER)).toHaveLength(1);
+  });
+
+  it("keeps a discuss-change turn comment-only when the model proposes sessions", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedChangeSet(handle, "change:9");
+    model.responses.push(
+      modelResponse(
+        turn({
+          reply: "I would book an easy run.",
+          memories: [],
+          sessions: [{ day: "2026-11-06", title: "Easy 5 km", kind: "easy", distanceKm: 5, durationMin: 35, note: null }],
+        }),
+      ),
+    );
+    model.responses.push(textResponse("The move kept the long run off your race day; nothing else changed."));
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "Why did my long run move?" }],
+      poc3: { directive: discussChangeDirective("change:9") },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.choices[0]?.message.content).toContain("nothing else changed");
+    expect(body.poc3).toMatchObject({
+      sessions: 0,
+      writesAllowed: false,
+      blockedWrites: 1,
+      attempts: 2,
+      outcome: "clarified",
+    });
+    expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
+    expect(handle.store.listChangeSets(USER)).toHaveLength(1);
+    expect(handle.store.listCoachDirectives(USER)[0]?.blockedWrites).toBe(1);
+  });
+
+  it("replays a discuss-change turn idempotently with the same directive", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedChangeSet(handle, "change:9");
+    model.responses.push(textResponse("It moved the long run past the race."));
+    const request = {
+      model: "poc3-coach",
+      request_id: "req-discuss-change",
+      messages: [{ role: "user", content: "Why did my long run move?" }],
+      poc3: { directive: discussChangeDirective("change:9") },
+    };
+    const first = await post(url, request);
+    expect(first.status).toBe(200);
+    const firstBody = (await first.json()) as Completion;
+    const second = await post(url, request);
+    expect(second.status).toBe(200);
+    expect(second.headers.get("x-poc3-idempotent-replay")).toBe("true");
+    const secondBody = (await second.json()) as Completion;
+    expect(secondBody).toEqual(firstBody);
+    expect(model.prompts).toHaveLength(1);
+    expect(handle.store.listMessages(USER)).toHaveLength(2);
+    expect(handle.store.getCoachTurn(USER, "req-discuss-change")).toMatchObject({
+      status: "completed",
+      outcome: "clarified",
+    });
+  });
+});
+
 describe("coaching states in the gateway", () => {
   it("detects race week and injects it into the prompt", async () => {
     const model = queueModel();
@@ -1626,6 +1891,93 @@ describe("coaching states in the gateway", () => {
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe("gateway-failed");
     expect(handle.store.getCoachTurn(USER, "req-state-refresh-failure")?.status).toBe("failed");
+  });
+});
+
+describe("muscle check-ins in the gateway", () => {
+  const seedCheckIn = (handle: StoreHandle): void => {
+    handle.store.appendMuscleCheckIn({
+      checkInId: "checkin:1",
+      userId: USER,
+      day: TODAY,
+      activityId: null,
+      muscles: [
+        { muscleId: "calves", soreness: 6, conditions: ["tight"], side: "left", warmUp: "eases" },
+        { muscleId: "quads", soreness: 4, conditions: [], side: "both", warmUp: null },
+      ],
+      note: "since Thursday's hills",
+      createdAt: `${TODAY}T07:00:00.000Z`,
+    });
+  };
+
+  const reviewMusclesDirective = (muscleId?: string): Record<string, unknown> => ({
+    mode: "review",
+    allowCalendarWrites: false,
+    allowMemoryWrites: true,
+    ...(muscleId === undefined ? {} : { references: { muscleId } }),
+    background:
+      "The runner used the Muscle tab. Read their tags with the check-in guidance and refer warning signs. Comment only.",
+    source: "muscle-tab",
+    style: { language: "auto", tone: "supportive" },
+  });
+
+  it("puts the latest muscle check-in into every prompt", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    seedCheckIn(handle);
+    model.answers.push(VALID);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    expect(response.status).toBe(200);
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("Muscle check-in (latest 2026-11-05,");
+    expect(model.prompts[0]).toContain("Calves 6/10 tight, left, eases with warm-up");
+    expect(model.prompts[0]).toContain("Quads 4/10");
+    expect(model.prompts[0]).toContain("since Thursday's hills");
+    expect(model.prompts[0]).toContain("1 check-in in the last 14 days");
+    expect(model.prompts[0]).toContain("Sharp localized pain, swelling or numbness are not normal soreness");
+  });
+
+  it("keeps the muscle block out of prompts when the runner never checked in", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    model.answers.push(VALID);
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Hello" }] });
+    expect(model.prompts[0]).not.toContain("Muscle check-in (latest");
+  });
+
+  it("resolves a review-muscles directive into the muscle's knowledge and tags", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    seedCheckIn(handle);
+    // A comment-only directive needs a plain-text answer: a write proposal would trigger the repair loop.
+    model.responses.push(textResponse("Keep it easy today; an easy spin and calf mobility tomorrow."));
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "My calves are tight after the tempo — what should I do?" }],
+      poc3: { directive: reviewMusclesDirective("calves") },
+    });
+    expect(response.status).toBe(200);
+    expect(model.prompts).toHaveLength(1);
+    expect(model.prompts[0]).toContain("Referenced muscle: Calves — group legs");
+    expect(model.prompts[0]).toContain("Function: Spring the foot off the ground");
+    expect(model.prompts[0]).toContain("The runner's tags for it");
+    expect(model.prompts[0]).toContain("2026-11-05: Calves 6/10 tight, left");
+    expect(model.prompts[0]).toContain("Comment only");
+  });
+
+  it("rejects an unknown muscle reference before calling the model", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "My nose is sore" }],
+      poc3: { directive: reviewMusclesDirective("nose") },
+    });
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as { error?: { code?: string; detail?: string } };
+    expect(body.error?.code).toBe("reference-not-found");
+    expect(body.error?.detail).toContain("unknown muscle");
+    expect(model.prompts).toHaveLength(0);
   });
 });
 

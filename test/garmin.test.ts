@@ -6,6 +6,7 @@ const TOKEN_URL = `${BASE}/personalapitoken-service/personal-api/personal-api-ke
 const ACTIVITIES_URL = `${BASE}/activitylist-service/activities/search/activities?start=0&limit=2`;
 const DETAILS_URL = `${BASE}/activity-service/activity/900001/details?maxChartSize=1000&maxPolylineSize=1000`;
 const SUMMARY_URL = `${BASE}/activity-service/activity/900001`;
+const WORKOUTS_URL = `${BASE}/activity-service/activity/900001/workouts`;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -78,6 +79,37 @@ describe("createGarminClient", () => {
     expect(url).toBe(SUMMARY_URL);
     expect(init?.method).toBe("GET");
     expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer jwt-abc");
+  });
+
+  it("fetches the activity workouts with the bearer token", async () => {
+    const workouts = [{ stepIndex: 1, intensity: "WARMUP", durationType: "TIME", durationValue: 600 }];
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "jwt-abc" }))
+      .mockResolvedValueOnce(jsonResponse(workouts));
+    const client = createGarminClient({ apiKey: "personal-key", fetchImpl, baseUrl: BASE });
+
+    await expect(client.getActivityWorkouts?.("900001")).resolves.toEqual(workouts);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const [url, init] = fetchImpl.mock.calls[1]!;
+    expect(url).toBe(WORKOUTS_URL);
+    expect(init?.method).toBe("GET");
+    expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer jwt-abc");
+  });
+
+  it("throws GarminError with the upstream status on a workouts failure", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "jwt-abc" }))
+      .mockResolvedValueOnce(new Response("denied", { status: 403 }));
+    const client = createGarminClient({ apiKey: "personal-key", fetchImpl, baseUrl: BASE });
+
+    await expect(client.getActivityWorkouts?.("900001")).rejects.toMatchObject({
+      name: "GarminError",
+      status: 403,
+      body: "denied",
+    });
   });
 
   it("throws GarminError with the upstream status and body on a non-2xx token response", async () => {

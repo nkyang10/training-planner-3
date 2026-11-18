@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import type {
   Activity,
+  ActivityWorkout,
   AppNotification,
   ChangeSet,
   CoachDirectiveRecord,
@@ -12,10 +13,12 @@ import type {
   GarminKey,
   Memory,
   Message,
+  MuscleCheckIn,
   Store,
   TrainingSession,
   UserProfile,
   UserProfilePatch,
+  WorkoutCandidate,
 } from "./types";
 
 /**
@@ -88,6 +91,18 @@ CREATE TABLE IF NOT EXISTS activities (
 );
 CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day);
 
+CREATE TABLE IF NOT EXISTS activity_workouts (
+  user_id TEXT NOT NULL,
+  activity_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  fetched_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY (user_id, activity_id)
+);
+CREATE INDEX IF NOT EXISTS activity_workouts_user_day ON activity_workouts (user_id, day);
+
 CREATE TABLE IF NOT EXISTS sync_state (
   user_id TEXT PRIMARY KEY,
   last_synced_at TEXT NOT NULL
@@ -107,6 +122,16 @@ CREATE TABLE IF NOT EXISTS notifications (
   payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS notifications_user_created ON notifications (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS muscle_checkins (
+  check_in_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS muscle_checkins_user_day ON muscle_checkins (user_id, day);
+CREATE INDEX IF NOT EXISTS muscle_checkins_user_created ON muscle_checkins (user_id, created_at);
 
 CREATE TABLE IF NOT EXISTS change_sets (
   change_set_id TEXT PRIMARY KEY,
@@ -184,6 +209,31 @@ const UPSERT_ACTIVITY =
      day = excluded.day,
      created_at = excluded.created_at,
      payload = excluded.payload`;
+const UPSERT_ACTIVITY_WORKOUT =
+  `INSERT INTO activity_workouts (user_id, activity_id, day, status, attempts, fetched_at, payload)
+   VALUES (?, ?, ?, ?, ?, ?, ?)
+   ON CONFLICT(user_id, activity_id) DO UPDATE SET
+     day = excluded.day,
+     status = excluded.status,
+     attempts = excluded.attempts,
+     fetched_at = excluded.fetched_at,
+     payload = excluded.payload`;
+const SELECT_ACTIVITY_WORKOUT =
+  "SELECT payload FROM activity_workouts WHERE user_id = ? AND activity_id = ?";
+const SELECT_ACTIVITY_WORKOUTS =
+  `SELECT payload FROM activity_workouts
+    WHERE user_id = ? AND day >= ? AND day <= ?
+    ORDER BY day ASC, fetched_at ASC, rowid ASC`;
+const SELECT_WORKOUT_CANDIDATES =
+  `SELECT a.payload AS activity_payload, COALESCE(w.attempts, 0) AS attempts
+     FROM activities a
+     LEFT JOIN activity_workouts w
+       ON w.user_id = a.user_id AND w.activity_id = a.activity_id
+    WHERE a.user_id = ? AND a.day >= ? AND a.day <= ?
+      AND a.activity_id LIKE 'garmin:%'
+      AND (w.activity_id IS NULL OR (w.status = 'unavailable' AND w.attempts < ?))
+    ORDER BY a.day DESC, a.created_at DESC, a.rowid DESC
+    LIMIT ?`;
 const UPSERT_SYNC_STATE = `
   INSERT INTO sync_state (user_id, last_synced_at) VALUES (?, ?)
   ON CONFLICT(user_id) DO UPDATE SET last_synced_at = excluded.last_synced_at
@@ -194,6 +244,8 @@ const UPSERT_GARMIN_KEY = `
 `;
 const INSERT_NOTIFICATION =
   "INSERT INTO notifications (notification_id, user_id, created_at, read_at, payload) VALUES (?, ?, ?, ?, ?)";
+const INSERT_MUSCLE_CHECKIN =
+  "INSERT INTO muscle_checkins (check_in_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
 const MARK_NOTIFICATIONS_READ =
   "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL";
 const UPSERT_SESSION =
@@ -480,6 +532,48 @@ class SqliteStore implements Store {
     return row === undefined ? undefined : decode<Activity>(String(row["payload"]));
   }
 
+  getActivityWorkout(userId: string, activityId: string): ActivityWorkout | undefined {
+    const row = this.db.prepare(SELECT_ACTIVITY_WORKOUT).get(userId, activityId);
+    return row === undefined ? undefined : decode<ActivityWorkout>(String(row["payload"]));
+  }
+
+  saveActivityWorkout(workout: ActivityWorkout): void {
+    this.db
+      .prepare(UPSERT_ACTIVITY_WORKOUT)
+      .run(
+        workout.userId,
+        workout.activityId,
+        workout.day,
+        workout.status,
+        workout.attempts,
+        workout.fetchedAt,
+        JSON.stringify(workout),
+      );
+  }
+
+  listActivityWorkouts(userId: string, fromDay: string, toDay: string): ActivityWorkout[] {
+    const rows = this.db.prepare(SELECT_ACTIVITY_WORKOUTS).all(userId, fromDay, toDay);
+    return rows.map((row) => decode<ActivityWorkout>(String(row["payload"])));
+  }
+
+  listWorkoutCandidates(
+    userId: string,
+    fromDay: string,
+    toDay: string,
+    limit: number,
+    maxAttempts: number,
+  ): WorkoutCandidate[] {
+    const take = normalizeLimit(limit, 3);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(SELECT_WORKOUT_CANDIDATES)
+      .all(userId, fromDay, toDay, Math.max(1, maxAttempts), take);
+    return rows.map((row) => ({
+      activity: decode<Activity>(String(row["activity_payload"])),
+      attempts: Number(row["attempts"] ?? 0),
+    }));
+  }
+
   getLastSync(userId: string): string | null {
     const row = this.db
       .prepare("SELECT last_synced_at FROM sync_state WHERE user_id = ?")
@@ -503,6 +597,11 @@ class SqliteStore implements Store {
     this.db.prepare(UPSERT_GARMIN_KEY).run(key.userId, key.savedAt, key.apiKey);
   }
 
+  deleteGarminKey(userId: string): boolean {
+    const result = this.db.prepare("DELETE FROM garmin_keys WHERE user_id = ?").run(userId);
+    return Number(result.changes) > 0;
+  }
+
   appendNotification(notification: AppNotification): void {
     this.db
       .prepare(INSERT_NOTIFICATION)
@@ -513,6 +612,33 @@ class SqliteStore implements Store {
         notification.readAt,
         JSON.stringify(notification),
       );
+  }
+
+  appendMuscleCheckIn(checkIn: MuscleCheckIn): void {
+    this.db
+      .prepare(INSERT_MUSCLE_CHECKIN)
+      .run(checkIn.checkInId, checkIn.userId, checkIn.day, checkIn.createdAt, JSON.stringify(checkIn));
+  }
+
+  getMuscleCheckIn(userId: string, checkInId: string): MuscleCheckIn | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM muscle_checkins WHERE user_id = ? AND check_in_id = ?")
+      .get(userId, checkInId);
+    return row === undefined ? undefined : decode<MuscleCheckIn>(String(row["payload"]));
+  }
+
+  listMuscleCheckIns(userId: string, limit = 40): MuscleCheckIn[] {
+    const take = normalizeLimit(limit, 40);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        `SELECT payload FROM muscle_checkins
+          WHERE user_id = ?
+          ORDER BY created_at DESC, rowid DESC
+          LIMIT ?`,
+      )
+      .all(userId, take);
+    return rows.map((row) => decode<MuscleCheckIn>(String(row["payload"])));
   }
 
   listNotifications(userId: string, limit = 20): AppNotification[] {

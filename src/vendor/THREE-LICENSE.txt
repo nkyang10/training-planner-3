@@ -1,0 +1,14 @@
+Vendored three.js builds (MIT, SPDX-License-Identifier: MIT,
+Copyright 2010-2024 Three.js Authors)
+
+- three.module.min.js  — three r170 module build, from
+  https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js
+- OrbitControls.js     — three r170 OrbitControls addon, from
+  https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js
+
+Served by the web app as static scripts:
+- /static/three.module.js
+- /static/orbit-controls.js
+
+The app keeps its zero-runtime-npm-dependency rule: the pinned builds are committed here instead of
+installed, and the license headers are preserved in the files themselves.

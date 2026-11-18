@@ -26,6 +26,7 @@ import {
 } from "./coach";
 import { applyRevert } from "./history";
 import { directiveHash, parseCoachDirective } from "./directives";
+import { isMuscleId, referencedMuscleContext, renderMuscleFactsForPrompt } from "./muscles";
 import {
   applyStateProposals,
   refreshCoachStates,
@@ -517,9 +518,14 @@ function directiveFromBody(
 interface ResolvedDirective {
   activity?: Activity;
   sessions: TrainingSession[];
+  changeSet?: ChangeSet;
+  state?: CoachStateRecord;
 }
 
-/** Load the rows a directive points at. References are resolved from the store, never trusted from the browser. */
+/**
+ * Load the rows a directive points at. References are resolved from the store, never trusted from the browser; a
+ * missing or foreign id (change set, coaching state, session) fails before the model call.
+ */
 function resolveDirectiveReferences(
   store: Store,
   userId: string,
@@ -534,6 +540,19 @@ function resolveDirectiveReferences(
     if (references.day !== undefined && activity.day !== references.day) {
       return { ok: false, detail: "the referenced activity does not belong to the referenced day" };
     }
+  }
+  let changeSet: ChangeSet | undefined;
+  if (references.changeSetId !== undefined) {
+    changeSet = store.getChangeSet(userId, references.changeSetId);
+    if (changeSet === undefined) return { ok: false, detail: `change set not found: ${references.changeSetId}` };
+  }
+  let state: CoachStateRecord | undefined;
+  if (references.stateId !== undefined) {
+    state = store.getCoachState(userId, references.stateId);
+    if (state === undefined) return { ok: false, detail: `coaching state not found: ${references.stateId}` };
+  }
+  if (references.muscleId !== undefined && !isMuscleId(references.muscleId)) {
+    return { ok: false, detail: `unknown muscle: ${references.muscleId}` };
   }
   const sessions: TrainingSession[] = [];
   const seen = new Set<string>();
@@ -556,7 +575,15 @@ function resolveDirectiveReferences(
       addSessions([session]);
     }
   }
-  return { ok: true, resolved: { ...(activity === undefined ? {} : { activity }), sessions } };
+  return {
+    ok: true,
+    resolved: {
+      ...(activity === undefined ? {} : { activity }),
+      sessions,
+      ...(changeSet === undefined ? {} : { changeSet }),
+      ...(state === undefined ? {} : { state }),
+    },
+  };
 }
 
 /** Persist the hidden directive for the owner's audit page; it is never part of the visible chat. */
@@ -883,9 +910,19 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
       const history = options.store.listMessages(userId, 20);
       const recentChanges = options.store.listChangeSets(userId, 10);
+      // The runner's muscle check-ins: the latest tags ride in every prompt, and a review-muscles directive
+      // zooms in on one muscle's knowledge and history.
+      const muscleCheckIns = options.store.listMuscleCheckIns(userId, 14);
+      const muscleFacts = renderMuscleFactsForPrompt(muscleCheckIns[0] ?? null, muscleCheckIns.length);
+      const referencedMuscleId = directive?.references?.muscleId;
+      const referencedMuscle =
+        referencedMuscleId !== undefined && isMuscleId(referencedMuscleId)
+          ? referencedMuscleContext(referencedMuscleId, muscleCheckIns)
+          : "";
       const prompt = buildCoachPrompt({
         today,
         timezone,
+        goal: profile?.goal ?? null,
         now: nowIso,
         memories: options.store.listMemories(userId, 100),
         sessions: options.store.listSessions(userId, today, addDays(today, HORIZON_DAYS)),
@@ -898,6 +935,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         ...(directive === undefined ? {} : { directive }),
         ...(resolved.activity === undefined ? {} : { referencedActivity: resolved.activity }),
         ...(resolved.sessions.length === 0 ? {} : { referencedSessions: resolved.sessions }),
+        ...(resolved.changeSet === undefined ? {} : { referencedChangeSet: resolved.changeSet }),
+        ...(resolved.state === undefined ? {} : { referencedState: resolved.state }),
+        ...(muscleFacts.length === 0 ? {} : { muscleFacts }),
+        ...(referencedMuscle.length === 0 ? {} : { referencedMuscle }),
       });
       const createdAt = now();
       const userMessageId = randomUUID();

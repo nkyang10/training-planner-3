@@ -246,7 +246,7 @@ export const COACH_STATE_DEFINITIONS: readonly CoachStateDefinition[] = [
     "No future sessions in the next two weeks; offer a fresh, realistic block.",
     {
       autoDetect: true,
-      uiNote: "The calendar is the plan; an empty two weeks needs a reset.",
+      uiNote: "The plan went stale, not the runner; a fresh block restarts it.",
     },
   ),
   define(

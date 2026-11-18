@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
+import type { ChangeSet, CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -35,6 +35,8 @@ interface StartOptions {
   garmin?: GarminClient;
   garminFactory?: (apiKey: string) => GarminClient;
   sessionSync?: boolean;
+  /** Large values keep a seeded sync timestamp fresh so sync-aware day states stay testable. */
+  autoSyncMinutes?: number;
   gatewayUrl?: string;
   seed?: (store: Store, user: AuthUser) => void;
 }
@@ -116,6 +118,20 @@ const seedCoachState = (
   return record;
 };
 
+const seedNotification = (store: Store, userId: string, index: number): void => {
+  store.appendNotification({
+    notificationId: `notification:${index}`,
+    userId,
+    source: "garmin",
+    status: "success",
+    title: `Notification ${index}`,
+    body: "Body",
+    href: "/history",
+    createdAt: `${TODAY}T08:00:00.000Z`,
+    readAt: null,
+  });
+};
+
 const garminActivity = {
   activityId: 900001,
   activityName: "Morning run",
@@ -181,6 +197,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     ...(options.gatewayUrl === undefined ? {} : { gatewayUrl: options.gatewayUrl }),
     ...(options.garmin === undefined ? {} : { garmin: options.garmin }),
     ...(options.garminFactory === undefined ? {} : { garminFactory: options.garminFactory }),
+    ...(options.autoSyncMinutes === undefined ? {} : { autoSyncMinutes: options.autoSyncMinutes }),
     sessionSync: options.sessionSync ?? false,
     now: () => `${TODAY}T08:00:00.000Z`,
   });
@@ -372,7 +389,8 @@ describe("authentication pages", () => {
     expect(html).toContain("readonly");
     expect(html).toContain(`value="${DISPLAY_NAME}"`);
     expect(html).toContain('action="/profile"');
-    expect(html).toContain('data-active="none"');
+    expect(html).not.toContain("view-switch");
+    expect(html).not.toContain("view-tab");
     expect(html).toContain('href="/coach-states"');
     expect(html).not.toContain('href="/coach-audit"');
     expect(html).not.toContain("hidden directives");
@@ -389,7 +407,8 @@ describe("authentication pages", () => {
       redirect: "manual",
     });
     expect(update.status).toBe(303);
-    expect(update.headers.get("location")).toBe("/profile?saved=1");
+    // The goal changed, so the redirect also flags the tell-the-coach offer.
+    expect(update.headers.get("location")).toBe("/profile?saved=1&goal=1");
     const stored = handle.store.getUser(user.userId);
     expect(stored?.displayName).toBe("Updated Runner");
     expect(stored?.timezone).toBe("Europe/Berlin");
@@ -503,23 +522,30 @@ describe("private calendar", () => {
     expect(html).toContain('class="cal-pill record"');
     expect(html).toContain("Morning run");
     expect(html).toContain("Evening shakeout");
-    expect(html).toContain("Planned session · Easy 5 km · easy · 5 km · 35 min");
+    expect(html).toContain("Planned session · Easy · Easy 5 km · 5 km · 35 min");
     expect(html).toContain("Recorded run · Morning run · 4.2 km · 30 min · 6:00/km · 145 bpm · Garmin");
+    expect(html).toContain('<span class="cal-meta">4.2 km</span>');
+    // "Easy 5 km" already states its distance, so the row keeps the whole title and no second amount.
+    expect(html).not.toContain('<span class="cal-meta">35 min</span>');
+    expect(html).toContain('<span class="cal-glyph" aria-hidden="true">✓</span>');
     expect(html).toContain('<span class="sr-only">Planned session: </span>');
     expect(html).toContain('<span class="sr-only">Recorded run: </span>');
-    expect(html).toContain('<span class="cal-pill record" data-activity-id="garmin:1" role="button" tabindex="0" aria-haspopup="dialog"');
-    expect(html).toContain("Recorded run: Morning run. Show run details");
+    expect(html).toContain('<span class="cal-pill record" data-activity-id="garmin:1" data-source="garmin" role="button" tabindex="0" aria-haspopup="dialog"');
+    expect(html).toContain("Recorded run: Morning run (4.2 km). Show run details");
     expect(html).not.toContain('class="done"');
     expect(html).not.toContain("✓ 2");
 
     const data = (await (
       await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
-    ).json()) as { days: Record<string, { items: Array<{ type: string; activityId?: string }> }> };
+    ).json()) as { days: Record<string, { items: Array<{ type: string; activityId?: string }>; html: string }> };
     const recordIds = (data.days["2026-11-04"]?.items ?? [])
       .filter((item) => item.type === "record")
       .map((item) => item.activityId)
       .sort();
     expect(recordIds).toEqual(["garmin:1", "garmin:2"]);
+    // The refresh fragment is the same server-rendered row markup as the first paint.
+    expect(data.days["2026-11-04"]?.html).toContain('class="cal-pill record"');
+    expect(data.days["2026-11-04"]?.html).toContain('<span class="cal-meta">4.2 km</span>');
   });
 
   it("caps a busy day at four pills and keeps the rest behind an overflow hint", async () => {
@@ -540,6 +566,44 @@ describe("private calendar", () => {
       await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
     ).json()) as { days: Record<string, { items: unknown[] }> };
     expect(data.days["2026-11-03"]?.items).toHaveLength(5);
+  });
+
+  it("keeps same-titled runs distinguishable and leaves the plan title whole", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:17a", "2026-11-17", "新界 跑步", 1.7);
+        seedActivity(store, runner.userId, "garmin:17b", "2026-11-17", "新界 跑步", 4.2);
+        seedActivity(store, runner.userId, "garmin:17c", "2026-11-17", "新界 跑步", 2.1);
+        seedSession(store, runner.userId, "session:recovery", "2026-11-17", "恢復輕鬆跑", "easy", 6);
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    // Three runs with the same title keep their own amount, so they no longer look like one repeated button.
+    expect(html).toContain('<span class="cal-meta">1.7 km</span>');
+    expect(html).toContain('<span class="cal-meta">4.2 km</span>');
+    expect(html).toContain('<span class="cal-meta">2.1 km</span>');
+    // The plan title stays whole; its amount moves into the typed meta slot instead of being cut off inside the label.
+    expect(html).toContain('<span class="cal-text">恢復輕鬆跑</span><span class="cal-meta">6 km</span>');
+    expect(html).toContain('aria-label="Planned session: Easy, 恢復輕鬆跑 (6 km). Show session details"');
+    expect(html).toContain('<span class="cal-items">');
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as {
+      days: Record<string, { items: Array<{ type: string; meta?: string | null }>; html: string }>;
+    };
+    expect(data.days["2026-11-17"]?.items.map((item) => item.type)).toEqual(["plan", "record", "record", "record"]);
+    expect(data.days["2026-11-17"]?.items[0]?.meta).toBe("6 km");
+    expect((data.days["2026-11-17"]?.items ?? []).slice(1).map((item) => item.meta).sort()).toEqual([
+      "1.7 km",
+      "2.1 km",
+      "4.2 km",
+    ]);
+    expect(data.days["2026-11-17"]?.html).toContain('<span class="cal-meta">4.2 km</span>');
+    // The first paint and the refresh fragment come from the same renderer; the client only swaps the slot.
+    const painted = html.match(/<a class="cell[^"]*" data-day="2026-11-17"[\s\S]*?<span class="cal-items">([\s\S]*?)<\/span>\s*<\/a>/)?.[1];
+    expect(painted?.trim()).toBe(data.days["2026-11-17"]?.html);
   });
 
   it("syncs Garmin activities into the authenticated user's calendar", async () => {
@@ -707,7 +771,7 @@ describe("calendar run peek", () => {
       status: "on-plan",
       label: "On plan +0.2 km",
       title: "Easy 5 km",
-      planned: "easy · 5 km · 35 min",
+      planned: "Easy · 5 km · 35 min",
     });
     expect(body.peek.coachPrompt).toBe("How did my Morning run go? (Sat, 7 Nov 2026 · 5.2 km · 34 min)");
     expect(body.peek.coachIntent).toEqual({
@@ -725,8 +789,8 @@ describe("calendar run peek", () => {
   it("identifies the exact run when several records share the same title", async () => {
     const { base, cookie } = await start({
       seed: (store, runner) => {
-        seedActivity(store, runner.userId, "garmin:same-1", "2026-11-01", "新界 跑步", 2.6);
-        seedActivity(store, runner.userId, "garmin:same-2", "2026-11-03", "新界 跑步", 5.4);
+        seedActivity(store, runner.userId, "garmin:same-1", "2026-11-01", "晨跑 跑步", 2.6);
+        seedActivity(store, runner.userId, "garmin:same-2", "2026-11-03", "晨跑 跑步", 5.4);
       },
     });
     const read = async (activityId: string): Promise<{ coachPrompt: string; coachIntent: { activityId: string } }> => {
@@ -737,8 +801,8 @@ describe("calendar run peek", () => {
     };
     const first = await read("garmin:same-1");
     const second = await read("garmin:same-2");
-    expect(first.coachPrompt).toBe("How did my 新界 跑步 go? (Sun, 1 Nov 2026 · 2.6 km · 30 min)");
-    expect(second.coachPrompt).toBe("How did my 新界 跑步 go? (Tue, 3 Nov 2026 · 5.4 km · 30 min)");
+    expect(first.coachPrompt).toBe("How did my 晨跑 跑步 go? (Sun, 1 Nov 2026 · 2.6 km · 30 min)");
+    expect(second.coachPrompt).toBe("How did my 晨跑 跑步 go? (Tue, 3 Nov 2026 · 5.4 km · 30 min)");
     expect(first.coachPrompt).not.toBe(second.coachPrompt);
     expect(first.coachIntent.activityId).toBe("garmin:same-1");
     expect(second.coachIntent.activityId).toBe("garmin:same-2");
@@ -790,22 +854,330 @@ describe("calendar run peek", () => {
     expect(html).toContain("peek-actions");
     expect(html).toContain("peek-grid");
     expect(html).toContain("peek-efforts");
+    expect(html).toContain("peek-program");
+    expect(html).toContain("Training program · Garmin");
+    expect(html).toContain("renderPeekSteps");
+    expect(html).toContain("peek-step-head");
+    expect(html).toContain("programSummary === programTitle");
+    expect(html).toContain("summaryText");
+    expect(html).not.toContain("renderWorkoutPeek");
+    expect(html).not.toContain("/workout/");
+    expect(html).not.toContain("data-workout-id");
     expect(html).toContain("Training log week");
     expect(html).toContain("View day");
     expect(html).toContain("Open full detail");
-    expect(html).toContain("app.css?v=12");
+    expect(html).toContain("app.css?v=20");
 
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain("#activity-peek");
     expect(css).toContain(".peek-grid");
+    expect(css).toContain(".peek-program");
+    expect(css).toContain(".peek-step-head");
     expect(css).toContain(".peek-effort.pr");
     expect(css).toContain(".peek-actions .btn");
     expect(css).toContain(".cal-pill.record:focus-visible");
   });
 });
 
+describe("calendar session peek", () => {
+  it("returns the plan, outcome and actions for one upcoming session", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        store.upsertSession({
+          sessionId: "session:tempo",
+          userId: runner.userId,
+          day: "2026-11-12",
+          title: "Tempo 8 km",
+          kind: "tempo",
+          distanceKm: 8,
+          durationMin: 50,
+          note: "3 ? 10 min at threshold",
+          createdAt: `${TODAY}T00:00:00.000Z`,
+        });
+      },
+    });
+
+    const response = await fetch(`${base}/session/${encodeURIComponent("session:tempo")}/peek`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = (await response.json()) as {
+      peek: {
+        sessionId: string;
+        title: string;
+        day: string;
+        dayLabel: string;
+        kind: string;
+        kindLabel: string;
+        metrics: string;
+        note: string | null;
+        outcome: { status: string; label: string; detail: string | null; activityId: string | null };
+        coachPrompt: string;
+        coachIntent: { kind: string; day: string; source: string };
+        links: { day: string; week: string; activity: string | null };
+      };
+    };
+    expect(body.peek).toEqual({
+      sessionId: "session:tempo",
+      title: "Tempo 8 km",
+      day: "2026-11-12",
+      dayLabel: "Thu, 12 Nov 2026",
+      kind: "tempo",
+      kindLabel: "Tempo",
+      metrics: "8 km · 50 min",
+      note: "3 ? 10 min at threshold",
+      intent: {
+        purpose: "Threshold. Teach your body to hold a comfortably hard effort.",
+        effort: "Comfortably hard, RPE 6-7/10, roughly an hour-race effort; even splits.",
+      },
+      outcome: { status: "upcoming", label: "Upcoming", detail: null, activityId: null },
+      coachPrompt: "What should I focus on in my Tempo 8 km on Thu, 12 Nov 2026?",
+      coachIntent: { kind: "review-day", day: "2026-11-12", source: "session-peek" },
+      links: { day: "/day/2026-11-12", week: "/history?view=week&period=2026-11-09", activity: null },
+    });
+  });
+
+  it("marks a session completed when the day's run matches it", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedSession(store, runner.userId, "session:matched", "2026-11-07", "Easy 5 km", "easy", 5);
+        seedActivity(store, runner.userId, "garmin:matched", "2026-11-07", "Morning run", 5.2);
+      },
+    });
+
+    const response = await fetch(`${base}/session/${encodeURIComponent("session:matched")}/peek`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      peek: {
+        outcome: { status: string; label: string; detail: string | null; activityId: string | null };
+        coachPrompt: string;
+        links: { activity: string | null };
+      };
+    };
+    expect(body.peek.outcome).toEqual({
+      status: "completed",
+      label: "Completed · On plan +0.2 km",
+      detail: "Morning run · 5.2 km · 30 min · 6:00/km · 145 bpm",
+      activityId: "garmin:matched",
+    });
+    expect(body.peek.coachPrompt).toBe("How did my Easy 5 km go? (Sat, 7 Nov 2026)");
+    expect(body.peek.links.activity).toBe("/activity/garmin%3Amatched");
+  });
+
+  it("distinguishes a missed session from a recorded run that does not match", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedSession(store, runner.userId, "session:missed", "2026-11-01", "Easy 5 km", "easy", 5);
+        seedSession(store, runner.userId, "session:unmatched", "2026-11-02", "Easy 2 km", "easy", 2);
+        seedActivity(store, runner.userId, "garmin:long", "2026-11-02", "Long run", 10);
+      },
+    });
+
+    const read = async (sessionId: string): Promise<{
+      outcome: { status: string; label: string; detail: string | null; activityId: string | null };
+      coachPrompt: string;
+      links: { activity: string | null };
+    }> => {
+      const response = await fetch(`${base}/session/${encodeURIComponent(sessionId)}/peek`, { headers: { cookie } });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        peek: {
+          outcome: { status: string; label: string; detail: string | null; activityId: string | null };
+          coachPrompt: string;
+          links: { activity: string | null };
+        };
+      };
+      return body.peek;
+    };
+
+    const missed = await read("session:missed");
+    expect(missed.outcome).toEqual({
+      status: "missed",
+      label: "Not done",
+      detail: "No run was logged. The plan does not change and there is nothing to make up.",
+      activityId: null,
+    });
+    expect(missed.coachPrompt).toBe("I planned Easy 5 km on Sun, 1 Nov 2026 but no run was logged. What should I do?");
+    expect(missed.links.activity).toBeNull();
+
+    const unmatched = await read("session:unmatched");
+    expect(unmatched.outcome).toEqual({
+      status: "unmatched",
+      label: "Not matched",
+      detail: "Recorded: Long run · 10 km · 30 min · 6:00/km · 145 bpm",
+      activityId: "garmin:long",
+    });
+    expect(unmatched.coachPrompt).toBe("I planned Easy 2 km on Mon, 2 Nov 2026, but the recorded run does not match. What should I do?");
+    expect(unmatched.links.activity).toBe("/activity/garmin%3Along");
+  });
+
+  it("shows a rest day without inventing a run and names the rest-day question", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        store.upsertSession({
+          sessionId: "session:rest",
+          userId: runner.userId,
+          day: "2026-11-08",
+          title: "Rest day",
+          kind: "rest",
+          distanceKm: null,
+          durationMin: null,
+          note: null,
+          createdAt: `${TODAY}T00:00:00.000Z`,
+        });
+      },
+    });
+
+    const response = await fetch(`${base}/session/${encodeURIComponent("session:rest")}/peek`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      peek: {
+        kindLabel: string;
+        metrics: string;
+        outcome: { status: string; label: string; detail: string | null; activityId: string | null };
+        coachPrompt: string;
+      };
+    };
+    expect(body.peek.kindLabel).toBe("Rest");
+    expect(body.peek.metrics).toBe("");
+    expect(body.peek.outcome).toEqual({
+      status: "rest",
+      label: "Planned rest",
+      detail: "No run is expected on this day.",
+      activityId: null,
+    });
+    expect(body.peek.coachPrompt).toBe("What should I do on my rest day, Sun, 8 Nov 2026?");
+  });
+
+  it("scopes the session peek to the signed-in runner and rejects bad requests", async () => {
+    const { base, auth, handle, cookie } = await start();
+
+    const otherSignup = auth.signup({
+      username: "other_session_peek",
+      password: "other-password-123",
+      displayName: "Other Session Peek",
+      timezone: "UTC",
+    });
+    seedSession(handle.store, otherSignup.user.userId, "session:other", "2026-11-06", "Other secret session", "easy", 5);
+
+    const foreign = await fetch(`${base}/session/${encodeURIComponent("session:other")}/peek`, { headers: { cookie } });
+    expect(foreign.status).toBe(404);
+    expect(foreign.headers.get("content-type")).toContain("application/json");
+    expect(((await foreign.json()) as { error: { detail: string } }).error.detail).toBe("session not found");
+
+    const missing = await fetch(`${base}/session/${encodeURIComponent("session:missing")}/peek`, { headers: { cookie } });
+    expect(missing.status).toBe(404);
+    const malformed = await fetch(`${base}/session/%E0%A4%A/peek`, { headers: { cookie } });
+    expect(malformed.status).toBe(404);
+    const wrongMethod = await fetch(`${base}/session/${encodeURIComponent("session:easy")}/peek`, {
+      method: "POST",
+      headers: { cookie },
+    });
+    expect(wrongMethod.status).toBe(405);
+  });
+
+  it("forwards the session-peek Ask coach intent as a comment-only review-day directive", async () => {
+    const gateway = await startMockGateway();
+    const { base, cookie } = await start({ gatewayUrl: gateway.url });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "What should I focus on in my Easy 5 km on Fri, 6 Nov 2026?",
+        intent: { kind: "review-day", day: "2026-11-06", source: "session-peek" },
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "review",
+      allowCalendarWrites: false,
+      source: "session-peek",
+      references: { day: "2026-11-06" },
+    });
+  });
+
+  it("wires the plan pills and the session-peek popup in the calendar grid", async () => {
+    const { base, cookie } = await start();
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="cal-pill plan kind-easy" data-session-id="session:easy" role="button" tabindex="0" aria-haspopup="dialog"');
+    expect(html).toContain("Planned session: Easy, Easy 5 km. Show session details");
+    expect(html).toContain("openSessionPeek");
+    expect(html).toContain("session-peek");
+    expect(html).toContain("Loading session details");
+    expect(html).toContain("peek-status-");
+    expect(html).toContain("View day →");
+    expect(html).toContain("app.css?v=20");
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as { days: Record<string, { items: Array<{ type: string; sessionId?: string; activityId?: string }> }> };
+    const planIds = (data.days["2026-11-06"]?.items ?? [])
+      .filter((item) => item.type === "plan")
+      .map((item) => item.sessionId);
+    expect(planIds).toEqual(["session:easy"]);
+
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".cal-pill.plan:focus-visible");
+    expect(css).toContain(".chip.kind-tempo");
+    expect(css).toContain(".chip.peek-status-completed");
+    expect(css).toContain(".chip.peek-status-missed");
+  });
+});
+
+describe("account menu", () => {
+  it("collapses profile, states, sync, key and sign out behind the runner's name", async () => {
+    const { base, cookie } = await start();
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('id="account-btn"');
+    expect(html).toContain('aria-haspopup="true"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('aria-controls="account-menu"');
+    expect(html).toContain('class="account-menu" id="account-menu" aria-label="Account" hidden');
+    expect(html).toContain("<span class=\"account-name\">Demo Runner</span>");
+    expect(html).toContain("@demo_runner");
+    expect(html).toContain('href="/profile"');
+    expect(html).toContain('href="/coach-states"');
+    expect(html).toContain("data-sync-form");
+    expect(html).toContain('aria-label="Sync Garmin"');
+    expect(html).toContain('href="/calendar?garmin=setup"');
+    expect(html).toContain('href="/logout"');
+    expect(html).toContain("getElementById('account-menu')");
+    expect(html).not.toContain('<a href="/logout">Sign out</a>');
+    expect(html).not.toContain('class="profile"');
+    expect(html).not.toContain('href="/coach-audit"');
+
+    const profile = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
+    expect(profile).toContain('id="account-btn"');
+    expect(profile).toContain('href="/logout"');
+  });
+
+  it("keeps the anonymous header as plain sign in and sign up links", async () => {
+    const { base } = await start();
+
+    const login = await (await fetch(`${base}/login`)).text();
+    expect(login).not.toContain('id="account-btn"');
+    expect(login).not.toContain("getElementById('account-btn')");
+    expect(login).toContain('class="top-link" href="/login"');
+    expect(login).toContain('class="top-link ghost" href="/signup"');
+  });
+
+  it("hides the account menu until the name is clicked", async () => {
+    const { base } = await start();
+
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".account-menu[hidden] { display: none; }");
+    expect(css).toContain(".account-item:focus-visible");
+    expect(css).toContain(".account-signout { color: var(--danger); }");
+    expect(css).toContain(".sync-menu-form { margin: 0; }");
+    expect(css).not.toContain(".top a:last-child");
+    expect(css).not.toContain(".sync-icon-form");
+  });
+});
+
 describe("Garmin connection, notifications and session sync", () => {
-  it("shows the top-bar sync icon and opens the key popup when no key is saved", async () => {
+  it("offers a sync row in the account menu and opens the key popup when no key is saved", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain('data-sync-form');
@@ -849,6 +1221,12 @@ describe("Garmin connection, notifications and session sync", () => {
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(handle.store.countUnreadNotifications(user.userId)).toBe(1);
     expect(calls.count).toBe(1);
+
+    // Following the sync redirect shows the one-tap review card on the calendar as well as on the training log.
+    const synced = await (await fetch(`${base}${location}`, { headers: { cookie } })).text();
+    expect(synced).toContain("New run synced");
+    expect(synced).toContain("Review this run with the coach");
+    expect(synced).toContain("Morning run");
 
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain("Replace your Garmin key");
@@ -1084,15 +1462,23 @@ describe("training log", () => {
     expect(html).toContain("Morning run");
     expect(html).toContain("Easy 5 km");
     expect(html).toContain("Planned:");
-    expect(html).toContain("On plan");
+    expect(html).toContain("Completed - on plan (+0.2 km)");
     expect(html).toContain("Unplanned");
     expect(html).toContain("+0.2 km");
     expect(html).toContain('href="/activity/garmin%3A1"');
     expect(html).toContain("Detail</a>");
     expect(html).toContain("Daily volume");
     expect(html).toContain('aria-label="Daily volume for 2–8 Nov 2026"');
+    expect(html).toContain("Metric trend");
+    expect(html).toContain('role="radiogroup" aria-label="Trend metric"');
+    expect(html).toContain('data-default="pace"');
+    expect(html).toContain('id="trend-metric-pace" value="pace" checked');
+    expect(html).toContain('id="trend-metric-hr"');
+    expect(html).toContain('id="trend-metric-cadence"');
     expect(html).toContain('aria-label="Pace trend for 2–8 Nov 2026"');
-    expect(html).toContain('aria-label="Average HR trend for 2–8 Nov 2026"');
+    expect(html).toContain('aria-label="Heart-rate trend for 2–8 Nov 2026"');
+    expect(html).toContain('data-metric="cadence"');
+    expect(html).toContain("Need at least two runs with cadence data in 2–8 Nov 2026.");
     expect(html).toContain('class="period-mode active" href="/history?view=week&period=2026-11-02"');
     expect(html).toContain('href="/history?view=month&period=2026-11"');
     expect(html).toContain('href="/history?view=year&period=2026"');
@@ -1571,6 +1957,541 @@ describe("training log", () => {
     await fetch(`${base}/history`, { headers: { cookie } });
     expect(calls).toBe(1);
   });
+
+  it("words the plan-match badge as completed with a signed delta", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedSession(store, runner.userId, "session:on", "2026-11-02", "Easy 5 km", "easy", 5);
+        seedActivity(store, runner.userId, "garmin:on", "2026-11-02", "Easy jog", 5.2);
+        seedSession(store, runner.userId, "session:short", "2026-11-03", "Long 5 km", "long", 5);
+        seedActivity(store, runner.userId, "garmin:short", "2026-11-03", "Cut short", 3.8);
+        seedSession(store, runner.userId, "session:over", "2026-11-04", "Tempo 5 km", "tempo", 5);
+        seedActivity(store, runner.userId, "garmin:over", "2026-11-04", "Extended tempo", 6.5);
+        seedActivity(store, runner.userId, "garmin:solo", "2026-11-05", "Unplanned jog", 4);
+      },
+    });
+
+    const html = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(html).toContain("Completed - on plan (+0.2 km)");
+    expect(html).toContain("Completed - 1.2 km short");
+    expect(html).toContain("Completed - 1.5 km over");
+    expect(html).toContain("Unplanned");
+    expect(html).not.toContain("ON PLAN 0 KM");
+  });
+
+  it("distinguishes rest, upcoming, awaiting-sync and missed days in the week view", async () => {
+    const { base, cookie } = await start({
+      autoSyncMinutes: 100000,
+      seed: (store, runner) => {
+        store.saveGarminKey({ userId: runner.userId, apiKey: "valid-key-123", savedAt: `${TODAY}T06:00:00.000Z` });
+        // The last import covers up to 3 Nov in the runner's timezone (Asia/Hong_Kong, UTC+8).
+        store.recordSync(runner.userId, "2026-11-03T04:00:00.000Z");
+        seedSession(store, runner.userId, "session:rest", "2026-11-03", "Rest day", "rest", null);
+        seedSession(store, runner.userId, "session:missed", "2026-11-02", "Easy 5 km", "easy", 5);
+        seedSession(store, runner.userId, "session:awaiting", "2026-11-04", "Tempo 6 km", "tempo", 6);
+      },
+    });
+
+    const html = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(html).toContain("Planned rest.");
+    expect(html).toContain("Awaiting Garmin sync · a run from this day may not be imported yet.");
+    expect(html).toContain("No run logged — the plan does not change.");
+    expect(html).toContain("Upcoming.");
+    expect(html).toContain("No session or activity.");
+  });
+
+  it("counts a hand-logged effort in the week load and says so", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        store.appendActivity({
+          activityId: "activity:manual:load",
+          userId: runner.userId,
+          day: "2026-11-03",
+          title: "Treadmill run",
+          distanceKm: 5,
+          durationMin: 30,
+          paceSecPerKm: 360,
+          avgHr: null,
+          source: "chat",
+          createdAt: `${TODAY}T08:00:00.000Z`,
+          rpe: 7,
+        });
+      },
+    });
+
+    const html = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(html).toContain("Reported effort (duration x RPE) is included for runs without Garmin load.");
+    expect(html).toContain("A reported effort of 7 or above counts as hard.");
+    expect(html).toContain("Hard 1 run");
+  });
+
+  it("shows a garmin-synced chip and a one-line row legend on the calendar", async () => {
+    const { base, cookie } = await start({
+      autoSyncMinutes: 100000,
+      seed: (store, runner) => {
+        store.saveGarminKey({ userId: runner.userId, apiKey: "valid-key-123", savedAt: `${TODAY}T06:00:00.000Z` });
+        store.recordSync(runner.userId, "2026-11-05T07:30:00.000Z");
+      },
+    });
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain("garmin-sync-chip");
+    expect(html).toContain("Garmin synced 2026-11-05 15:30");
+    expect(html).toContain("The last Garmin pull, shown in your timezone");
+    expect(html).not.toContain("Garmin is not connected");
+    // The legend sits under the header copy: plan rows, check rows and paired rows in one scannable line.
+    expect(html).toContain("cal-legend");
+    expect(html).toContain("Colored row: planned session · green ✓ row: recorded run · green+purple ◈ row: recorded run + the Garmin workout it followed.");
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".cal-legend");
+    expect(css).toContain(".garmin-sync-chip");
+
+    // Without a saved key there is no freshness to claim and no chip.
+    const fresh = await start();
+    const freshHtml = await (await fetch(`${fresh.base}/calendar?month=2026-11`, { headers: { cookie: fresh.cookie } })).text();
+    expect(freshHtml).not.toContain("garmin-sync-chip");
+  });
+});
+
+describe("Garmin workout surfaces", () => {
+  const workoutSteps = [
+    {
+      stepIndex: 1,
+      intensity: "WARMUP",
+      durationType: "TIME",
+      durationValue: 600,
+      targetType: "PACE",
+      targetValueLow: 2.6,
+      targetValueHigh: 2.9,
+    },
+    {
+      stepIndex: 2,
+      intensity: "ACTIVE",
+      durationType: "TIME",
+      durationValue: 420,
+      targetType: "PACE",
+      targetValueLow: 3.66,
+      targetValueHigh: 3.94,
+      notes: "Stay relaxed",
+    },
+    { stepIndex: 3, intensity: "RECOVERY", durationType: "TIME", durationValue: 120 },
+    {
+      stepIndex: 4,
+      intensity: "ACTIVE",
+      durationType: "REPEAT_UNTIL_STEPS_CMPLT",
+      durationValue: 2,
+      targetValue: 3,
+    },
+    { stepIndex: 5, intensity: "COOLDOWN", durationType: "TIME", durationValue: 600 },
+  ];
+
+  const seedWorkout = (store: Store, userId: string, day = "2026-11-04"): void => {
+    store.saveActivityWorkout({
+      activityId: "garmin:1",
+      userId,
+      day,
+      name: "Kenosha - Threshold",
+      label: "Kenosha - Threshold",
+      summary: "Warm-up 10:00 · 3 × (Run 7:00 @ 4:14–4:33/km, Recovery 2:00)",
+      steps: [{ index: 1, intensity: "Warm-up", intensityKey: "WARMUP", duration: "10:00", target: null }],
+      notes: null,
+      status: "ok",
+      attempts: 0,
+      fetchedAt: `${TODAY}T09:00:00.000Z`,
+    });
+  };
+
+  it("shows the workout a run followed on the activity detail and stores it", async () => {
+    const garmin: GarminClient = {
+      async token() {
+        return "t";
+      },
+      async listActivities() {
+        return [];
+      },
+      async getActivityWorkouts(activityId: string) {
+        expect(activityId).toBe("1");
+        return workoutSteps;
+      },
+    };
+    const { base, handle, user, cookie } = await start({
+      garmin,
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+      },
+    });
+
+    const html = await (
+      await fetch(`${base}/activity/${encodeURIComponent("garmin:1")}`, { headers: { cookie } })
+    ).text();
+
+    expect(html).toContain("Training program · Garmin");
+    expect(html).toContain("Garmin workout");
+    expect(html).toContain("3 × (Run 7:00 @ 4:14–4:33/km, Recovery 2:00)");
+    expect(html).toContain("Warm-up");
+    expect(html).toContain("back to step 2");
+    expect(html).toContain("Stay relaxed");
+    expect(html).toContain('aria-label="Garmin workout steps"');
+    expect(handle.store.getActivityWorkout(user.userId, "garmin:1")).toMatchObject({
+      status: "ok",
+      name: null,
+      day: "2026-11-04",
+    });
+  });
+
+  it("keeps the activity detail usable when the workout fetch fails", async () => {
+    const garmin: GarminClient = {
+      async token() {
+        return "t";
+      },
+      async listActivities() {
+        return [];
+      },
+      async getActivityWorkouts() {
+        throw new GarminError("denied", 403);
+      },
+    };
+    const { base, handle, user, cookie } = await start({
+      garmin,
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Morning run", 5.2);
+      },
+    });
+
+    const html = await (
+      await fetch(`${base}/activity/${encodeURIComponent("garmin:1")}`, { headers: { cookie } })
+    ).text();
+
+    expect(html).toContain("Morning run");
+    expect(html).toContain("workout for this run is not available right now.");
+    expect(html).toContain("Plan vs actual");
+    expect(handle.store.getActivityWorkout(user.userId, "garmin:1")).toMatchObject({
+      status: "unavailable",
+      attempts: 1,
+    });
+  });
+
+  it("pairs a recorded run with its Garmin workout in the calendar grid and the data endpoint", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        seedWorkout(store, runner.userId);
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="cal-pill paired" data-activity-id="garmin:1" role="button" tabindex="0"');
+    expect(html).toContain('class="cal-pair-part cal-pair-run"');
+    expect(html).toContain('class="cal-pair-part cal-pair-workout"');
+    expect(html).not.toContain("data-workout-id");
+    expect(html).toContain('<span class="cal-meta">10 km</span>');
+    expect(html).toContain("Kenosha - Threshold");
+    expect(html).toContain('aria-label="Recorded run with Garmin workout: Threshold run (10 km), Kenosha - Threshold. Show run and workout details"');
+    // The one-line legend explains the paired row now that the header paragraph is a single welcome line.
+    expect(html).toContain("green+purple");
+    expect(html).not.toContain('class="cal-pill program"');
+    // The pair is one click target: its two lines are not separately focusable or clickable.
+    const pairHtml = html.match(/<span class="cal-pill paired"[\s\S]*?<\/span><\/span>/)?.[0] ?? "";
+    expect(pairHtml.match(/role="button"/g) ?? []).toHaveLength(1);
+    expect(pairHtml.match(/tabindex="0"/g) ?? []).toHaveLength(1);
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as {
+      days: Record<
+        string,
+        {
+          items: Array<{
+            type: string;
+            activityId?: string;
+            run?: { label: string; meta: string | null };
+            workout?: { label: string };
+            tooltip?: string;
+          }>;
+          html: string;
+        }
+      >;
+    };
+    expect(data.days["2026-11-04"]?.items.map((item) => item.type)).toEqual(["pair"]);
+    expect(data.days["2026-11-04"]?.items[0]).toMatchObject({
+      type: "pair",
+      activityId: "garmin:1",
+      run: { label: "Threshold run", meta: "10 km" },
+      workout: { label: "Kenosha - Threshold" },
+    });
+    expect(data.days["2026-11-04"]?.items[0]?.tooltip).toContain("Warm-up 10:00");
+    expect(data.days["2026-11-04"]?.html).toContain('class="cal-pair-part cal-pair-workout"');
+  });
+
+  it("does not repeat a program label when the workout summary is only that label", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        store.saveActivityWorkout({
+          activityId: "garmin:1",
+          userId: runner.userId,
+          day: "2026-11-04",
+          name: null,
+          label: "10 × (Run open, Recovery open)",
+          summary: "10 × (Run open, Recovery open)",
+          steps: [{ index: 1, intensity: "Run", intensityKey: "ACTIVE", duration: "open", target: null }],
+          notes: "300m @ 4:30",
+          status: "ok",
+          attempts: 0,
+          fetchedAt: `${TODAY}T09:00:00.000Z`,
+        });
+      },
+    });
+
+    const data = (await (
+      await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
+    ).json()) as { days: Record<string, { items: Array<{ tooltip?: string }> }> };
+    const tooltip = data.days["2026-11-04"]?.items[0]?.tooltip ?? "";
+    expect(tooltip.match(/10 × \(Run open, Recovery open\)/g) ?? []).toHaveLength(1);
+    expect(tooltip).toContain("300m @ 4:30");
+  });
+
+  it("fills the visible month's missing workouts before pairing the grid", async () => {
+    let calls = 0;
+    const garmin: GarminClient = {
+      async token() {
+        return "t";
+      },
+      async listActivities() {
+        return [];
+      },
+      async getActivityWorkouts(activityId: string) {
+        calls += 1;
+        expect(activityId).toBe("1");
+        return {
+          workoutName: "Kenosha - Threshold",
+          workoutSteps: [{ stepIndex: 1, intensity: "WARMUP", durationType: "TIME", durationValue: 600 }],
+        };
+      },
+    };
+    const { base, handle, user, cookie } = await start({
+      garmin,
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="cal-pill paired"');
+    expect(html).toContain("Kenosha - Threshold");
+    expect(calls).toBe(1);
+    expect(handle.store.getActivityWorkout(user.userId, "garmin:1")).toMatchObject({
+      status: "ok",
+      label: "Kenosha - Threshold",
+    });
+  });
+
+  it("lists the day's Garmin workout on the day page", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        seedWorkout(store, runner.userId);
+      },
+    });
+
+    const html = await (await fetch(`${base}/day/2026-11-04`, { headers: { cookie } })).text();
+
+    expect(html).toContain("Garmin workouts");
+    expect(html).toContain("Kenosha - Threshold");
+    expect(html).toContain("Warm-up 10:00");
+  });
+
+  it("keeps an unavailable workout as a plain record pill", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        store.saveActivityWorkout({
+          activityId: "garmin:1",
+          userId: runner.userId,
+          day: "2026-11-04",
+          name: null,
+          label: "",
+          summary: "",
+          steps: [],
+          notes: null,
+          status: "unavailable",
+          attempts: 2,
+          fetchedAt: `${TODAY}T09:00:00.000Z`,
+        });
+      },
+    });
+
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).not.toContain('class="cal-pill paired"');
+    expect(html).not.toContain('class="cal-pill program"');
+    expect(html).toContain('class="cal-pill record"');
+  });
+
+  it("shows the Garmin workout line on the training-log week card", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        seedWorkout(store, runner.userId);
+      },
+    });
+
+    const html = await (
+      await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })
+    ).text();
+
+    expect(html).toContain('class="history-program"');
+    expect(html).toContain("Garmin workout");
+    expect(html).toContain("Kenosha - Threshold");
+    expect(html).toContain("3 × (Run 7:00 @ 4:14–4:33/km, Recovery 2:00)");
+  });
+
+  it("includes the full workout program in the integrated run peek", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+        seedWorkout(store, runner.userId);
+      },
+    });
+
+    const peek = (await (
+      await fetch(`${base}/activity/${encodeURIComponent("garmin:1")}/peek`, { headers: { cookie } })
+    ).json()) as {
+      peek: {
+        program: {
+          name: string | null;
+          label: string;
+          summary: string;
+          steps: Array<{ index: number; intensity: string; duration: string; target: string | null }>;
+          stepCount: number;
+          notes: string | null;
+        } | null;
+      };
+    };
+
+    expect(peek.peek.program).toMatchObject({
+      name: "Kenosha - Threshold",
+      label: "Kenosha - Threshold",
+      summary: "Warm-up 10:00 · 3 × (Run 7:00 @ 4:14–4:33/km, Recovery 2:00)",
+      stepCount: 1,
+      notes: null,
+    });
+    expect(peek.peek.program?.steps[0]).toMatchObject({ index: 1, intensity: "Warm-up", duration: "10:00" });
+  });
+
+  it("keeps the run peek's program empty when no workout was fetched", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedActivity(store, runner.userId, "garmin:1", "2026-11-04", "Threshold run", 10);
+      },
+    });
+
+    const peek = (await (
+      await fetch(`${base}/activity/${encodeURIComponent("garmin:1")}/peek`, { headers: { cookie } })
+    ).json()) as { peek: { program: unknown } };
+
+    expect(peek.peek.program).toBeNull();
+  });
+});
+
+describe("metric trend picker", () => {
+  it("renders one panel per metric and the chips that select them", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          durationMin: 45,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+        };
+        store.appendActivity({
+          ...baseActivity,
+          activityId: "garmin:t1",
+          day: "2026-11-02",
+          title: "Intervals",
+          distanceKm: 8,
+          paceSecPerKm: 300,
+          avgHr: 160,
+          cadenceSpm: 178,
+          trainingLoad: 95,
+          elevationGainM: 20,
+        });
+        store.appendActivity({
+          ...baseActivity,
+          activityId: "garmin:t2",
+          day: "2026-11-04",
+          title: "Easy run",
+          distanceKm: 6,
+          paceSecPerKm: 360,
+          avgHr: 140,
+          cadenceSpm: 168,
+          trainingLoad: 55,
+          elevationGainM: 8,
+        });
+      },
+    });
+
+    const html = await (
+      await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })
+    ).text();
+
+    expect(html).toContain('role="radiogroup" aria-label="Trend metric"');
+    expect(html).toContain('data-default="pace"');
+    expect(html).toContain('id="trend-metric-pace" value="pace" checked');
+    expect(html).toContain(">Pace</label>");
+    expect(html).toContain(">Heart rate</label>");
+    expect(html).toContain(">Cadence</label>");
+    expect(html).toContain(">Load</label>");
+    expect(html).toContain(">Distance</label>");
+    expect(html).toContain(">Time</label>");
+    expect(html).toContain(">Elevation</label>");
+    expect(html).toContain('aria-label="Pace trend for 2–8 Nov 2026"');
+    expect(html).toContain('aria-label="Heart-rate trend for 2–8 Nov 2026"');
+    expect(html).toContain('aria-label="Cadence trend for 2–8 Nov 2026"');
+    expect(html).toContain('aria-label="Training-load trend for 2–8 Nov 2026"');
+    expect(html).toContain('aria-label="Elevation trend for 2–8 Nov 2026"');
+    expect(html).toContain('data-metric="cadence"');
+    expect(html).toContain("178 spm");
+    expect(html).toContain("Average cadence");
+    expect(html).toContain("173 spm");
+  });
+
+  it("defaults to the first metric that has data when pace is missing", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          durationMin: 45,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+        };
+        store.appendActivity({
+          ...baseActivity,
+          activityId: "garmin:t1",
+          day: "2026-11-02",
+          title: "Reported one",
+          distanceKm: 5,
+          paceSecPerKm: null,
+          avgHr: 150,
+        });
+        store.appendActivity({
+          ...baseActivity,
+          activityId: "garmin:t2",
+          day: "2026-11-04",
+          title: "Reported two",
+          distanceKm: 5,
+          paceSecPerKm: null,
+          avgHr: 160,
+        });
+      },
+    });
+
+    const html = await (
+      await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })
+    ).text();
+
+    expect(html).toContain('data-default="hr"');
+    expect(html).toContain('id="trend-metric-hr" value="hr" checked');
+    expect(html).toContain("Need at least two runs with pace data in 2–8 Nov 2026.");
+  });
 });
 
 describe("in-calendar coach bubble", () => {
@@ -1592,9 +2513,9 @@ describe("in-calendar coach bubble", () => {
     expect(html).not.toContain("undo the last change");
     expect(html).toContain("data.suggestions");
     expect(html).toContain("chip.className = 'suggestion'");
-    expect(html).toContain("Plan my week");
-    expect(html).toContain("Book a 5 km run");
-    expect(html).toContain("Review last week");
+    expect(html).toContain("Can we plan my week together?");
+    expect(html).toContain("Where could a 5 km run fit this week?");
+    expect(html).toContain("How did last week go?");
     expect(html).toContain("showStarters");
     expect(html).toContain("setRetry");
     expect(html).toContain("addFailureCard");
@@ -1616,11 +2537,9 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("loadConversation");
     expect(html).toContain("refreshCalendar");
     expect(html).toContain("monthGrid.querySelectorAll('.cell[data-day]')");
-    expect(html).toContain("otherwise a deleted pill stays until reload");
-    expect(html).toContain("CALENDAR_MAX_ITEMS");
-    expect(html).toContain("cal-pill record");
-    expect(html).toContain("cal-pill plan kind-");
-    expect(html).toContain("cal-more");
+    expect(html).toContain("otherwise a deleted row stays until reload");
+    expect(html).toContain("info.html");
+    expect(html).toContain('class="cal-items"');
     expect(html).toContain("scrollToLatest");
     expect(html).toContain("day-menu");
     expect(html).toContain("openDayMenu");
@@ -1637,7 +2556,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=12");
+    expect(html).toContain("app.css?v=20");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -1647,6 +2566,16 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain(".history-summary");
     expect(css).toContain(".history-activity");
     expect(css).toContain(".trend-chart");
+    expect(css).toContain(".trend-picker");
+    expect(css).toContain(".trend-chip");
+    expect(css).toContain(":has(#trend-metric-cadence:checked)");
+    expect(css).toContain(".cal-pill.paired");
+    expect(css).toContain(".cal-pair-part");
+    expect(css).toContain(".cal-pair-workout");
+    expect(css).toContain(".peek-workout-summary");
+    expect(css).toContain(".peek-steps");
+    expect(css).toContain(".workout-card");
+    expect(css).toContain(".history-program");
     expect(css).toContain(".plan-compare");
     expect(css).toContain(".review-card");
     expect(css).toContain(".audit-item");
@@ -1675,10 +2604,24 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("#month-picker");
     expect(css).not.toContain("#coach-undo");
     expect(html).toContain("Calendar updated · 日曆已更新");
+    // A guardrail line is a block, not a success: warning styling plus consultative copy.
+    expect(html).toContain("addGuardrail");
+    expect(html).toContain("bubble system warn");
+    expect(html).toContain("is protecting the plan");
+    expect(css).toContain(".bubble.system.warn");
+    // The delete animation ends by pointing at the Recent changes card, where the Undo form lives.
+    expect(html).toContain("showDeleteToast");
+    expect(html).toContain("Deleted ");
+    expect(html).toContain("Undo in Recent changes");
+    expect(css).toContain(".fx-toast");
+    // The bubble's state card can open the discussion about how the state shapes the week.
+    expect(html).toContain("Discuss this state · 討論");
+    expect(html).toContain("discuss-state");
+    expect(html).toContain("state-card");
     expect(html).toContain('data-month="2026-11"');
     expect(html).toContain('data-day="2026-11-06"');
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    expect(scripts).toHaveLength(3);
+    expect(scripts).toHaveLength(4);
     for (const script of scripts) expect(() => new Function(script[1] ?? "")).not.toThrow();
   });
 
@@ -1859,6 +2802,51 @@ describe("in-calendar coach bubble", () => {
     });
     expect(unknown.status).toBe(400);
     expect(gateway.seenMessage()).toBeUndefined();
+  });
+
+  it("forwards discuss-change and discuss-state intents as comment-only directives", async () => {
+    const gateway = await startMockGateway();
+    const { base, cookie } = await start({ gatewayUrl: gateway.url });
+    const change = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)",
+        intent: { kind: "discuss-change", changeSetId: "change:move", source: "recent-changes" },
+      }),
+    });
+    expect(change.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "review",
+      allowCalendarWrites: false,
+      references: { changeSetId: "change:move" },
+      source: "recent-changes",
+    });
+    // The gateway owns reference validation: a foreign id passes through instead of a web-side guess.
+    const foreign = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "Why did the plan change on 5 Nov?",
+        intent: { kind: "discuss-change", changeSetId: "change:missing" },
+      }),
+    });
+    expect(foreign.status).toBe(200);
+    const state = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({
+        message: "How should the Heat state shape my coming week?",
+        intent: { kind: "discuss-state", stateId: "state:heat", source: "states-page" },
+      }),
+    });
+    expect(state.status).toBe(200);
+    expect(gateway.seenDirective()).toMatchObject({
+      mode: "review",
+      allowCalendarWrites: false,
+      references: { stateId: "state:heat" },
+      source: "states-page",
+    });
   });
 
 });
@@ -2059,6 +3047,12 @@ describe("coach states page", () => {
     expect(html).toContain("Travel");
     expect(html).toContain("state%3Apain");
     expect(html).toContain("Temporary situations");
+    // Each state can reach the coach in one tap, with the stateId referenced by a typed discuss-state intent.
+    expect(html).toContain("Ask coach about this state · 問問教練");
+    expect(html).toContain("How should the Heat state shape my coming week?");
+    expect(html).toContain("How should the Pain / injury state shape my coming week?");
+    expect(html).toContain("discuss-state");
+    expect(html).toContain("states-page");
     expect(html).not.toContain("confidence");
     expect(html).not.toContain("Guardrail:");
     expect(html).not.toContain('<span class="chip">heat</span>');
@@ -2134,7 +3128,7 @@ describe("coach states page", () => {
     expect(after).toContain("2026-11-08");
     expect(after).toContain("Race week");
     expect(after).toContain("Setup · 設定");
-    expect(after).toContain("Add it on Profile");
+    expect(after).toContain("Connect Garmin");
   });
 
   it("rejects a cross-origin state POST and keeps the state unchanged", async () => {
@@ -2293,11 +3287,498 @@ describe("coach states page", () => {
     const page = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
     expect(page).toContain("addStateCards");
     expect(page).toContain("state-bubble-head");
-    expect(page).toContain("Calendar unchanged —");
+    expect(page).toContain("Calendar unchanged — ");
+    // The guardrail line keeps its meaning but speaks as a consultant: what is protected, then the offer to discuss.
+    expect(page).toContain("is protecting the plan · want to talk through what would work instead? · 日曆未有更改");
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain(".state-card");
     expect(css).toContain(".state-form");
     expect(css).toContain(".state-bubble-head");
+  });
+});
+
+describe("involve the coach actions", () => {
+  it("adds a friend-voiced ramp chip and warning when the load signal is high", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          distanceKm: 5,
+          durationMin: 30,
+          paceSecPerKm: 360,
+          avgHr: 145,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+          trainingEffectLabel: "AEROBIC_BASE",
+        };
+        store.appendActivity({ ...baseActivity, activityId: "garmin:burst-1", day: "2026-11-02", title: "Easy one", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:burst-2", day: "2026-11-04", title: "Tempo one", distanceKm: 6, trainingLoad: 100, trainingEffectLabel: "TEMPO" });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:burst-3", day: "2026-11-05", title: "Another one", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:prev-1", day: "2026-10-27", title: "Previous run", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:old-1", day: "2026-10-13", title: "Earlier run", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:old-2", day: "2026-10-20", title: "Earlier run 2", trainingLoad: 100 });
+      },
+    });
+
+    const html = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(html).toContain('class="load-chip high"');
+    expect(html).toContain("High ramp");
+    // The warning line is consultative and data-accurate: the runner's own numbers, then the decision handed back.
+    expect(html).toContain("This week&#39;s load is high (+200% versus last week, ACWR 2.00) - want to talk it through?");
+    expect(html).toContain("load-warning");
+    expect(html).toContain("Talk through this ramp");
+    expect(html).toContain("The last week or two ramped up - can we talk it through?");
+    // The ramp chip reuses the main button's review-week wiring: the same intent and the same weekStart.
+    expect((html.match(/&quot;review-week&quot;/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((html.match(/&quot;weekStart&quot;:&quot;2026-11-02&quot;/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("Hard 1 run");
+    // Where the hard/easy split is shown, the reported-effort rule is stated once.
+    expect(html).toContain("A reported effort of 7 or above counts as hard.");
+  });
+
+  it("adds the same ramp chip when the signal is only watch", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          distanceKm: 5,
+          durationMin: 30,
+          paceSecPerKm: 360,
+          avgHr: 145,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+          trainingEffectLabel: "AEROBIC_BASE",
+        };
+        store.appendActivity({ ...baseActivity, activityId: "garmin:drift-1", day: "2026-11-02", title: "Easy one", trainingLoad: 125 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:drift-prev", day: "2026-10-27", title: "Previous run", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:drift-old1", day: "2026-10-13", title: "Earlier run", trainingLoad: 100 });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:drift-old2", day: "2026-10-20", title: "Earlier run 2", trainingLoad: 100 });
+      },
+    });
+
+    const html = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(html).toContain('class="load-chip watch"');
+    expect(html).toContain("Watch the ramp");
+    expect(html).toContain("This week&#39;s load is ramping up (+25% versus last week, ACWR 1.18) - worth talking through before it gets steep?");
+    expect(html).toContain("Talk through this ramp");
+  });
+
+  it("offers to tell the coach about a new goal after the goal changes", async () => {
+    const { base, cookie } = await start();
+    const update = await fetch(`${base}/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ goal: "Marathon in spring" }),
+      redirect: "manual",
+    });
+    expect(update.status).toBe(303);
+    expect(update.headers.get("location")).toBe("/profile?saved=1&goal=1");
+    const page = await (await fetch(`${base}/profile?saved=1&goal=1`, { headers: { cookie } })).text();
+    expect(page).toContain("New goal saved · 新目標已儲存");
+    expect(page).toContain("Tell the coach about your new goal");
+    // The prefilled message carries the new goal text and waits for the runner's edit before sending.
+    expect(page).toContain("My new goal is Marathon in spring. Can you help me plan toward it?");
+    expect(page).toContain('data-coach-send="false"');
+    const offer = page.match(/<button[^>]*>Tell the coach about your new goal<\/button>/)?.[0] ?? "";
+    expect(offer).not.toContain("data-coach-intent");
+
+    // Re-saving the same goal does not repeat the offer; a plain profile save stays quiet.
+    const again = await fetch(`${base}/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ goal: "Marathon in spring" }),
+      redirect: "manual",
+    });
+    expect(again.headers.get("location")).toBe("/profile?saved=1");
+    const againPage = await (await fetch(`${base}/profile?saved=1`, { headers: { cookie } })).text();
+    expect(againPage).not.toContain("Tell the coach about your new goal");
+  });
+});
+
+describe("page titles", () => {
+  it("puts the current nav and page before the site name and unread count", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        for (let index = 1; index <= 3; index += 1) seedNotification(store, runner.userId, index);
+        seedActivity(store, runner.userId, "a1", "2026-11-06", "Morning run", 5);
+      },
+    });
+
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("<title>Plan · AI Coach Calendar (3)</title>");
+    expect(calendar).toContain('data-site-name="AI Coach Calendar"');
+    expect(calendar).toContain('data-page-context="Plan"');
+    expect(calendar).toContain("document.title =");
+
+    const history = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
+    expect(history).toContain("<title>Training log · AI Coach Calendar (3)</title>");
+
+    const activity = await (await fetch(`${base}/activity/a1`, { headers: { cookie } })).text();
+    expect(activity).toContain("<title>Training log · Activity · AI Coach Calendar (3)</title>");
+
+    const day = await (await fetch(`${base}/day/2026-11-06`, { headers: { cookie } })).text();
+    expect(day).toContain("<title>Plan · Fri, 6 Nov 2026 · AI Coach Calendar (3)</title>");
+
+    const profile = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
+    expect(profile).toContain("<title>Profile · AI Coach Calendar (3)</title>");
+
+    const states = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
+    expect(states).toContain("<title>Coaching states · AI Coach Calendar (3)</title>");
+
+    const audit = await (await fetch(`${base}/coach-audit`, { headers: { cookie } })).text();
+    expect(audit).toContain("<title>Coach audit · AI Coach Calendar (3)</title>");
+  });
+
+  it("shows the view switch inside the app bar only on pages that name a view", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedActivity(store, runner.userId, "a1", "2026-11-06", "Morning run", 5),
+    });
+
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain('</a><nav class="view-switch" data-active="calendar"');
+    expect(calendar).toContain('href="/calendar" aria-current="page">Plan</a>');
+    expect(calendar).toContain('class="view-tab" href="/history">Training log</a>');
+
+    const day = await (await fetch(`${base}/day/2026-11-06`, { headers: { cookie } })).text();
+    expect(day).toContain('data-active="calendar"');
+    expect(day).toContain('aria-current="page">Plan</a>');
+
+    const history = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
+    expect(history).toContain('<nav class="view-switch" data-active="history"');
+    expect(history).toContain('class="view-tab" href="/calendar">Plan</a>');
+    expect(history).toContain('href="/history" aria-current="page">Training log</a>');
+
+    const activity = await (await fetch(`${base}/activity/a1`, { headers: { cookie } })).text();
+    expect(activity).toContain('data-active="history"');
+    expect(activity).toContain('aria-current="page">Training log</a>');
+
+    for (const path of ["/profile", "/coach-states", "/coach-audit", "/missing-page"]) {
+      const html = await (await fetch(`${base}${path}`, { headers: { cookie } })).text();
+      expect(html).not.toContain("view-switch");
+      expect(html).not.toContain("view-tab");
+    }
+
+    const login = await (await fetch(`${base}/login`)).text();
+    expect(login).not.toContain("view-switch");
+  });
+
+  it("caps the title count at 99+ and drops it after notifications are read", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        for (let index = 1; index <= 100; index += 1) seedNotification(store, runner.userId, index);
+      },
+    });
+
+    const before = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
+    expect(before).toContain("<title>Profile · AI Coach Calendar (99+)</title>");
+
+    await fetch(`${base}/notifications/read`, { method: "POST", headers: { cookie } });
+    const after = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
+    expect(after).toContain("<title>Profile · AI Coach Calendar</title>");
+
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("<title>Plan · AI Coach Calendar</title>");
+  });
+
+  it("shows the site name without a count on signed-out and error pages", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedNotification(store, runner.userId, 1),
+    });
+
+    const login = await (await fetch(`${base}/login`)).text();
+    expect(login).toContain("<title>Sign in · AI Coach Calendar</title>");
+
+    const signup = await (await fetch(`${base}/signup`)).text();
+    expect(signup).toContain("<title>Create an account · AI Coach Calendar</title>");
+
+    const missing = await (await fetch(`${base}/missing-page`, { headers: { cookie } })).text();
+    expect(missing).toContain("<title>Not found · AI Coach Calendar (1)</title>");
+    expect(missing).not.toContain("<title>Plan · Not found");
+  });
+});
+
+describe("honest demo slice", () => {
+  const postForm = async (url: string, cookie: string, values: Record<string, string>): Promise<Response> =>
+    fetch(url, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody(values),
+      redirect: "manual",
+    });
+
+  it("logs a reported run and shows it on the calendar, day page and training log", async () => {
+    const { base, cookie, handle, user } = await start();
+    const response = await postForm(`${base}/activities`, cookie, {
+      day: "2026-11-04",
+      title: "Treadmill run",
+      distanceKm: "5",
+      durationMin: "30",
+      requestId: "request-abcdef12",
+      next: "/day/2026-11-04",
+    });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toContain("logged=1");
+    const stored = handle.store.listActivities(user.userId, 10);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      title: "Treadmill run",
+      day: "2026-11-04",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      source: "chat",
+    });
+    // A log without the optional effort stores null, not a guess.
+    expect(stored[0]?.rpe).toBeNull();
+
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Treadmill run");
+    expect(calendar).toContain("Log a run");
+    const day = await (await fetch(`${base}/day/2026-11-04`, { headers: { cookie } })).text();
+    expect(day).toContain("Treadmill run");
+    expect(day).toContain("Log a run");
+    const history = await (await fetch(`${base}/history?view=week&period=2026-11-02`, { headers: { cookie } })).text();
+    expect(history).toContain("Treadmill run");
+  });
+
+  it("replaces a double submit instead of duplicating it and rejects a future run", async () => {
+    const { base, cookie, handle, user } = await start();
+    const values = { day: "2026-11-04", title: "Commute", distanceKm: "4", durationMin: "24", requestId: "request-idem-1234", next: "/day/2026-11-04" };
+    await postForm(`${base}/activities`, cookie, values);
+    await postForm(`${base}/activities`, cookie, { ...values, title: "Commute home" });
+    const stored = handle.store.listActivities(user.userId, 10);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.title).toBe("Commute home");
+
+    const future = await postForm(`${base}/activities`, cookie, { day: "2026-11-20", distanceKm: "5", durationMin: "30", requestId: "request-future-1", next: "/day/2026-11-20" });
+    expect(future.status).toBe(303);
+    const futureLocation = new URL(future.headers.get("location") ?? "/", base);
+    expect(futureLocation.searchParams.get("logError")).toBe("A run cannot be logged in the future.");
+    expect(handle.store.listActivities(user.userId, 10)).toHaveLength(1);
+  });
+
+  it("keeps reported runs scoped to the runner who logged them", async () => {
+    const { base, auth, cookie } = await start();
+    await postForm(`${base}/activities`, cookie, { day: "2026-11-04", title: "Private treadmill", distanceKm: "5", durationMin: "30", requestId: "request-private1", next: "/day/2026-11-04" });
+    auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
+    const otherCookie = cookieFrom(auth.login({ username: "other_runner", password: "other-password-123" }).cookie);
+    const otherCalendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: otherCookie } })).text();
+    expect(otherCalendar).not.toContain("Private treadmill");
+  });
+
+  it("logs a run with its effort and offers the same review card a synced run gets", async () => {
+    const { base, cookie, handle, user } = await start();
+    const response = await postForm(`${base}/activities`, cookie, {
+      day: "2026-11-04",
+      title: "Treadmill run",
+      distanceKm: "5",
+      durationMin: "30",
+      rpe: "7",
+      requestId: "request-rpe-0001",
+      next: "/day/2026-11-04",
+    });
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location") ?? "/", base);
+    // The day page's own log form returns to that day, carrying the id of the run just logged.
+    expect(location.pathname).toBe("/day/2026-11-04");
+    expect(location.searchParams.get("logged")).toBe("1");
+    const activityId = location.searchParams.get("review") ?? "";
+    expect(activityId.startsWith("activity:manual:")).toBe(true);
+    expect(handle.store.getActivity(user.userId, activityId)).toMatchObject({ title: "Treadmill run", rpe: 7 });
+    const day = await (await fetch(`${base}${location.pathname}${location.search}`, { headers: { cookie } })).text();
+    expect(day).toContain("Run logged. It is now part of your calendar and training log.");
+    expect(day).toContain("Review this run with the coach");
+    expect(day).toContain("review-activity");
+    expect(day).toContain("Treadmill run");
+    // The manual log form carries the optional effort field with the exact name and bounds the builder validates.
+    expect(day).toContain('name="rpe"');
+    expect(day).toContain('id="log-rpe" name="rpe" type="number" min="0" max="10" step="0.5"');
+    expect(day).toContain("How did it feel? (0-10, optional)");
+    // The same one-tap card renders on the training log the form can also return to.
+    const historyLog = await postForm(`${base}/activities`, cookie, {
+      day: "2026-11-03",
+      title: "Commute run",
+      distanceKm: "4",
+      durationMin: "24",
+      requestId: "request-rpe-0002",
+      next: "/history?view=week&period=2026-11-02",
+    });
+    const historyLocation = new URL(historyLog.headers.get("location") ?? "/", base);
+    expect(historyLocation.pathname).toBe("/history");
+    const historyHtml = await (await fetch(`${base}${historyLocation.pathname}${historyLocation.search}`, { headers: { cookie } })).text();
+    expect(historyHtml).toContain("Review this run with the coach");
+    expect(historyHtml).toContain("Commute run");
+    // The effort the runner reported shows where the run is read: the detail page and the calendar peek.
+    const detail = await (await fetch(`${base}/activity/${encodeURIComponent(activityId)}`, { headers: { cookie } })).text();
+    expect(detail).toContain("Felt 7/10 - hard");
+    const peek = (await (
+      await fetch(`${base}/activity/${encodeURIComponent(activityId)}/peek`, { headers: { cookie } })
+    ).json()) as { peek: { extra: Array<{ label: string; value: string }> } };
+    expect(peek.peek.extra).toEqual(expect.arrayContaining([{ label: "Felt", value: "Felt 7/10 - hard" }]));
+  });
+
+  it("rejects an effort outside the half-step scale and shows the banner on the day page", async () => {
+    const { base, cookie, handle, user } = await start();
+    const response = await postForm(`${base}/activities`, cookie, {
+      day: "2026-11-04",
+      title: "Odd effort",
+      distanceKm: "5",
+      durationMin: "30",
+      rpe: "7.25",
+      requestId: "request-rpe-bad1",
+      next: "/day/2026-11-04",
+    });
+    expect(response.status).toBe(303);
+    const location = new URL(response.headers.get("location") ?? "/", base);
+    expect(location.searchParams.get("logError")).toBe("RPE must be between 0 and 10 in half steps.");
+    expect(handle.store.listActivities(user.userId, 10)).toHaveLength(0);
+    const day = await (await fetch(`${base}${location.pathname}${location.search}`, { headers: { cookie } })).text();
+    expect(day).toContain("Could not log the run: RPE must be between 0 and 10 in half steps.");
+  });
+
+  it("shows the sync result, the key deletion and the horizon", async () => {
+    const { base, cookie, handle, user } = await start();
+    const synced = await (await fetch(`${base}/calendar?synced=2`, { headers: { cookie } })).text();
+    expect(synced).toContain("Garmin sync finished: 2 new activities.");
+    const failed = await (await fetch(`${base}/calendar?syncError=HTTP%20401`, { headers: { cookie } })).text();
+    expect(failed).toContain("Garmin sync failed: HTTP 401");
+    expect(synced).toContain("Books up to 180 days ahead");
+    expect(synced).toContain('data-timezone="Asia/Hong_Kong"');
+
+    handle.store.saveGarminKey({ userId: user.userId, apiKey: "valid-key-123", savedAt: `${TODAY}T07:00:00.000Z` });
+    const deleted = await postForm(`${base}/garmin/key/delete`, cookie, { next: "/calendar" });
+    expect(deleted.status).toBe(303);
+    expect(deleted.headers.get("location")).toContain("garmin=deleted");
+    expect(handle.store.getGarminKey(user.userId)).toBeUndefined();
+    const after = await (await fetch(`${base}/calendar?garmin=deleted`, { headers: { cookie } })).text();
+    expect(after).toContain("Garmin key removed. Sync is off until you connect again.");
+    expect(after).toContain("Garmin is not connected");
+  });
+
+  it("keeps a pending sensitive state confirmable after a refresh", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        seedCoachState(store, runner.userId, "pain_injury", {
+          stateId: "state:pain",
+          status: "observing",
+          source: "chat",
+          evidence: ["Left knee hurts after the long run"],
+        });
+      },
+    });
+    const response = await fetch(`${base}/chat/history`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { messages: unknown[]; states: Array<{ stateId: string; status: string; key: string }> };
+    expect(body.states).toEqual(expect.arrayContaining([
+      expect.objectContaining({ stateId: "state:pain", status: "observing", key: "pain_injury" }),
+    ]));
+  });
+
+  it("shows the recent change set and undoes it through the audited path", async () => {
+    const { base, cookie, handle, user } = await start();
+    const before = {
+      sessionId: "session:move",
+      userId: user.userId,
+      day: "2026-11-06",
+      title: "Easy 5 km",
+      kind: "easy" as const,
+      distanceKm: 5,
+      durationMin: 35,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const after = { ...before, day: "2026-11-08" };
+    handle.store.upsertSession(after);
+    const changeSet: ChangeSet = {
+      changeSetId: "change:move",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: "Moved Easy 5 km to Sunday",
+      entries: [{ action: "update", sessionId: before.sessionId, before, after, fromDay: before.day, toDay: after.day, title: before.title, kind: before.kind }],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Recent changes");
+    expect(calendar).toContain("Moved Easy 5 km to Sunday");
+    expect(calendar).toContain("Undo this change");
+    // Each change set also opens a comment-only discussion about what it did and why.
+    expect(calendar).toContain("Discuss this change");
+    expect(calendar).toContain("Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)");
+    expect(calendar).toContain("discuss-change");
+    expect(calendar).toContain("recent-changes");
+
+    const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
+    expect(undo.status).toBe(303);
+    expect(undo.headers.get("location")).toContain("undone=1");
+    expect(handle.store.getSession(user.userId, before.sessionId)?.day).toBe("2026-11-06");
+    expect(handle.store.listChangeSets(user.userId, 10).some((set) => set.summary.startsWith("Undo:"))).toBe(true);
+
+    const again = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
+    const againLocation = new URL(again.headers.get("location") ?? "/", base);
+    expect(againLocation.searchParams.get("undoError")).toBe("that change was already undone");
+  });
+
+  it("exports only the runner's own data as JSON and ICS", async () => {
+    const { base, auth, cookie, handle, user } = await start({
+      seed: (store, runner) => seedActivity(store, runner.userId, "garmin:export", "2026-11-04", "Export run", 6),
+    });
+    const jsonResponse = await fetch(`${base}/export.json`, { headers: { cookie } });
+    expect(jsonResponse.status).toBe(200);
+    expect(jsonResponse.headers.get("content-disposition")).toContain("attachment");
+    const text = await jsonResponse.text();
+    expect(text).not.toContain("passwordHash");
+    expect(text).not.toContain("apiKey");
+    const bundle = JSON.parse(text) as { profile: { username: string }; sessions: unknown[]; activities: Array<{ title: string }> };
+    expect(bundle.profile.username).toBe(USERNAME);
+    expect(bundle.sessions).toHaveLength(1);
+    expect(bundle.activities[0]?.title).toBe("Export run");
+
+    const icsResponse = await fetch(`${base}/export.ics`, { headers: { cookie } });
+    expect(icsResponse.status).toBe(200);
+    expect(icsResponse.headers.get("content-type")).toContain("text/calendar");
+    const ics = await icsResponse.text();
+    expect(ics).toContain("BEGIN:VCALENDAR");
+    expect(ics).toContain("DTSTART;VALUE=DATE:20261106");
+
+    auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
+    const otherCookie = cookieFrom(auth.login({ username: "other_runner", password: "other-password-123" }).cookie);
+    const other = await (await fetch(`${base}/export.json`, { headers: { cookie: otherCookie } })).json() as { sessions: unknown[]; activities: unknown[] };
+    expect(other.sessions).toHaveLength(0);
+    expect(other.activities).toHaveLength(0);
+    expect(handle.store.listActivities(user.userId, 10)).toHaveLength(1);
+  });
+
+  it("validates a malformed month instead of returning a 500", async () => {
+    const { base, cookie } = await start();
+    const page = await fetch(`${base}/calendar?month=2026-13`, { headers: { cookie } });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("November 2026");
+    const data = await (await fetch(`${base}/calendar/data?month=nope`, { headers: { cookie } })).json() as { month: string };
+    expect(data.month).toBe("2026-11");
+  });
+
+  it("labels the trend window and the PR scope", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        for (let index = 1; index <= 13; index += 1) {
+          seedActivity(store, runner.userId, `garmin:trend-${index}`, `2026-11-${String(index).padStart(2, "0")}`, `Run ${index}`, 5);
+        }
+      },
+    });
+    const html = await (await fetch(`${base}/history?view=month&period=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain("The trend plots the last 12 runs with the selected metric");
+    expect(html).toContain("within your stored history");
+  });
+
+  it("serves reduced-motion CSS and session intent copy", async () => {
+    const { base, cookie } = await start();
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain("prefers-reduced-motion");
+    const day = await (await fetch(`${base}/day/2026-11-06`, { headers: { cookie } })).text();
+    expect(day).toContain("Aerobic base");
+    expect(day).toContain("Conversational");
   });
 });
 
