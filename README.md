@@ -277,11 +277,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 
 | Gate | State |
 |---|---|
-| Tests | **439 / 439** in 17 files |
+| Tests | **446 / 446** in 18 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (restarted 2026-11-19, CSS v20 — the Plan / Training log / **Muscles** switch now lives in the app bar and only on the pages that belong to a view; muscle check-ins live-verified with a temporary account that was removed afterwards; model key preserved) |
+| Live deployment | calendar **:8093**, gateway **:8092** (restarted 2026-11-19, CSS v21 — the Plan / Training log / **Muscles** switch now lives in the app bar and only on the pages that belong to a view; muscle check-ins live-verified with a temporary account that was removed afterwards; model key preserved) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
