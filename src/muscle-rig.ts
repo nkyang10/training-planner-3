@@ -31,6 +31,8 @@ export type RigShape =
       at: readonly [number, number, number];
       size: readonly [number, number, number];
       tilt?: number;
+      /** Corner-rounding hint for the viewer; it currently renders a plain box. */
+      round?: number;
     }
   | {
       kind: "lathe";

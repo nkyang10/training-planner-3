@@ -752,9 +752,24 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .muscle-form-row label { font-size: 13px; }
 .muscle-form-row input, .muscle-form-row select { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--wash); font: inherit; }
 .hidden { display: none !important; }
+/* The 3D muscle viewer: a physically rendered figure the runner can orbit, pause and click. */
+.muscle-viewer-wrap { position: relative; display: grid; gap: 8px; }
+.muscle-viewer { position: relative; height: 460px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #fffdf7 0%, #fbf1e3 55%, #f6e6cd 100%); box-shadow: var(--shadow); touch-action: none; }
+.muscle-viewer canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.muscle-viewer-failed { display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); font-size: 13px; }
+.viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.viewer-controls .chip { cursor: pointer; background: #fff; }
+.viewer-controls .chip[aria-pressed="true"] { border-color: var(--ember); color: var(--ember-text); }
+.viewer-tooltip { position: absolute; z-index: 4; max-width: 210px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .95); box-shadow: var(--shadow); font-size: 12px; font-weight: 700; pointer-events: none; }
+.muscle-viewer-note { margin: 0; }
+.muscle-2d-fallback { margin-top: 10px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; padding: 8px 12px; }
+.muscle-2d-fallback summary { font-weight: 800; font-size: 13px; cursor: pointer; color: var(--muted); }
+.muscle-2d-fallback[open] summary { color: var(--ink); }
+.muscle-2d-fallback .muscle-figures { margin-top: 8px; }
 @media (max-width: 780px) {
   .muscle-workspace { grid-template-columns: 1fr; }
   .muscle-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .muscle-viewer { height: 380px; }
 }
 @media (max-width: 640px) {
   .muscle-ed-soreness { grid-template-columns: auto minmax(0, 1fr); }

@@ -135,7 +135,48 @@ describe("the muscle tab page", () => {
     expect(html).toContain("No check-ins yet");
     expect(html).toContain("not a diagnosis");
     expect(html).toContain('action="/muscle/checkin"');
-    expect(html).toContain("app.css?v=20");
+    expect(html).toContain("app.css?v=21");
+  });
+
+  it("ships the 3D viewer with an import map, controls and the flat figure as fallback", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(html).toContain('<script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>');
+    expect(html).toContain("import { OrbitControls } from '/static/orbit-controls.js'");
+    expect(html).toContain('id="muscle-viewer"');
+    expect(html).toContain('id="viewer-rotation"');
+    expect(html).toContain("Pause rotation");
+    expect(html).toContain('id="viewer-front"');
+    expect(html).toContain('id="viewer-back"');
+    expect(html).toContain('id="viewer-reset"');
+    expect(html).toContain('id="viewer-tooltip"');
+    // The bridge keeps both surfaces on one selection state.
+    expect(html).toContain("window.__muscleTabBridge");
+    expect(html).toContain("window.__muscleViewer");
+    expect(html).toContain("__muscleViewer.syncMuscle");
+    // The 2D figure stays available without 3D or script.
+    expect(html).toContain('details class="muscle-2d-fallback" id="muscle-2d"');
+    expect(html).toContain('data-muscle="calves"');
+    // The rig travels with the page so the viewer builds every catalog muscle.
+    expect(html).toContain('"id":"calves"');
+    expect(html).toContain('"kind":"lathe"');
+  });
+
+  it("serves the vendored three.js builds as static scripts", async () => {
+    const { base, cookie } = await start();
+    const three = await fetch(`${base}/static/three.module.js`, { headers: { cookie } });
+    expect(three.status).toBe(200);
+    expect(three.headers.get("content-type")).toContain("text/javascript");
+    expect(three.headers.get("cache-control")).toBe("no-store");
+    const threeText = await three.text();
+    expect(threeText).toContain("SPDX-License-Identifier: MIT");
+    expect(threeText).toContain("Three.js Authors");
+
+    const controls = await fetch(`${base}/static/orbit-controls.js`, { headers: { cookie } });
+    expect(controls.status).toBe(200);
+    const controlsText = await controls.text();
+    expect(controlsText).toContain("OrbitControls");
+    expect(controlsText).toContain("from 'three'");
   });
 
   it("saves a shared no-script check-in and renders its reading, heat and drills", async () => {

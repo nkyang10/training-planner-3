@@ -26,6 +26,7 @@ import {
   type MuscleTagLevel,
   type MuscleWork,
 } from "./muscles";
+import { MUSCLE_RIG, RIG_BODY, type RigShape } from "./muscle-rig";
 import { renderMuscleFigure, renderMuscleLegend, renderWorkedPair } from "./muscle-map";
 import type { CoachStateKey } from "./types";
 import { escapeHtml, type ViewName } from "./web-html";
@@ -464,6 +465,10 @@ function muscleScript(input: MusclePageInput): string {
         node.setAttribute('aria-label', label);
       }
       for (const box of checkBoxes(id)) box.checked = tag !== undefined;
+      // The 3D viewer repaints the same muscle from the same state, whichever surface changed it.
+      if (typeof window.__muscleViewer === 'object' && window.__muscleViewer !== null) {
+        window.__muscleViewer.syncMuscle(id, tag === undefined ? null : tag);
+      }
     };
 
     const renderTray = () => {
@@ -718,6 +723,355 @@ function muscleScript(input: MusclePageInput): string {
     renderEditor();
     renderTray();
     refillActivities();
+    // The 3D viewer drives selection through this bridge: it calls toggle(), and reads tagOf/has to repaint.
+    window.__muscleTabBridge = { toggle, tagOf, has: (id) => state.has(id) };
+  })();
+  </script>`;
+}
+
+/**
+ * The 3D muscle viewer: three.js over the rig data, physically rendered, with the same selection state as the
+ * flat figure. It runs as a module script behind an import map that resolves the vendored builds, and it degrades
+ * to the flat figure (the details opens itself) when WebGL cannot start. Selection flows through the classic
+ * script's bridge, so the tray, the editor, the checkbox list, the 2D figure and the 3D figure stay in step.
+ */
+function muscleViewerScript(input: MusclePageInput): string {
+  const rig = {
+    body: RIG_BODY.map((part) => ({ mirror: part.mirror, shape: part.shape as RigShape })),
+    muscles: MUSCLE_RIG.map((entry) => ({ id: entry.muscleId, mirror: entry.mirror, shapes: entry.shapes })),
+  };
+  const heat: Record<string, { fill: string; dashed?: boolean }> = {};
+  for (const [id, value] of Object.entries(heatFillsFor(input.dayCheckIn))) heat[id] = value;
+  const names: Record<string, string> = {};
+  for (const muscle of MUSCLE_CATALOG) names[muscle.id] = muscle.name;
+  return `<script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>
+  <script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from '/static/orbit-controls.js';
+  (() => {
+    const RIG = ${jsonForScript(rig)};
+    const HEAT = ${jsonForScript(heat)};
+    const NAMES = ${jsonForScript(names)};
+    const container = document.getElementById('muscle-viewer');
+    const tooltip = document.getElementById('viewer-tooltip');
+    const rotationButton = document.getElementById('viewer-rotation');
+    const bridge = window.__muscleTabBridge;
+    if (container === null || tooltip === null || bridge === undefined) return;
+    const showFallback = (reason) => {
+      container.textContent = reason;
+      container.classList.add('muscle-viewer-failed');
+      const fallback = document.getElementById('muscle-2d');
+      if (fallback !== null) fallback.open = true;
+    };
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch (error) {
+      showFallback('The 3D figure could not start here; the flat figure below carries every muscle.');
+      return;
+    }
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const labelFor = (value) => {
+      if (value <= 0) return 'Nothing';
+      if (value <= 2) return 'Barely there';
+      if (value <= 3) return 'Mild';
+      if (value <= 5) return 'Noticeable';
+      if (value <= 6) return 'Clear DOMS';
+      if (value <= 7) return 'Sore to touch';
+      if (value <= 8) return 'Strong';
+      return 'Severe';
+    };
+
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.replaceChildren(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#fbf1e3');
+    scene.fog = new THREE.Fog('#fbf1e3', 9, 18);
+    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
+    const defaultView = { radius: 7.4, polar: 1.42, azimuth: 0.5 };
+    const setCamera = (radius, polar, azimuth) => {
+      camera.position.set(
+        Math.sin(polar) * Math.sin(azimuth) * radius,
+        Math.cos(polar) * radius + 2.35,
+        Math.sin(polar) * Math.cos(azimuth) * radius,
+      );
+      camera.lookAt(0, 2.35, 0);
+    };
+    setCamera(defaultView.radius, defaultView.polar, defaultView.azimuth);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 2.35, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.minDistance = 3.6;
+    controls.maxDistance = 11;
+    controls.maxPolarAngle = Math.PI * 0.56;
+    controls.autoRotateSpeed = 1.0;
+    let running = !reduced;
+    controls.autoRotate = running;
+    if (rotationButton !== null) {
+      rotationButton.setAttribute('aria-pressed', running ? 'true' : 'false');
+      rotationButton.textContent = running ? 'Pause rotation' : 'Play rotation';
+      rotationButton.addEventListener('click', () => {
+        running = !running;
+        controls.autoRotate = running;
+        rotationButton.setAttribute('aria-pressed', running ? 'true' : 'false');
+        rotationButton.textContent = running ? 'Pause rotation' : 'Play rotation';
+      });
+    }
+
+    scene.add(new THREE.HemisphereLight(0xfff4e4, 0xd9c2a8, 0.6));
+    const key = new THREE.DirectionalLight(0xffffff, 1.7);
+    key.position.set(3.6, 6.4, 4.2);
+    key.castShadow = true;
+    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.camera.left = -3;
+    key.shadow.camera.right = 3;
+    key.shadow.camera.top = 6;
+    key.shadow.camera.bottom = 0;
+    key.shadow.bias = -0.0008;
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.35);
+    fill.position.set(-4.2, 3.2, 2.4);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffb37a, 0.85);
+    rim.position.set(-1.2, 4.4, -5.2);
+    scene.add(rim);
+
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(2.3, 48),
+      new THREE.MeshStandardMaterial({ color: '#f2dfc4', roughness: 0.95 }),
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    const bodyMat = new THREE.MeshPhysicalMaterial({
+      color: '#c8b193',
+      roughness: 0.55,
+      metalness: 0,
+      clearcoat: 0.25,
+      clearcoatRoughness: 0.55,
+      sheen: 0.4,
+      sheenColor: new THREE.Color('#ffe6c8'),
+    });
+    const muscleMatBase = {
+      roughness: 0.42,
+      metalness: 0,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.5,
+      sheen: 0.3,
+      sheenColor: new THREE.Color('#ffd9b8'),
+    };
+
+    const figure = new THREE.Group();
+    scene.add(figure);
+    const buildShape = (shape, mirrored, material) => {
+      const at = shape.at;
+      let geometry;
+      if (shape.kind === 'sphere') geometry = new THREE.SphereGeometry(shape.radius, 28, 20);
+      else if (shape.kind === 'capsule') geometry = new THREE.CapsuleGeometry(shape.radius, shape.length, 6, 18);
+      else if (shape.kind === 'box') geometry = new THREE.BoxGeometry(shape.size[0], shape.size[1], shape.size[2]);
+      else {
+        const points = shape.profile.map((point) => new THREE.Vector2(point[0], point[1]));
+        const top = shape.profile[shape.profile.length - 1];
+        points.push(new THREE.Vector2(0, top[1] + 0.03));
+        geometry = new THREE.LatheGeometry(points, 44);
+      }
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(mirrored ? -at[0] : at[0], at[1], at[2]);
+      if (shape.scale !== undefined) mesh.scale.set(shape.scale[0], shape.scale[1], shape.scale[2]);
+      if (shape.scaleZ !== undefined) mesh.scale.z = shape.scaleZ;
+      if (shape.tilt !== undefined) mesh.rotation.z = (mirrored ? -1 : 1) * shape.tilt * Math.PI / 180;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    };
+    for (const part of RIG.body) {
+      figure.add(buildShape(part.shape, false, bodyMat));
+      if (part.mirror) figure.add(buildShape(part.shape, true, bodyMat));
+    }
+
+    const muscleGroups = new Map();
+    const muscleMeshes = [];
+    for (const muscle of RIG.muscles) {
+      const material = new THREE.MeshPhysicalMaterial({ ...muscleMatBase, color: '#cfa173' });
+      const group = new THREE.Group();
+      group.userData.muscleId = muscle.id;
+      const addShapes = (mirrored) => {
+        for (const shape of muscle.shapes) {
+          const mesh = buildShape(shape, mirrored, material);
+          mesh.userData.muscleId = muscle.id;
+          group.add(mesh);
+          muscleMeshes.push(mesh);
+        }
+      };
+      addShapes(false);
+      if (muscle.mirror) addShapes(true);
+      figure.add(group);
+      muscleGroups.set(muscle.id, { group, material });
+    }
+
+    let hoveredId = null;
+    const syncMuscle = (id, tag) => {
+      const entry = muscleGroups.get(id);
+      if (entry === undefined) return;
+      const heat = HEAT[id];
+      const selected = bridge.has(id);
+      const warning = heat !== undefined && heat.dashed === true;
+      const color = tag !== null && heat !== undefined ? heat.fill : selected ? '#ff5a1f' : '#cfa173';
+      entry.material.color.set(color);
+      if (selected) {
+        entry.material.emissive.set('#ff5a1f');
+        entry.material.emissiveIntensity = 0.4;
+      } else if (warning) {
+        entry.material.emissive.set('#c03a2b');
+        entry.material.emissiveIntensity = 0.32;
+      } else if (id === hoveredId) {
+        entry.material.emissive.set('#ff5a1f');
+        entry.material.emissiveIntensity = 0.18;
+      } else {
+        entry.material.emissive.set('#000000');
+        entry.material.emissiveIntensity = 0;
+      }
+    };
+    window.__muscleViewer = { syncMuscle };
+    for (const id of Object.keys(NAMES)) syncMuscle(id, bridge.tagOf(id) ?? null);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const pick = (event) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObjects(muscleMeshes, false);
+      return hits.length > 0 ? hits[0].object.userData.muscleId : null;
+    };
+    let downAt = null;
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+      downAt = { x: event.clientX, y: event.clientY };
+    });
+    renderer.domElement.addEventListener('pointerup', (event) => {
+      if (downAt === null) return;
+      const moved = Math.abs(event.clientX - downAt.x) + Math.abs(event.clientY - downAt.y);
+      downAt = null;
+      if (moved > 7) return;
+      const id = pick(event);
+      if (id === null || id === undefined) return;
+      bridge.toggle(id);
+      tooltip.hidden = true;
+    });
+    let moveAt = 0;
+    renderer.domElement.addEventListener('pointermove', (event) => {
+      const now = Date.now();
+      if (now - moveAt < 60) return;
+      moveAt = now;
+      const id = pick(event);
+      if (id === hoveredId) {
+        if (id !== null && id !== undefined) positionTip(event);
+        return;
+      }
+      const previous = hoveredId;
+      hoveredId = id === undefined ? null : id;
+      if (previous !== null) syncMuscle(previous, bridge.tagOf(previous) ?? null);
+      if (hoveredId === null) {
+        tooltip.hidden = true;
+        renderer.domElement.style.cursor = 'grab';
+        return;
+      }
+      syncMuscle(hoveredId, bridge.tagOf(hoveredId) ?? null);
+      renderer.domElement.style.cursor = 'pointer';
+      const tag = bridge.tagOf(hoveredId) ?? null;
+      const heat = HEAT[hoveredId];
+      const state = tag === null ? 'not tagged yet' : tag.soreness + '/10 · ' + labelFor(tag.soreness) + (heat !== undefined && heat.dashed === true ? ' · needs care' : '');
+      tooltip.textContent = NAMES[hoveredId] + ' — ' + state;
+      positionTip(event);
+      tooltip.hidden = false;
+    });
+    renderer.domElement.addEventListener('pointerleave', () => {
+      const previous = hoveredId;
+      hoveredId = null;
+      if (previous !== null) syncMuscle(previous, bridge.tagOf(previous) ?? null);
+      tooltip.hidden = true;
+    });
+    const positionTip = (event) => {
+      const rect = container.getBoundingClientRect();
+      const x = Math.min(event.clientX - rect.left + 14, rect.width - 170);
+      const y = event.clientY - rect.top + 14;
+      tooltip.style.left = Math.max(4, x) + 'px';
+      tooltip.style.top = Math.max(4, y) + 'px';
+    };
+
+    // Front, Back and Reset tween the camera once around the figure, then hand control back.
+    let orbitTween = null;
+    const tweenTo = (azimuth) => {
+      const offset = camera.position.clone().sub(controls.target);
+      const spherical = new THREE.Spherical().setFromVector3(offset);
+      let from = spherical.theta;
+      let to = azimuth;
+      while (to - from > Math.PI) to -= Math.PI * 2;
+      while (to - from < -Math.PI) to += Math.PI * 2;
+      orbitTween = { fromTheta: from, toTheta: to, fromPhi: spherical.phi, toPhi: defaultView.polar, fromR: spherical.radius, toR: defaultView.radius, at: 0 };
+    };
+    const front = document.getElementById('viewer-front');
+    const back = document.getElementById('viewer-back');
+    const reset = document.getElementById('viewer-reset');
+    if (front !== null) front.addEventListener('click', () => tweenTo(0));
+    if (back !== null) back.addEventListener('click', () => tweenTo(Math.PI));
+    if (reset !== null) reset.addEventListener('click', () => tweenTo(defaultView.azimuth));
+
+    const clock = new THREE.Clock();
+    const animate = () => {
+      requestAnimationFrame(animate);
+      if (document.hidden) return;
+      const elapsed = clock.getElapsedTime();
+      if (orbitTween !== null) {
+        orbitTween.at = Math.min(1, orbitTween.at + 0.035);
+        const eased = orbitTween.at * orbitTween.at * (3 - 2 * orbitTween.at);
+        const theta = orbitTween.fromTheta + (orbitTween.toTheta - orbitTween.fromTheta) * eased;
+        const phi = orbitTween.fromPhi + (orbitTween.toPhi - orbitTween.fromPhi) * eased;
+        const radius = orbitTween.fromR + (orbitTween.toR - orbitTween.fromR) * eased;
+        setCamera(radius, phi, theta);
+        controls.autoRotate = false;
+        if (orbitTween.at >= 1) {
+          orbitTween = null;
+          controls.autoRotate = running;
+        }
+      } else if (running) {
+        const breathe = 1 + Math.sin(elapsed * 1.7) * 0.008;
+        figure.scale.set(breathe, 1, breathe);
+        for (const [id, heat] of Object.entries(HEAT)) {
+          if (heat.dashed !== true) continue;
+          const entry = muscleGroups.get(id);
+          if (entry === undefined || bridge.has(id)) continue;
+          entry.material.emissiveIntensity = 0.24 + Math.sin(elapsed * 2.6) * 0.14;
+        }
+        controls.update();
+      } else {
+        controls.update();
+      }
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const resize = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width === 0 || height === 0) return;
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+    };
+    if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(container);
+    else window.addEventListener('resize', resize);
+    resize();
+    // A DOM marker the fixture screenshot and the browser check can assert: the 3D viewer really started.
+    container.dataset.viewerReady = '1';
   })();
   </script>`;
 }
@@ -745,7 +1099,8 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps): 
     ${readingSections}
     ${historySection(input.history, input.dayCheckIn)}
     ${safetySection()}
-    ${muscleScript(input)}`;
+    ${muscleScript(input)}
+    ${muscleViewerScript(input)}`;
   return deps.layout("Muscles", body, input.user, "muscle");
 }
 

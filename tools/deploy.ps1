@@ -137,8 +137,8 @@ try {
         throw 'The deployed stylesheet does not contain the muscle-tab styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=20') {
-        throw 'The deployed login page does not reference app.css?v=20.'
+    if ($loginText -notmatch 'app\.css\?v=21') {
+        throw 'The deployed login page does not reference app.css?v=21.'
     }
 
     $gatewayText = [string]$gateway.Content
