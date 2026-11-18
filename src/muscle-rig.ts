@@ -30,7 +30,6 @@ export type RigShape =
       kind: "box";
       at: readonly [number, number, number];
       size: readonly [number, number, number];
-      round?: number;
       tilt?: number;
     }
   | {
@@ -105,9 +104,9 @@ export const MUSCLE_RIG: readonly RigMuscle[] = [
     muscleId: "abs",
     mirror: false,
     shapes: [
-      { kind: "box", at: [0, 3.75, 0.17], size: [0.26, 0.13, 0.14], round: 0.04 },
-      { kind: "box", at: [0, 3.57, 0.17], size: [0.26, 0.13, 0.14], round: 0.04 },
-      { kind: "box", at: [0, 3.39, 0.17], size: [0.26, 0.13, 0.14], round: 0.04 },
+      { kind: "sphere", at: [0, 3.75, 0.17], radius: 0.13, scale: [1, 0.5, 0.42] },
+      { kind: "sphere", at: [0, 3.57, 0.17], radius: 0.13, scale: [1, 0.5, 0.42] },
+      { kind: "sphere", at: [0, 3.39, 0.17], radius: 0.13, scale: [1, 0.5, 0.42] },
     ],
   },
   { muscleId: "obliques", mirror: true, shapes: [{ kind: "capsule", at: [-0.27, 3.5, 0.12], radius: 0.06, length: 0.34, tilt: 6 }] },

@@ -330,8 +330,23 @@ function formSection(input: MusclePageInput): string {
       </div>
       <div class="muscle-workspace">
         <div class="muscle-map-col">
-          <div class="muscle-figures">${figures}</div>
+          <div class="muscle-viewer-wrap">
+            <div id="muscle-viewer" class="muscle-viewer" aria-label="3D muscle figure. Drag to rotate, scroll or pinch to zoom, click a muscle to select it."></div>
+            <div class="viewer-controls">
+              <button type="button" class="chip" id="viewer-rotation" aria-pressed="true">Pause rotation</button>
+              <button type="button" class="chip" id="viewer-front">Front</button>
+              <button type="button" class="chip" id="viewer-back">Back</button>
+              <button type="button" class="chip" id="viewer-reset">Reset</button>
+            </div>
+            <div id="viewer-tooltip" class="viewer-tooltip" role="status" hidden></div>
+            <p class="muted small muscle-viewer-note">Drag to rotate · scroll or pinch to zoom · click a muscle to tag it. The figure turns slowly while you decide; <strong>Pause</strong> holds it still. A recent check-in paints the heat you see on the muscles.</p>
+          </div>
           ${renderMuscleLegend()}
+          <details class="muscle-2d-fallback" id="muscle-2d">
+            <summary>Flat figure (no 3D needed) · 平面圖</summary>
+            <p class="muted small">The same muscles front and back. This view works without JavaScript or WebGL, and its regions are plain buttons for keyboard users who prefer them.</p>
+            <div class="muscle-figures">${figures}</div>
+          </details>
         </div>
         <div class="muscle-editor-col">
           <div id="muscle-tray" class="muscle-tray" aria-label="Selected muscles"></div>
