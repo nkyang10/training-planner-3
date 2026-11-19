@@ -10,7 +10,6 @@ import {
   isMuscleConditionKey,
   isMuscleId,
   musclesForRun,
-  musclesForView,
   parseMuscleTagsJson,
   readinessForCheckIn,
   readMuscleTag,
@@ -24,7 +23,6 @@ import {
   type MuscleConditionKey,
   type MuscleTag,
 } from "../src/muscles";
-import { renderMuscleFigure } from "../src/muscle-map";
 import type { SessionKind } from "../src/types";
 
 const tag = (overrides: Partial<MuscleTag> = {}): MuscleTag => ({
@@ -70,53 +68,6 @@ describe("muscle catalog", () => {
     expect(isMuscleId("nose")).toBe(false);
     expect(isMuscleConditionKey("tight")).toBe(true);
     expect(isMuscleConditionKey("spicy")).toBe(false);
-  });
-
-  it("draws every front and back muscle on its declared view", () => {
-    for (const view of ["front", "back"] as const) {
-      const html = renderMuscleFigure(view, { viewLabel: `${view} view` });
-      for (const muscle of musclesForView(view)) {
-        expect(html).toContain(`data-muscle="${muscle.id}"`);
-      }
-      for (const muscle of MUSCLE_CATALOG.filter((entry) => entry.view !== view && entry.view !== "both")) {
-        expect(html).not.toContain(`data-muscle="${muscle.id}"`);
-      }
-    }
-  });
-
-  it("keeps every region inside the figure bounds and mirrors bilateral halves", () => {
-    for (const view of ["front", "back"] as const) {
-      const html = renderMuscleFigure(view, { viewLabel: `${view} view` });
-      expect(html).toContain('viewBox="0 0 230 470"');
-      const paths = [...html.matchAll(/<path d="([^"]+)"( transform="translate\(230 0\) scale\(-1 1\)")?>/g)];
-      let mirrored = 0;
-      for (const match of paths) {
-        const d = match[1] ?? "";
-        expect(d).not.toContain("NaN");
-        const numbers = d.match(/-?\d+(?:\.\d+)?/g) ?? [];
-        for (const raw of numbers) {
-          const value = Number(raw);
-          expect(value).toBeGreaterThanOrEqual(0);
-          expect(value).toBeLessThanOrEqual(470);
-        }
-        if ((match[2] ?? "").length > 0) mirrored += 1;
-      }
-      expect(mirrored).toBeGreaterThanOrEqual(9);
-    }
-  });
-
-  it("marks selected regions and carries state in the aria labels", () => {
-    const html = renderMuscleFigure("back", {
-      selected: ["calves"],
-      fills: { calves: { fill: sorenessFill(7), dashed: true } },
-      ariaLabels: { calves: "Calves, 7/10 sore to touch, needs care" },
-      viewLabel: "Back view",
-    });
-    expect(html).toContain('class="muscle-region selected" data-muscle="calves"');
-    expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-label="Calves, 7/10 sore to touch, needs care"');
-    expect(html).toContain('stroke-dasharray="5 4"');
-    expect(html).toContain(sorenessFill(7));
   });
 
   it("ramps the soreness fill from neutral to deep red", () => {

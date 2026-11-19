@@ -1921,7 +1921,7 @@ describe("muscle check-ins in the gateway", () => {
     style: { language: "auto", tone: "supportive" },
   });
 
-  it("puts the latest muscle check-in into every prompt", async () => {
+  it("puts today's computed muscle status into every prompt", async () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     seedCheckIn(handle);
@@ -1929,9 +1929,11 @@ describe("muscle check-ins in the gateway", () => {
     const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
     expect(response.status).toBe(200);
     expect(model.prompts).toHaveLength(1);
-    expect(model.prompts[0]).toContain("Muscle check-in (latest 2026-11-05,");
-    expect(model.prompts[0]).toContain("Calves 6/10 tight, left, eases with warm-up");
-    expect(model.prompts[0]).toContain("Quads 4/10");
+    expect(model.prompts[0]).toContain("Muscle status today (2026-11-05)");
+    expect(model.prompts[0]).toContain("2 muscles need attention");
+    expect(model.prompts[0]).toContain("Calves: 6/10 clear doms (reported on 2026-11-05) tight, left, eases with warm-up");
+    expect(model.prompts[0]).toContain("Quads: 4/10 noticeable (reported on 2026-11-05)");
+    expect(model.prompts[0]).toContain("Every other muscle is in perfect condition.");
     expect(model.prompts[0]).toContain("since Thursday's hills");
     expect(model.prompts[0]).toContain("1 check-in in the last 14 days");
     expect(model.prompts[0]).toContain("Sharp localized pain, swelling or numbness are not normal soreness");
@@ -1942,6 +1944,7 @@ describe("muscle check-ins in the gateway", () => {
     const { url } = await base(model.fetchImpl);
     model.answers.push(VALID);
     await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Hello" }] });
+    expect(model.prompts[0]).not.toContain("Muscle status today");
     expect(model.prompts[0]).not.toContain("Muscle check-in (latest");
   });
 

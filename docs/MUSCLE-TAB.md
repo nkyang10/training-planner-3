@@ -3,8 +3,10 @@
 **Status:** designed 2026-11-19, implemented in this slice. The Muscle tab is the runner-facing check-in surface:
 an interactive front/back muscle map where the runner tags how each muscle feels, a deterministic interpretation
 layer that classifies each tag (normal DOMS → watch → warning → urgent) with drill suggestions, and a coach layer
-that puts the same facts in the AI coach's prompt and answers questions about them. Research basis and citations
-are in §9.
+that puts the same facts in the AI coach's prompt and answers questions about them. A second pass (same day) adds
+the **status layer**: a check-in becomes a dated status period whose soreness is computed by time — perfect
+condition by default, auto-dismissing after a standard window unless the runner holds it (§3b). Research basis and
+citations are in §9.
 
 ## 1. Why
 
@@ -24,15 +26,17 @@ The muscle loop closes that gap with the same philosophy as the rest of the app:
 
 | Surface | What it adds |
 |---|---|
-| App bar | A third tab: **Plan / Training log / Muscles** |
-| `/muscle` | The Muscle tab: a 3D interactive figure (three.js) plus the flat-figure fallback, check-in form, heat, latest diagnosis, drills, coach knowledge, history |
-| `POST /muscle/checkin` | Stores one check-in (validated server-side) |
-| `/activity/<id>` | A **Muscles worked** card (primary/secondary) + "Check in these muscles" link |
+| App bar | A third tab: **Plan / Training log / Muscles** — plus a notification-style **attention badge** on the Muscles tab (the count of muscles in a special status, loaded from `/muscle/attention.json`) |
+| `/muscle` | The Muscle tab: the reusable **3D muscle plugin** (figure tab + list tab), the live **Muscle status** card with one-tap controls, check-in form, heat, latest diagnosis, drills, coach knowledge, history |
+| `POST /muscle/checkin` | Stores one check-in (validated server-side); the optional **Keep until I change it** box holds the reported levels |
+| `POST /muscle/status` | The one-tap status controls: `hold` / `release` / `resolve` for one muscle, `resolve-all` for everything |
+| `GET /muscle/attention.json` | The badge feed: `{ count, items }` for the app-bar badge script |
+| `/activity/<id>` | A **Muscles worked** card running the same 3D plugin in link mode (primary movers ember, helpers light, click a muscle to report it) with the live status of those muscles, the report already linked to the run, and the "Check in these muscles" deep link that auto-selects the run |
 | Run review card (new run synced / run logged) | A "Log muscle feel · 回報肌肉" link into `/muscle?activity=<id>` |
-| Calendar | A state-style chip when the latest check-in is at warning level ("Muscles · watch") |
-| Coach | `review-muscles` intent (comment-only), muscle facts in every prompt, per-muscle knowledge blocks |
+| Calendar | A state-style chip while muscles are in a special status ("Muscles · N sore", or the care labels at warning/urgent) |
+| Coach | `review-muscles` intent (comment-only), today's **computed** muscle status in every prompt, per-muscle knowledge blocks |
 | `/coach-states` | Reachable one-tap from a warning check-in: set `pain_injury` (or `medical_red_flag`) with prefilled note |
-| `/export.json` | Muscle check-ins are part of the runner's data bundle |
+| `/export.json` | Muscle check-ins and status controls are part of the runner's data bundle |
 | `/static/three.module.js`, `/static/orbit-controls.js` | Pinned three.js r170 builds (MIT), vendored in `src/vendor/` and served as static scripts behind an import map — no runtime npm dependency |
 
 ## 3. Data model
@@ -69,6 +73,38 @@ Storage follows the existing pattern: one table `muscle_checkins` with the full 
 mirrored filter columns (`user_id`, `day`, `created_at`) and an index on `(user_id, day)`. Check-ins are append-only;
 the map renders the latest one, history lists the rest.
 
+## 3b. The status layer: dated periods, time-computed soreness, hold and resolve
+
+A check-in says how a muscle felt *on a day*. The status layer turns that into what the app holds as true *today*.
+`src/muscle-status.ts` is the one source of truth; the muscle tab, the calendar chip, the attention badge and the
+coach prompt all read it.
+
+- **Perfect by default.** A muscle with no active period is in perfect condition. Nothing is assumed sore until
+  the runner reports it, and absence (not a zero row) is how perfection is stored.
+- **A period starts at the report.** The newest check-in mentioning a muscle starts its status on that check-in's
+  day: the reported level is the start level, its conditions and side carry through, and its linked run rides along.
+- **Soreness is computed from time.** `decayedSoreness(reported, elapsed)` holds the reported level through day 1
+  (DOMS peaks 24-72 h, so a same-day or next-morning report is already the peak), then falls linearly to 0 at
+  `MUSCLE_STATUS_WINDOW_DAYS = 10` — the standard auto-dismiss window. The period ends when the level rounds to 0
+  with no conditions left, or at the window's end, whichever comes first. No maintenance work: a forgotten report
+  dismisses itself.
+- **Hold constant.** A `hold` control suspends the decay: the level stays exactly as reported until the runner
+  changes it — the honest option for something that is not settling on its own. The check-in form offers the same
+  choice as one checkbox ("Keep these levels until I change them").
+- **All better.** A `resolve` control ends the period on the runner's claim, whatever the clock says; `resolve-all`
+  clears every active status in one tap.
+- **The last word wins.** Saving a check-in that mentions a muscle resets that muscle's control row (a survived
+  "resolved" is cleared, and the form's hold box decides the decay mode), so reporting is always current.
+- **Today's reading.** The deterministic interpretation (§6) is recomputed at the faded level, so guidance matches
+  the day: a 7/10 reported Monday reads "big response" Monday and "expected soreness" once time has taken it to 4.
+
+The stored state is deliberately tiny — one row per (runner, muscle) in `muscle_status_controls`
+(`{ userId, muscleId, hold, resolvedDay, updatedAt }`); everything else is derived from the append-only
+check-ins. The runner-facing surfaces: a **Muscle status** card at the top of the muscle tab (heat dot, today's
+level, the fade clock, and one-tap Update / Hold / All better per muscle); an **attention badge** with the count on
+the Muscles tab of the app bar (the same notification-icon pattern as the unread bell); the calendar chip; and
+per-muscle status chips on the activity detail, next to "Check in these muscles".
+
 ## 4. The muscle catalog
 
 20 clickable regions across a front and a back view (bilateral regions are one logical muscle with left/right
@@ -85,10 +121,20 @@ Each region carries coach knowledge: function, common issues, what soreness ther
 recovery guidance, and 2-4 concrete drills (mobility / activation / recovery) with dosage text (§6 of the research
 report).
 
-## 4b. The 3D figure
+## 4b. The 3D figure plugin (reusable, tabbed)
 
-The Muscle tab's primary view is an interactive **3D muscle figure built from real anatomy**, with a procedural
-fallback:
+The muscle figure is **a reusable plugin** (`src/muscle-viewer.ts`), not a muscle-tab private: one panel
+renderer, two hosts. The Muscle tab's check-in form embeds it in **bridge mode** — clicking a muscle toggles
+the host's selection state through `window.__muscleTabBridge` — and the activity detail's **Muscles worked**
+card embeds it in **link mode**, where clicking a muscle deep-links into a check-in on exactly that muscle
+(`/muscle?focus=<id>`). Both hosts paint the same way: server-computed region fills (today's status heat, or
+the run's worked footprint) ride into the script and tint the real muscle surfaces.
+
+The panel is **tabbed**: a **3D figure** tab and a **list** tab (the text representation). The muscle tab's
+list is the grouped checkbox list — the keyboard and no-JavaScript path; the worked card's list is the
+primary/helper chip list with a spoken summary. Without script both panels render stacked (the tab strip takes
+over only when script runs); without WebGL the script reveals the list and says why. The flat 2D SVG figure
+is retired: the figure is 3D, the text is the list.
 
 - **The real figure ships in the app.** BodyParts3D per-muscle and per-bone OBJ meshes (CC BY 4.0; attribution in
   `src/vendor/THREE-LICENSE.txt`), curated per catalog region, decimated for the browser and exported by Blender
@@ -98,22 +144,22 @@ fallback:
   [MUSCLE-ANATOMY-3D-RESEARCH.md](MUSCLE-ANATOMY-3D-RESEARCH.md).
 - **Interaction on the real meshes.** Hover raycasts and **recolors the muscle with the same ember as a
   click-select** (`#ff5a1f` colour plus emissive glow, so hovering and selecting read identically) while the
-  tooltip names it and its tag state. A trailing-edge re-pick lands the cursor's resting position — a glide that
-  stops between the 60 ms throttle windows still highlights the muscle under the still cursor — and hovering is
-  read-only (`bridge.peek`): it never creates a tag, so gliding across the figure no longer quietly selects the
-  muscles it crossed. Click or tap selects the catalog region (drag still orbits — a small movement threshold
-  separates the two); scroll or pinch zooms; **Pause rotation** stops the turntable and the subtle breathing;
-  Front / Back / Reset tween the camera. The flat figure mirrors the hover: a region brightens and takes an ember
-  edge. Bones stay visible but
-  unpickable. Lats has no BP3D part, so its 3D surface simply does not paint — the flat figure and the checkbox
-  list still carry it.
-- **The procedural rig is the fallback** (`src/muscle-rig.ts`, typed and test-held): if the asset or WebGL fails,
-  the viewer builds the stylized sculpt instead, so the runner always sees a working figure. The flat 2D figure
-  (in its "no 3D needed" details) remains the no-JavaScript and keyboard path; both 3D modes and the flat figure
-  share one selection state through the bridge (`window.__muscleTabBridge`).
+  tooltip names it and its state — the tag on the muscle tab, the role/level note on the worked card. A
+  trailing-edge re-pick lands the cursor's resting position — a glide that stops between the 60 ms throttle
+  windows still highlights the muscle under the still cursor — and hovering is read-only (`bridge.peek`): it
+  never creates a tag, so gliding across the figure no longer quietly selects the muscles it crossed. Click
+  or tap acts on the catalog region (drag still orbits — a small movement threshold separates the two); scroll
+  or pinch zooms; **Pause rotation** stops the turntable and the subtle breathing; Front / Back / Reset tween
+  the camera. Bones stay visible but unpickable. Lats has no BP3D part, so its 3D surface simply does not
+  paint — the list tabs still carry it.
+- **The procedural rig is the fallback** (`src/muscle-rig.ts`, typed and test-held): if the asset or WebGL
+  fails, the viewer builds the stylized sculpt instead and reveals the list tab, so the runner always has a
+  working surface. Both hosts share one selection state through the bridge (`window.__muscleTabBridge`) on
+  the muscle tab; the worked card has no selection state of its own.
 - **Rendering.** ACES filmic tone mapping, a warm key with soft shadows, cool fill, ember rim, shadow-catching
   ground; muscles read as an écorché deep red with clearcoat, bones ivory. Care-needed muscles pulse low red so
-  the flag never relies on hue alone; recent check-ins paint the heat ramp on the actual muscle surfaces.
+  the flag never relies on hue alone; the status heat (muscle tab) and the worked footprint (primary ember,
+  helpers light) paint on the actual muscle surfaces.
 - **Browser-verified.** The fixture harness loads the real app page over HTTP: the module graph and the 11 MB GLB
   resolve, `anatomy-ok` fires, the in-page canvas reports a ~111 KB rendered frame, and the captured screenshot
   ([docs/design/muscle-tab-demo.png](design/muscle-tab-demo.png)) pixel-verifies the écorché figure in the viewer
@@ -123,9 +169,11 @@ fallback:
 ## 5. The check-in flow
 
 1. **Day** (default today, backfillable 14 days) and an optional **linked activity** chosen from that day's runs.
-   Linking prefills the selection with the muscles that run worked.
-2. **Select muscles** on the map (click/tap or Enter/Space on a region; the full list below the map mirrors the
-   selection as checkboxes for keyboard and no-JS users).
+   Linking prefills the selection with the muscles that run worked — and the "Check in these muscles" deep link
+   auto-selects that run in the form; a run older than the 14-day window cannot be linked, so the form defaults
+   to today, still prefills its muscles, and says so instead of dropping the run silently.
+2. **Select muscles** on the 3D figure (click/tap), or in the plugin's **list tab** — the grouped checkbox list
+   that mirrors the selection for keyboard and no-JS users.
 3. **Tag each selected muscle**: a 0-10 soreness slider with anchored wording
    (0 nothing · 3 mild · 5 noticeable · 7 sore to touch · 9-10 severe), condition chips
    (tight / cramp / fatigued / dull ache / sharp pain / swelling / numbness / old injury), a
@@ -176,17 +224,22 @@ hill/trail/gym/cycle/swim runs:
 | `cross` with gym/strength/weights | `quads`, `glutes`, `chest`, `lats`, `abs` | `delts`, `hamstrings`, `triceps`, `biceps`, `forearms` |
 | `cross` otherwise | `quads`, `glutes`, `abs`, `calves` | — |
 
-Rendered as: a **Muscles worked** card on the activity detail (primary bold, secondary muted) with a
-"Check in these muscles" deep link; a row in the Muscle tab's "From your training" section; and the prefill
-source for `?activity=<id>`.
+Rendered as: a **Muscles worked** card on the activity detail running the reusable 3D muscle plugin in link
+mode — primary movers ember, helpers light, today's status heat painting on top, click a muscle to jump into
+a check-in on it — with the worked list tab (primary/helper chips plus a spoken summary) and a
+"Check in these muscles" deep link that auto-selects the run; a row in the Muscle tab's "From your training"
+section; and the prefill source for `?activity=<id>`.
 
 ## 8. The coach layer
 
-- **Facts in every prompt.** `muscleFeedback` joins the coach facts: latest check-in (day, per-muscle soreness,
-  tags, side, readiness level) plus a 14-day history count. One new rule in `COACH_RULES` teaches the scale
-  anchors, the 24-72 h DOMS window, the sharp-pain-is-not-DOMS line and the referral duty. The coach never
-  diagnoses and proposes `pain_injury`/`medical_red_flag` states (existing sensitive-state machinery) rather
-  than acting on them silently.
+- **Facts in every prompt.** `muscleFacts` joins the coach facts: today's computed muscle status — one line per
+  active period (current level, fade story or held marker, expected clear day, tags, side, warm-up), "every other
+  muscle is in perfect condition", the latest check-in note, and an honest 14-day count. One new rule in
+  `COACH_RULES` teaches the scale anchors, the 24-72 h DOMS window, that fading levels mean improving (never
+  today's pain), that a held level means the runner says it is not settling, the sharp-pain-is-not-DOMS line and
+  the referral duty. The coach never diagnoses and proposes `pain_injury`/`medical_red_flag` states (existing
+  sensitive-state machinery) rather than acting on them silently, and invites a fresh check-in when advice
+  depends on how a muscle feels today.
 - **`review-muscles` intent.** The Muscle tab's "Ask coach about this check-in" button sends a conversational
   visible message plus a typed intent; the server builds a comment-only directive (mode `review`, focus
   `recovery`, source `muscle-tab`) with an optional `muscleId` reference so a per-muscle question ("my calves")
@@ -224,14 +277,15 @@ source for `?activity=<id>`.
 
 ## 10. Accessibility, fallback and honesty
 
-- Every region is an SVG group with `role="button"`, `tabindex`, and an `aria-label`; the muscle list below the
-  map is real checkboxes, so the form works fully without script. Severity uses a `<input type="range">` with a
-  visible anchor line, not color alone; the heat ramp is amber→ember→red (never green/red alone) and warning
-  regions also get a dashed outline (and a red pulse in 3D).
-- The 3D figure is a pointer-driven surface: orbit, zoom, click-select and the pause control all work with a
+- The plugin's list tab is real checkboxes (and, on the worked card, real links), so the form works fully
+  without script or WebGL; the tab strip itself is keyboard-operable (click or arrow keys) and the inactive
+  panel is only hidden when script runs. Severity uses a `<input type="range">` with a visible anchor line,
+  not color alone; the heat ramp is amber→ember→red (never green/red alone) and warning regions get a low red
+  pulse in 3D plus "needs care" in the tooltip text.
+- The 3D figure is a pointer-driven surface: orbit, zoom, click-act and the pause control all work with a
   mouse or touch, and its status is announced to the page (`viewerReady`, tooltip `role="status"`). Keyboard
-  users keep the flat figure's button regions and the checkbox list; `prefers-reduced-motion` pauses the
-  turntable before it starts.
+  users reach every muscle through the list tab's checkboxes; `prefers-reduced-motion` pauses the turntable
+  before it starts.
 - The no-JS path posts the same shape with shared severity/conditions; the script path posts per-muscle JSON.
 - Copy keeps the app's honesty: DOMS is normalized, "no soreness" is never called a wasted session, and urgent
   flags hand the runner to medical care instead of pretending the app can advise.
@@ -244,16 +298,26 @@ source for `?activity=<id>`.
   validation (ids, soreness bounds, condition keys, note caps, day backfill window), interpretation rules
   (each level, modifiers, urgent combinations), muscles-worked mapping (kind + title keywords + elevation), and
   prompt-facts rendering.
+- `test/muscle-status.test.ts`: the decay curve (peak hold, linear fall, window end, clamping), the status
+  computation (perfect by default, dated period, fade + recomputed reading, auto-dismiss, hold, resolve, newer
+  report wins, lingering conditions, linked run and side), the shared status line, and the coach prompt block
+  (fade story, held wording, honest 14-day count).
 - `test/muscle-rig.test.ts`: the 3D rig covers the catalog once, authors mirrored parts on the left, stays
   inside the figure's bounds, uses only the shape kinds the viewer builds, and the trunk lathe closes upward.
-- `test/store.test.ts`: append/list/get scoping by user.
-- `test/web-muscle.test.ts`: `/muscle` renders (viewer container, import map, controls, the flat-figure
-  fallback, catalog list, empty and seeded states), the vendored three.js builds serve with the right type,
-  `POST /muscle/checkin` accept/reject paths, `?activity=` prefill, history rows, warning chip on the calendar,
-  activity-detail muscles card, export bundle inclusion.
+- `test/store.test.ts`: append/list/get scoping by user; status controls upsert/replace, scoping and persistence.
+- `test/web-muscle.test.ts`: `/muscle` renders the tabbed plugin (tab strip, viewer container, import map,
+  controls, the checkbox list tab, the no-script hint, empty and seeded states), the vendored three.js builds
+  serve with the right type, `POST /muscle/checkin` accept/reject paths, `?activity=` prefill with the run
+  auto-selected (including the older-than-window case with its honest note) and `?focus=` prefill, history rows,
+  the status card with its one-tap forms, `POST /muscle/status` (hold, release, resolve, resolve-all, rejects),
+  `/muscle/attention.json`, the badge script, the calendar chip (sore count and care labels, dropped when
+  perfect), the activity detail's worked plugin in link mode (worked tints, deep-link base, list tab, status
+  chips, linked report), per-runner privacy, export bundle inclusion.
 - `test/directives.test.ts`: `review-muscles` parsing and directive build (comment-only, source, muscleId
   reference).
 - `test/coach.test.ts`: prompt facts block and referenced-muscle context.
+- `test/gateway.test.ts`: the gateway renders today's computed status into every prompt and omits the block
+  while every muscle is perfect.
 - Headless Chrome (fixture pipeline, not part of the suite): loads the served page and reports from inside it
   that the import map resolved, the modules loaded, the viewer reached `viewerReady=1` with a live canvas and
   WebGL context, then captures the demo screenshot.

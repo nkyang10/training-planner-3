@@ -649,16 +649,17 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .view-switch[data-active="muscle"] .view-thumb { transform: translateX(200%); }
 .muscle-workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; margin: 14px 0; }
 .muscle-map-col { min-width: 0; }
-.muscle-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.muscle-figure { width: 100%; height: auto; display: block; }
-.muscle-figure-static { max-width: 190px; }
-.muscle-body { fill: #f0e0cb; stroke: #e6d2b8; stroke-width: 1; }
-.muscle-region { cursor: pointer; }
-.muscle-region path { transition: filter .12s ease; }
-/* Hover mirrors the 3D viewer: the region visibly warms and takes an ember edge while the tooltip names it. */
-.muscle-region:hover path { filter: brightness(1.18); stroke: var(--ember); stroke-width: 2.4; }
-.muscle-region.selected path { stroke: var(--ember); stroke-width: 2.6; }
-.muscle-region:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+/* The reusable 3D muscle plugin's tabbed shell: a 3D figure tab and a list (text) tab. */
+.muscle-plugin { display: grid; gap: 8px; }
+.muscle-plugin-tabs { display: flex; gap: 4px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--wash); }
+.muscle-plugin-tab { border: 0; background: transparent; padding: 4px 14px; border-radius: 999px; font: inherit; font-size: 12.5px; font-weight: 800; color: var(--muted); cursor: pointer; }
+.muscle-plugin-tab[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 2px 8px rgba(27, 18, 12, .10); }
+.muscle-plugin-tab:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.muscle-plugin-panel[hidden] { display: none; }
+.muscle-list-tab { margin-top: 8px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; padding: 10px 14px; }
+.worked-list-tab { margin-top: 8px; display: grid; gap: 6px; }
+.muscle-list-chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.worked-list-tab .worked-chip { text-decoration: none; }
 .muscle-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; }
 .legend-swatch { display: inline-block; width: 20px; height: 12px; border-radius: 3px; border: 1px solid rgba(27, 18, 12, .18); }
 .legend-label { font-size: 11px; font-weight: 800; color: var(--muted); margin: 0 2px; }
@@ -694,8 +695,6 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .muscle-quick-conditions { display: flex; flex-wrap: wrap; gap: 6px; }
 .quick-condition { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
 .quick-condition input { width: auto; padding: 0; margin: 0; }
-.muscle-list-details { margin: 12px 0; border: 1px dashed var(--line); border-radius: 12px; background: #fff; padding: 10px 14px; }
-.muscle-list-details summary { font-weight: 800; font-size: 13px; cursor: pointer; }
 .muscle-list-groups { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .muscle-list-groups > li > strong { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .muscle-list-items { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
@@ -748,11 +747,30 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .worked-chip.primary { border-color: var(--ember-deep); color: var(--ember-text); background: #fff7f1; font-weight: 800; }
 .worked-chip.secondary { border-color: #ecd9b8; color: #7a6455; background: #fffdf8; }
 .muscles-worked-card { margin-bottom: 16px; }
-.worked-pair { display: flex; flex-wrap: wrap; gap: 12px; margin: 10px 0 6px; }
-.worked-pair .muscle-figure { max-width: 200px; }
-.worked-pair-note { margin: 0; }
 .muscle-safety-list { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; color: var(--ink-2); font-size: 13px; line-height: 1.45; }
 .muscle-calendar-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
+/* The muscle status layer: the app-bar badge, the live status card and its one-tap controls. */
+.view-badge { position: absolute; top: -5px; right: -4px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 10.5px; font-weight: 800; line-height: 17px; text-align: center; pointer-events: none; box-shadow: 0 1px 3px rgba(27, 18, 12, .25); }
+.attention-badge { display: inline-block; vertical-align: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
+.muscle-attention-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
+.muscle-status-card { margin-bottom: 16px; }
+.muscle-status-clear { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 0; }
+.muscle-status-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.muscle-status-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--wash); }
+.muscle-attention-dot { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 4px; border-radius: 999px; border: 1px solid rgba(27, 18, 12, .18); }
+.muscle-status-main { flex: 1 1 260px; display: grid; gap: 4px; min-width: 0; }
+.muscle-status-main p { margin: 0; }
+.muscle-status-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
+.muscle-status-actions .chip { text-decoration: none; background: #fff; white-space: nowrap; }
+.status-action-form { display: inline-flex; margin: 0; }
+.status-action { cursor: pointer; }
+.status-action:hover { border-color: var(--ember); color: var(--ember-text); }
+.status-allbetter-form { margin: 0; }
+.quick-hold { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 13px; }
+.quick-hold input { width: auto; padding: 0; margin: 0; }
+.muscle-worked-status-row { margin: 8px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.muscle-worked-status { display: inline-flex; align-items: center; gap: 5px; text-decoration: none; background: #fff; text-transform: none; letter-spacing: 0; font-weight: 700; }
+.muscle-worked-status .muscle-attention-dot { width: 10px; height: 10px; margin-top: 0; }
 .muscle-form { display: grid; gap: 12px; }
 .muscle-form-row { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
 .muscle-form-row label { font-size: 13px; }
@@ -761,21 +779,19 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 /* The 3D muscle viewer: a physically rendered figure the runner can orbit, pause and click. */
 .muscle-viewer-wrap { position: relative; display: grid; gap: 8px; }
 .muscle-viewer { position: relative; height: 460px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: radial-gradient(120% 90% at 50% 0%, #fffdf7 0%, #fbf1e3 55%, #f6e6cd 100%); box-shadow: var(--shadow); touch-action: none; }
+.muscle-viewer.compact { height: 340px; }
 .muscle-viewer canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.muscle-viewer-hint { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; padding: 20px; text-align: center; }
 .muscle-viewer-failed { display: grid; place-items: center; padding: 20px; text-align: center; color: var(--muted); font-size: 13px; }
 .viewer-controls { display: flex; flex-wrap: wrap; gap: 6px; }
 .viewer-controls .chip { cursor: pointer; background: #fff; }
 .viewer-controls .chip[aria-pressed="true"] { border-color: var(--ember); color: var(--ember-text); }
 .viewer-tooltip { position: absolute; z-index: 4; max-width: 210px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255, 255, 255, .95); box-shadow: var(--shadow); font-size: 12px; font-weight: 700; pointer-events: none; }
 .muscle-viewer-note { margin: 0; }
-.muscle-2d-fallback { margin-top: 10px; border: 1px dashed var(--line); border-radius: 12px; background: #fff; padding: 8px 12px; }
-.muscle-2d-fallback summary { font-weight: 800; font-size: 13px; cursor: pointer; color: var(--muted); }
-.muscle-2d-fallback[open] summary { color: var(--ink); }
-.muscle-2d-fallback .muscle-figures { margin-top: 8px; }
 @media (max-width: 780px) {
   .muscle-workspace { grid-template-columns: 1fr; }
-  .muscle-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .muscle-viewer { height: 380px; }
+  .muscle-viewer.compact { height: 300px; }
 }
 @media (max-width: 640px) {
   .muscle-ed-soreness { grid-template-columns: auto minmax(0, 1fr); }

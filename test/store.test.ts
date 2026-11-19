@@ -18,6 +18,7 @@ import type {
   Memory,
   Message,
   MuscleCheckIn,
+  MuscleStatusControl,
   TrainingSession,
   UserProfile,
 } from "../src/types";
@@ -1013,6 +1014,45 @@ describe("muscle check-ins", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]?.muscles[0]?.muscleId).toBe("calves");
     expect(rows[0]?.muscles[1]?.soreness).toBe(2);
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+});
+
+describe("muscle status controls", () => {
+  const control = (userId: string, muscleId: string, hold: boolean, resolvedDay: string | null): MuscleStatusControl => ({
+    userId,
+    muscleId,
+    hold,
+    resolvedDay,
+    updatedAt: "2026-11-05T08:00:00.000Z",
+  });
+
+  it("upserts one row per muscle and replaces it without crossing runners", () => {
+    const { store, close } = memoryStore();
+    store.upsertMuscleStatusControl(control("u1", "calves", true, null));
+    store.upsertMuscleStatusControl(control("u1", "calves", false, "2026-11-05"));
+    store.upsertMuscleStatusControl(control("u1", "quads", false, null));
+    store.upsertMuscleStatusControl(control("u2", "calves", true, null));
+    expect(store.listMuscleStatusControls("u1")).toHaveLength(2);
+    const calves = store.listMuscleStatusControls("u1").find((row) => row.muscleId === "calves");
+    expect(calves).toMatchObject({ userId: "u1", hold: false, resolvedDay: "2026-11-05" });
+    const other = store.listMuscleStatusControls("u2");
+    expect(other).toHaveLength(1);
+    expect(other[0]?.hold).toBe(true);
+    close();
+  });
+
+  it("keeps status controls across a reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "poc3-muscle-controls-"));
+    const dbPath = join(directory, "controls.sqlite");
+    const handle = createStore(`sqlite:${dbPath}`);
+    handle.store.upsertMuscleStatusControl(control("u1", "calves", true, null));
+    handle.close();
+    const reopened = createStore(`sqlite:${dbPath}`);
+    const rows = reopened.store.listMuscleStatusControls("u1");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ muscleId: "calves", hold: true, resolvedDay: null });
     reopened.close();
     rmSync(directory, { recursive: true, force: true });
   });

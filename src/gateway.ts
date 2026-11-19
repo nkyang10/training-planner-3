@@ -26,7 +26,8 @@ import {
 } from "./coach";
 import { applyRevert } from "./history";
 import { directiveHash, parseCoachDirective } from "./directives";
-import { isMuscleId, referencedMuscleContext, renderMuscleFactsForPrompt } from "./muscles";
+import { isMuscleId, referencedMuscleContext } from "./muscles";
+import { computeMuscleStatuses, renderMuscleStatusFactsForPrompt } from "./muscle-status";
 import {
   applyStateProposals,
   refreshCoachStates,
@@ -910,10 +911,19 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
       const history = options.store.listMessages(userId, 20);
       const recentChanges = options.store.listChangeSets(userId, 10);
-      // The runner's muscle check-ins: the latest tags ride in every prompt, and a review-muscles directive
-      // zooms in on one muscle's knowledge and history.
-      const muscleCheckIns = options.store.listMuscleCheckIns(userId, 14);
-      const muscleFacts = renderMuscleFactsForPrompt(muscleCheckIns[0] ?? null, muscleCheckIns.length);
+      // The runner's muscle status: check-ins become dated periods, their levels fade with time unless held,
+      // and today's computed state rides in every prompt. A review-muscles directive still zooms in on one
+      // muscle's knowledge and history.
+      const muscleCheckIns = options.store.listMuscleCheckIns(userId, 40);
+      const muscleFacts = renderMuscleStatusFactsForPrompt({
+        statuses: computeMuscleStatuses({
+          checkIns: muscleCheckIns,
+          controls: options.store.listMuscleStatusControls(userId),
+          today,
+        }),
+        checkIns: muscleCheckIns,
+        today,
+      });
       const referencedMuscleId = directive?.references?.muscleId;
       const referencedMuscle =
         referencedMuscleId !== undefined && isMuscleId(referencedMuscleId)

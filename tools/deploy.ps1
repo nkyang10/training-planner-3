@@ -57,12 +57,36 @@ function Get-ListeningProcessIds {
     return @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
 }
 
+# A live process counts as ours when its command line names this app, or — when the command line cannot be read
+# (detached launchers such as Task Scheduler query Win32_Process from a context that returns it empty) — when
+# the pid recorded at the last deploy sits in its ancestry. Anything else is refused.
+function Test-IsThisApp {
+    param([int]$ProcessId)
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    if ($null -eq $process) { return $false }
+    $commandLine = [string]$process.CommandLine
+    if ($commandLine -match 'src[\\/]index\.ts') { return $true }
+    $recorded = 0
+    if (Test-Path $pidFile) {
+        $raw = (Get-Content -Raw $pidFile -ErrorAction SilentlyContinue)
+        if ($raw) { [int]::TryParse($raw.Trim(), [ref]$recorded) | Out-Null }
+    }
+    if ($recorded -le 0) { return $false }
+    $cursor = $process
+    for ($depth = 0; $depth -lt 12 -and $null -ne $cursor; $depth++) {
+        if ([int]$cursor.ProcessId -eq $recorded) { return $true }
+        $parentId = [int]$cursor.ParentProcessId
+        if ($parentId -le 0) { break }
+        $cursor = Get-CimInstance Win32_Process -Filter "ProcessId = $parentId" -ErrorAction SilentlyContinue
+    }
+    return $false
+}
+
 $oldIds = @(Get-ListeningProcessIds)
 foreach ($processId in $oldIds) {
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
-    if ($null -eq $process) { continue }
-    $commandLine = [string]$process.CommandLine
-    if ($commandLine -notmatch 'src[\\/]index\.ts') {
+    if (-not (Test-IsThisApp $processId)) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
+        $commandLine = [string]$process.CommandLine
         throw "Port $WebPort/$GatewayPort is held by an unrelated process $processId ($commandLine); refusing to stop it."
     }
     Write-Host "Stopping old POC3 process $processId..."
@@ -133,12 +157,12 @@ try {
     if ($cssText -notmatch '\.account-menu' -or $cssText -notmatch '\.account-item') {
         throw 'The deployed stylesheet does not contain the account-menu styles.'
     }
-    if ($cssText -notmatch '\.muscle-region' -or $cssText -notmatch '\.muscle-editor' -or $cssText -notmatch '\.muscle-figure') {
-        throw 'The deployed stylesheet does not contain the muscle-tab styles.'
+    if ($cssText -notmatch '\.muscle-plugin-tabs' -or $cssText -notmatch '\.muscle-viewer\.compact' -or $cssText -notmatch '\.muscle-editor') {
+        throw 'The deployed stylesheet does not contain the muscle plugin styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=22') {
-        throw 'The deployed login page does not reference app.css?v=22.'
+    if ($loginText -notmatch 'app\.css\?v=24') {
+        throw 'The deployed login page does not reference app.css?v=24.'
     }
 
     $gatewayText = [string]$gateway.Content

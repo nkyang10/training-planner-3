@@ -114,7 +114,7 @@ const postCheckIn = (base: string, cookie: string, entries: Array<[string, strin
   });
 
 describe("the muscle tab page", () => {
-  it("requires an account and renders the tab, figures and the muscle list", async () => {
+  it("requires an account and renders the tabbed muscle plugin and the list", async () => {
     const { base, cookie } = await start();
     const anonymous = await fetch(`${base}/muscle`, { redirect: "manual" });
     expect(anonymous.status).toBe(303);
@@ -126,37 +126,44 @@ describe("the muscle tab page", () => {
     expect(html).toContain("Muscle check-in");
     expect(html).toContain('class="view-switch" data-active="muscle"');
     expect(html).toContain('href="/muscle" aria-current="page"');
-    expect(html).toContain('data-muscle="calves"');
-    expect(html).toContain('data-muscle="chest"');
-    expect(html).toContain('data-muscle="lower-back"');
+    // The reusable 3D muscle plugin: a tab strip over the figure and the text list.
+    expect(html).toContain('id="muscle-plugin"');
+    expect(html).toContain('role="tablist" aria-label="3D muscle figure or muscle list"');
+    expect(html).toContain('id="muscle-tab-figure"');
+    expect(html).toContain('id="muscle-tab-list"');
+    expect(html).toContain('id="muscle-viewer"');
     expect(html).toContain('name="muscleIds"');
+    expect(html).toContain('value="calves"');
+    expect(html).toContain('value="lower-back"');
     expect(html).toContain('id="muscle-json"');
     expect(html).toContain("Quick set");
     expect(html).toContain("No check-ins yet");
     expect(html).toContain("not a diagnosis");
     expect(html).toContain('action="/muscle/checkin"');
-    expect(html).toContain("app.css?v=22");
+    expect(html).toContain("app.css?v=24");
   });
 
-  it("ships the 3D viewer with an import map, controls and the flat figure as fallback", async () => {
+  it("ships the 3D viewer with an import map, controls and the list as the no-script path", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
     expect(html).toContain('<script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>');
     expect(html).toContain("import { OrbitControls } from '/static/orbit-controls.js'");
     expect(html).toContain('id="muscle-viewer"');
-    expect(html).toContain('id="viewer-rotation"');
+    expect(html).toContain('id="muscle-rotation"');
     expect(html).toContain("Pause rotation");
-    expect(html).toContain('id="viewer-front"');
-    expect(html).toContain('id="viewer-back"');
-    expect(html).toContain('id="viewer-reset"');
-    expect(html).toContain('id="viewer-tooltip"');
+    expect(html).toContain('id="muscle-front"');
+    expect(html).toContain('id="muscle-back"');
+    expect(html).toContain('id="muscle-reset"');
+    expect(html).toContain('id="muscle-tooltip"');
     // The bridge keeps both surfaces on one selection state.
     expect(html).toContain("window.__muscleTabBridge");
     expect(html).toContain("window.__muscleViewer");
     expect(html).toContain("__muscleViewer.syncMuscle");
-    // The 2D figure stays available without 3D or script.
-    expect(html).toContain('details class="muscle-2d-fallback" id="muscle-2d"');
-    expect(html).toContain('data-muscle="calves"');
+    // The flat figure is retired: the plugin's list tab is the text representation and the no-script path.
+    expect(html).not.toContain("muscle-2d-fallback");
+    expect(html).not.toContain("muscle-region");
+    expect(html).toContain("needs JavaScript and WebGL");
+    expect(html).toContain('id="muscle-list"');
     // The rig travels with the page so the viewer builds every catalog muscle.
     expect(html).toContain('"id":"calves"');
     expect(html).toContain('"kind":"lathe"');
@@ -218,10 +225,10 @@ describe("the muscle tab page", () => {
     expect(html).not.toContain("bridge.tagOf(");
     // The ready marker only fires after a figure is built, so captures can never fire early.
     expect(html).toContain("container.dataset.viewerReady = '1'");
-    // The flat figure mirrors the hover: warm brighten plus an ember edge.
+    // The plugin's tab strip carries the surface, and the warning heat pulses without relying on hue alone.
     const css = await (await fetch(`${base}/static/app.css`)).text();
-    expect(css).toContain(".muscle-region:hover path");
-    expect(css).toContain("brightness(1.18)");
+    expect(css).toContain(".muscle-plugin-tabs");
+    expect(css).toContain(".muscle-viewer.compact");
   });
 
   it("saves a shared no-script check-in and renders its reading, heat and drills", async () => {
@@ -244,8 +251,9 @@ describe("the muscle tab page", () => {
     expect(html).toContain("Calves");
     expect(html).toContain("6/10");
     expect(html).toContain("calves since the hills");
-    expect(html).toContain('data-muscle="calves" fill="#f5a257"');
-    expect(html).toContain('data-muscle="quads" fill="#f5a257"');
+    // The status heat rides in the plugin's REGIONS payload and paints on the 3D surfaces.
+    expect(html).toContain('"calves":{"fill":"#f5a257"');
+    expect(html).toContain('"quads":{"fill":"#f5a257"');
     expect(html).toContain("Suggested drills");
     expect(html).toContain("Slow double-leg calf raises");
     expect(html).toContain("review-muscles");
@@ -262,8 +270,8 @@ describe("the muscle tab page", () => {
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
     expect(html).toContain("7/10");
     expect(html).toContain("eases once you are moving");
-    expect(html).toContain('data-muscle="calves" fill="#f28034"');
-    expect(html).toContain('data-muscle="quads" fill="#fde8cf"');
+    expect(html).toContain('"calves":{"fill":"#f28034"');
+    expect(html).toContain('"quads":{"fill":"#fde8cf"');
   });
 
   it("rejects empty, future, too-old and unknown submissions with the right error code", async () => {
@@ -325,12 +333,12 @@ describe("the muscle tab page", () => {
     expect(html).toContain('name="key" value="pain_injury"');
     expect(html).toContain("Ask coach about my calves");
     expect(html).toContain("see a clinician");
-    expect(html).toContain('stroke-dasharray="5 4"');
-    expect(html).toContain('class="muscle-region" data-muscle="calves"');
+    // Needs-care muscles carry the dashed flag: the low red pulse never relies on hue alone.
+    expect(html).toContain('"calves":{"fill":"#fbd5a8","dashed":true');
 
     const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(calendar).toContain("muscle-calendar-chip");
-    expect(calendar).toContain("Muscles · watch");
+    expect(calendar).toContain("Muscles · needs care");
   });
 
   it("escalates the rhabdomyolysis pattern to the medical red-flag state", async () => {
@@ -354,17 +362,42 @@ describe("the muscle tab page", () => {
     });
     const html = await response.text();
     expect(html).toContain("Selected the muscles from that run");
-    // A tempo run puts the sprint machinery into the primary set.
-    expect(html).toContain('class="muscle-region selected" data-muscle="hip-flexors"');
+    // A tempo run puts the sprint machinery into the primary set, checked in the plugin's list tab.
+    expect(html).toContain('name="muscleIds" value="hip-flexors" checked');
+    expect(html).toContain('name="muscleIds" value="hamstrings" checked');
+    // The run itself is preselected in the "About which run?" select.
     expect(html).toContain('value="garmin:today-1" selected');
     expect(html).toContain("Morning tempo");
   });
 
-  it("shows the muscles a run worked on the activity detail and links back", async () => {
+  it("still prefills a run older than the check-in window and says so", async () => {
+    const { base, cookie, handle, user } = await start();
+    seedActivity(handle.store, user.userId, "garmin:ancient", "2026-10-15", "Ancient long run", 21);
+    const response = await fetch(`${base}/muscle?activity=${encodeURIComponent("garmin:ancient")}`, {
+      headers: { cookie },
+    });
+    const html = await response.text();
+    // The run cannot be linked (its day is outside the window), so the report is for today — but the muscles
+    // it worked are still selected, and the form says what happened instead of dropping the run silently.
+    expect(html).toContain("older than the 14-day check-in window");
+    expect(html).toContain('name="muscleIds" value="quads" checked');
+    expect(html).toContain('name="muscleIds" value="glutes" checked');
+    expect(html).toContain(`value="${TODAY}"`);
+    expect(html).not.toContain('value="garmin:ancient" selected');
+  });
+
+  it("shows the muscles a run worked on the activity detail in 3D and links back", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/activity/${encodeURIComponent("garmin:today-1")}`, { headers: { cookie } })).text();
     expect(html).toContain("Muscles worked");
-    expect(html).toContain("worked-pair");
+    // The same reusable 3D plugin, in link mode: click a muscle to report it, list tab for the text.
+    expect(html).toContain('id="worked-plugin"');
+    expect(html).toContain('id="worked-viewer"');
+    expect(html).toContain('class="muscle-viewer compact"');
+    expect(html).toContain('const MODE = "link"');
+    expect(html).toContain("location.href = LINK_HREF + encodeURIComponent(region)");
+    expect(html).toContain('"glutes":{"fill":"#f28034","note":"primary mover"');
+    expect(html).toContain("Worked list");
     expect(html).toContain(`href="/muscle?activity=${encodeURIComponent("garmin:today-1")}"`);
     expect(html).toContain("Glutes");
   });
@@ -401,9 +434,11 @@ describe("the muscle tab page", () => {
     const exportResponse = await fetch(`${base}/export.json`, { headers: { cookie } });
     const bundle = (await exportResponse.json()) as {
       muscleCheckIns: Array<{ userId: string; muscles: Array<{ muscleId: string; soreness: number }> }>;
+      muscleStatusControls: Array<{ userId: string; muscleId: string; hold: boolean }>;
     };
     expect(bundle.muscleCheckIns).toHaveLength(1);
     expect(bundle.muscleCheckIns[0]?.muscles[0]).toMatchObject({ muscleId: "calves", soreness: 6 });
+    expect(Array.isArray(bundle.muscleStatusControls)).toBe(true);
   });
 
   it("views a past day's check-in from the history row", async () => {
@@ -416,6 +451,176 @@ describe("the muscle tab page", () => {
     const viewed = await (await fetch(`${base}/muscle?day=2026-11-03`, { headers: { cookie } })).text();
     expect(viewed).toContain("Tue, 3 Nov 2026");
     expect(viewed).toContain("Hamstrings");
+  });
+});
+
+describe("the muscle status layer", () => {
+  const postStatus = (base: string, cookie: string, entries: Array<[string, string]>): Promise<Response> =>
+    fetch(`${base}/muscle/status`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/x-www-form-urlencoded" },
+      body: formBody(entries),
+      redirect: "manual",
+    });
+
+  const attention = (base: string, cookie: string): Promise<{ count: number; items: Array<{ muscleId: string; current: number; href: string; level: string; hold: boolean }> }> =>
+    fetch(`${base}/muscle/attention.json`, { headers: { cookie } }).then(
+      (response) =>
+        response.json() as Promise<{ count: number; items: Array<{ muscleId: string; current: number; href: string; level: string; hold: boolean }> }>,
+    );
+
+  it("starts a dated status from a check-in and shows the one-tap controls", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie } })).text();
+    expect(html).toContain("Check-in saved");
+    expect(html).toContain("Muscle status · 肌肉狀態");
+    expect(html).toContain('class="attention-badge"');
+    expect(html).toContain("1 muscle");
+    expect(html).toContain("fades on its own from here, expected clear by");
+    expect(html).toContain('action="/muscle/status"');
+    expect(html).toContain('name="action" value="hold"');
+    expect(html).toContain("Hold constant");
+    expect(html).toContain('name="action" value="resolve"');
+    expect(html).toContain("All better");
+    expect(html).toContain('href="/muscle?focus=calves#check-in"');
+    expect(html).toContain("Ask coach about this status");
+  });
+
+  it("claims all better and returns the muscle to perfect condition", async () => {
+    const { base, cookie, handle, user } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    const resolved = await postStatus(base, cookie, [["action", "resolve"], ["muscleId", "calves"]]);
+    expect(resolved.status).toBe(303);
+    expect(resolved.headers.get("location")).toBe("/muscle?saved=status");
+    const html = await (await fetch(`${base}/muscle?saved=status`, { headers: { cookie } })).text();
+    expect(html).toContain("Muscle status updated");
+    expect(html).toContain("All perfect");
+    expect(html).toContain("Every muscle is in perfect condition");
+    const controls = handle.store.listMuscleStatusControls(user.userId);
+    expect(controls.find((control) => control.muscleId === "calves")).toMatchObject({ resolvedDay: TODAY, hold: false });
+  });
+
+  it("holds a level constant, then lets it fade again", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    await postStatus(base, cookie, [["action", "hold"], ["muscleId", "calves"]]);
+    const held = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(held).toContain("Held constant since");
+    expect(held).toContain("it stays 7/10 until you change it");
+    expect(held).toContain('name="action" value="release"');
+    expect(held).toContain("Let it fade");
+    await postStatus(base, cookie, [["action", "release"], ["muscleId", "calves"]]);
+    const fading = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(fading).toContain("fades on its own from here, expected clear by");
+  });
+
+  it("resolves everything at once", async () => {
+    const { base, cookie, handle, user } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"], ["muscleIds", "quads"], ["soreness", "5"]]);
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(html).toContain("Everything's better");
+    const resolved = await postStatus(base, cookie, [["action", "resolve-all"]]);
+    expect(resolved.headers.get("location")).toBe("/muscle?saved=status");
+    const controls = handle.store.listMuscleStatusControls(user.userId);
+    expect(controls.filter((control) => control.resolvedDay === TODAY)).toHaveLength(2);
+    const cleared = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(cleared).toContain("All perfect");
+  });
+
+  it("keeps the hold choice from the check-in form", async () => {
+    const { base, cookie, handle, user } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "6"], ["hold", "1"]]);
+    const controls = handle.store.listMuscleStatusControls(user.userId);
+    expect(controls.find((control) => control.muscleId === "calves")).toMatchObject({ hold: true, resolvedDay: null });
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(html).toContain("Held constant since");
+  });
+
+  it("feeds the app-bar badge with the attention count and rows", async () => {
+    const { base, cookie } = await start();
+    expect((await attention(base, cookie)).count).toBe(0);
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    const feed = await attention(base, cookie);
+    expect(feed.count).toBe(1);
+    expect(feed.items[0]).toMatchObject({
+      muscleId: "calves",
+      current: 7,
+      level: "heavy",
+      hold: false,
+      href: "/muscle?focus=calves#check-in",
+    });
+    await postStatus(base, cookie, [["action", "resolve"], ["muscleId", "calves"]]);
+    expect((await attention(base, cookie)).count).toBe(0);
+  });
+
+  it("keeps a badge script on every page for signed-in runners", async () => {
+    const { base, cookie } = await start();
+    const calendar = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(calendar).toContain("/muscle/attention.json");
+    expect(calendar).toContain('view-badge');
+    const anonymous = await (await fetch(`${base}/login`)).text();
+    expect(anonymous).not.toContain("/muscle/attention.json");
+  });
+
+  it("counts the sore muscles on the calendar chip and drops it when perfect", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "5"]]);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Muscles · 1 sore");
+    await postStatus(base, cookie, [["action", "resolve"], ["muscleId", "calves"]]);
+    const cleared = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(cleared).not.toContain("muscle-calendar-chip");
+  });
+
+  it("carries today's status onto the activity detail with the linked report", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [
+      ["day", TODAY],
+      ["activityId", "garmin:today-1"],
+      ["muscleIds", "calves"],
+      ["soreness", "6"],
+    ]);
+    const html = await (await fetch(`${base}/activity/${encodeURIComponent("garmin:today-1")}`, { headers: { cookie } })).text();
+    expect(html).toContain("From these muscles now");
+    expect(html).toContain("Calves · 6/10");
+    expect(html).toContain('href="/muscle?focus=calves#check-in"');
+    expect(html).toContain("You reported after this run");
+    expect(html).toContain(`href="/muscle?day=${TODAY}"`);
+  });
+
+  it("opens the form focused on one muscle via ?focus=", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/muscle?focus=calves`, { headers: { cookie } })).text();
+    expect(html).toContain("Updating");
+    expect(html).toContain('name="muscleIds" value="calves" checked');
+    const unknown = await (await fetch(`${base}/muscle?focus=nose`, { headers: { cookie } })).text();
+    expect(unknown).toContain("All perfect");
+  });
+
+  it("rejects status posts with an unknown muscle or action", async () => {
+    const { base, cookie } = await start();
+    expect((await postStatus(base, cookie, [["action", "resolve"], ["muscleId", "nose"]])).headers.get("location")).toBe("/muscle?error=muscles");
+    expect((await postStatus(base, cookie, [["action", "shrink"], ["muscleId", "calves"]])).headers.get("location")).toBe("/muscle?error=conditions");
+  });
+
+  it("never leaks one runner's statuses to another", async () => {
+    const { base, cookie, auth } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    auth.signup({
+      username: "status_other",
+      password: PASSWORD,
+      displayName: "Other",
+      timezone: "Asia/Hong_Kong",
+      goal: null,
+    });
+    const otherCookie = cookieFrom(auth.login({ username: "status_other", password: PASSWORD }).cookie);
+    const feed = await attention(base, otherCookie);
+    expect(feed.count).toBe(0);
+    expect(feed.items).toHaveLength(0);
+    const otherHtml = await (await fetch(`${base}/muscle`, { headers: { cookie: otherCookie } })).text();
+    expect(otherHtml).toContain("All perfect");
+    expect(otherHtml).not.toContain("1 muscle");
   });
 });
 

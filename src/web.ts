@@ -36,7 +36,9 @@ import { failedGarminWorkout, mapGarminWorkout } from "./garmin-workout";
 import {
   buildSharedTags,
   isMuscleConditionKey,
+  isMuscleId,
   MAX_CHECKIN_NOTE_CHARS,
+  muscleShortName,
   musclesForRun,
   parseMuscleTagsJson,
   validateCheckInDay,
@@ -45,6 +47,7 @@ import {
   type MuscleSide,
   type MuscleWarmUp,
 } from "./muscles";
+import { computeMuscleStatuses } from "./muscle-status";
 import {
   muscleCalendarChip,
   musclesWorkedCard,
@@ -1675,6 +1678,36 @@ function renderNotificationScript(): string {
   </script>`;
 }
 
+/**
+ * The attention badge on the Muscles tab: how many muscles are in a special (non-perfect) status, loaded once
+ * per page the same way the notification bell loads its unread count. Server-rendered pages keep their honest
+ * no-script surface (the muscle tab and the calendar chip carry the same count), so this is pure awareness.
+ */
+function renderMuscleBadgeScript(): string {
+  return `<script>
+  (() => {
+    const tab = document.querySelector('.view-tab[href="/muscle"]');
+    if (tab === null) return;
+    fetch('/muscle/attention.json', { headers: { accept: 'application/json' } })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data === null || typeof data !== 'object') return;
+        const count = Math.max(0, Math.floor(Number(data.count) || 0));
+        if (count === 0) return;
+        const badge = document.createElement('span');
+        badge.className = 'view-badge';
+        badge.textContent = count > 9 ? '9+' : String(count);
+        badge.setAttribute('aria-hidden', 'true');
+        tab.append(badge);
+        tab.setAttribute('aria-label', 'Muscles — ' + count + (count === 1 ? ' muscle in a special status' : ' muscles in a special status'));
+      })
+      .catch(() => {
+        // Without the count the tab is still a working link.
+      });
+  })();
+  </script>`;
+}
+
 function renderGarminModal(savedKey: GarminKey | undefined, next: string, keyError: string | null): string {
   const replacing = savedKey !== undefined;
   return `<div class="modal" id="garmin-modal" hidden>
@@ -1825,11 +1858,13 @@ function layout(
   const bubble = user === undefined ? "" : renderChatBubble();
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   const accountScript = user === undefined ? "" : renderAccountMenuScript();
+  // The badge script only matters where the tab strip renders; "none" pages have no Muscles tab to badge.
+  const muscleBadgeScript = user === undefined || activeView === "none" ? "" : renderMuscleBadgeScript();
   const context = pageContext(title, user, activeView);
   const timezone = escapeHtml(safeTimeZone(user?.timezone));
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread))}</title><link rel="stylesheet" href="/static/app.css?v=22"></head>
-  <body data-site-name="${escapeHtml(SITE_NAME)}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<main>${flash}${body}</main>${bubble}${notificationScript}${accountScript}</body></html>`;
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread))}</title><link rel="stylesheet" href="/static/app.css?v=24"></head>
+  <body data-site-name="${escapeHtml(SITE_NAME)}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<main>${flash}${body}</main>${bubble}${notificationScript}${accountScript}${muscleBadgeScript}</body></html>`;
 }
 
 /** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
@@ -3402,6 +3437,13 @@ export function createWeb(options: WebOptions): WebApp {
           const dayCheckIn =
             viewedDay === null ? latest : (checkIns.find((checkIn) => checkIn.day === viewedDay) ?? null);
           const twoWeeksAgo = addDays(today, -14);
+          // The status layer: dated periods with time-decayed levels, the one source for the status card, the
+          // attention badge, the calendar chip and the coach prompt.
+          const statuses = computeMuscleStatuses({
+            checkIns,
+            controls: options.store.listMuscleStatusControls(user.userId),
+            today,
+          });
           const recentActivities = options.store
             .listActivities(user.userId, 40)
             .filter((activity) => activity.day >= twoWeeksAgo && activity.day <= today);
@@ -3423,6 +3465,10 @@ export function createWeb(options: WebOptions): WebApp {
           const prefillActivity =
             prefillId === null ? undefined : options.store.getActivity(user.userId, prefillId);
           const prefillRecent = prefillActivity !== undefined && prefillActivity.day >= twoWeeksAgo ? prefillActivity : undefined;
+          // A run older than the 14-day window cannot be linked (a check-in is about its own day), but its
+          // muscles still prefill: the form defaults to today and says so, so the "Check in these muscles"
+          // deep link never silently drops the run.
+          const prefillOld = prefillActivity !== undefined && prefillActivity.day < twoWeeksAgo ? prefillActivity : undefined;
           const formDay = prefillRecent !== undefined ? prefillRecent.day : today;
           const activityOptions: MuscleActivityOption[] = options.store
             .listActivities(user.userId, 60)
@@ -3432,15 +3478,35 @@ export function createWeb(options: WebOptions): WebApp {
               day: activity.day,
               label: `${activity.title}${activity.distanceKm === null ? "" : ` · ${activity.distanceKm} km`}`,
             }));
+          // The linked run must stay selectable even when the newest-60 window missed it.
+          if (prefillRecent !== undefined && !activityOptions.some((option) => option.activityId === prefillRecent.activityId)) {
+            activityOptions.push({
+              activityId: prefillRecent.activityId,
+              day: prefillRecent.day,
+              label: `${prefillRecent.title}${prefillRecent.distanceKm === null ? "" : ` · ${prefillRecent.distanceKm} km`}`,
+            });
+          }
+          // A ?focus= deep link opens the form on one muscle — the "Update" path from a status row.
+          const focusParam = url.searchParams.get("focus");
+          const focusMuscleId = focusParam !== null && isMuscleId(focusParam) ? focusParam : null;
           const prefillMuscleIds =
-            prefillRecent === undefined
-              ? []
-              : musclesForRun({
-                  title: prefillRecent.title,
-                  kind: runKind(prefillRecent),
-                  distanceKm: prefillRecent.distanceKm,
-                  elevationGainM: prefillRecent.elevationGainM ?? null,
-                }).primary;
+            focusMuscleId !== null
+              ? [focusMuscleId]
+              : prefillRecent !== undefined
+                ? musclesForRun({
+                    title: prefillRecent.title,
+                    kind: runKind(prefillRecent),
+                    distanceKm: prefillRecent.distanceKm,
+                    elevationGainM: prefillRecent.elevationGainM ?? null,
+                  }).primary
+                : prefillOld === undefined
+                  ? []
+                  : musclesForRun({
+                      title: prefillOld.title,
+                      kind: runKind(prefillOld),
+                      distanceKm: prefillOld.distanceKm,
+                      elevationGainM: prefillOld.elevationGainM ?? null,
+                    }).primary;
           sendHtml(
             response,
             200,
@@ -3451,9 +3517,13 @@ export function createWeb(options: WebOptions): WebApp {
                 earliestDay: twoWeeksAgo,
                 formDay,
                 saved: url.searchParams.get("saved") === "1",
+                statusSaved: url.searchParams.get("saved") === "status",
                 errorCode: url.searchParams.get("error"),
                 dayCheckIn,
                 history: checkIns,
+                statuses,
+                focusMuscleId,
+                oldRunId: prefillOld === undefined ? null : prefillOld.activityId,
                 trainingRows,
                 activityOptions,
                 prefillActivityId: prefillRecent === undefined ? null : prefillRecent.activityId,
@@ -3533,7 +3603,93 @@ export function createWeb(options: WebOptions): WebApp {
           createdAt: now(),
         };
         options.store.appendMuscleCheckIn(checkIn);
+        // The report restarts the status period for every muscle it mentions: the control row is reset (a
+        // survived "resolved" is cleared, and the optional hold-constant checkbox decides the decay mode).
+        const hold = form.get("hold") === "1";
+        const at = now();
+        for (const tag of checkIn.muscles) {
+          options.store.upsertMuscleStatusControl({
+            userId: user.userId,
+            muscleId: tag.muscleId,
+            hold,
+            resolvedDay: null,
+            updatedAt: at,
+          });
+        }
         redirect(response, "/muscle?saved=1");
+        return;
+      }
+
+      /**
+       * The one-tap status controls: hold a level constant, let it fade again, or claim "all better". The same
+       * period model as the check-in path — a newer report always resets these controls for its muscles.
+       */
+      if (url.pathname === "/muscle/status" && method === "POST") {
+        const form = await readForm(request);
+        const action = form.get("action") ?? "";
+        const at = now();
+        if (action === "resolve-all") {
+          const checkIns = options.store.listMuscleCheckIns(user.userId, 40);
+          const statuses = computeMuscleStatuses({
+            checkIns,
+            controls: options.store.listMuscleStatusControls(user.userId),
+            today,
+          });
+          for (const status of statuses) {
+            options.store.upsertMuscleStatusControl({
+              userId: user.userId,
+              muscleId: status.muscleId,
+              hold: false,
+              resolvedDay: today,
+              updatedAt: at,
+            });
+          }
+          redirect(response, "/muscle?saved=status");
+          return;
+        }
+        const muscleId = form.get("muscleId") ?? "";
+        if (!isMuscleId(muscleId)) {
+          redirect(response, "/muscle?error=muscles");
+          return;
+        }
+        if (action !== "resolve" && action !== "hold" && action !== "release") {
+          redirect(response, "/muscle?error=conditions");
+          return;
+        }
+        options.store.upsertMuscleStatusControl({
+          userId: user.userId,
+          muscleId,
+          hold: action === "hold",
+          resolvedDay: action === "resolve" ? today : null,
+          updatedAt: at,
+        });
+        redirect(response, "/muscle?saved=status");
+        return;
+      }
+
+      /** The attention feed the app-bar badge reads: the count of muscles in a special status, plus the rows. */
+      if (url.pathname === "/muscle/attention.json" && method === "GET") {
+        const checkIns = options.store.listMuscleCheckIns(user.userId, 40);
+        const statuses = computeMuscleStatuses({
+          checkIns,
+          controls: options.store.listMuscleStatusControls(user.userId),
+          today,
+        });
+        sendJson(
+          response,
+          200,
+          {
+            count: statuses.length,
+            items: statuses.map((status) => ({
+              muscleId: status.muscleId,
+              name: muscleShortName(status.muscleId),
+              current: status.current,
+              level: status.level,
+              hold: status.hold,
+              href: `/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in`,
+            })),
+          },
+        );
         return;
       }
 
@@ -4045,12 +4201,14 @@ export function createWeb(options: WebOptions): WebApp {
         const activeStates = sortCoachStates(options.store.getActiveCoachStates(user.userId, nowIso))
           .filter((state) => state.status === "active" && state.key !== "no_key")
           .slice(0, 3);
-        // A recent muscle check-in at warning level earns the same one-tap visibility as a coaching state.
-        const latestCheckIn = options.store.listMuscleCheckIns(user.userId, 1)[0];
-        const muscleChip =
-          latestCheckIn !== undefined && addDays(latestCheckIn.day, 3) >= today
-            ? (muscleCalendarChip(latestCheckIn) ?? "")
-            : "";
+        // The live muscle statuses earn the same one-tap visibility as a coaching state: the chip shows the
+        // count while muscles are in a special (non-perfect) status, and fades out with them.
+        const muscleStatuses = computeMuscleStatuses({
+          checkIns: options.store.listMuscleCheckIns(user.userId, 40),
+          controls: options.store.listMuscleStatusControls(user.userId),
+          today,
+        });
+        const muscleChip = muscleCalendarChip(muscleStatuses) ?? "";
         const stateChips =
           activeStates.length === 0 && muscleChip.length === 0
             ? ""
@@ -4247,7 +4405,17 @@ export function createWeb(options: WebOptions): WebApp {
           distanceKm: activity.distanceKm,
           elevationGainM: activity.elevationGainM ?? null,
         });
-        const workedCard = musclesWorkedCard(activity.activityId, worked);
+        const activityCheckIns = options.store.listMuscleCheckIns(user.userId, 40);
+        const workedCard = musclesWorkedCard(
+          activity.activityId,
+          worked,
+          computeMuscleStatuses({
+            checkIns: activityCheckIns,
+            controls: options.store.listMuscleStatusControls(user.userId),
+            today,
+          }),
+          activityCheckIns.find((checkIn) => checkIn.activityId === activity.activityId) ?? null,
+        );
         const splitsHtml = activity.source === "garmin" ? splitsSection(splits, splitError) : "";
         const showLaps = laps.length > 1 || laps.some((lap) => lap.type !== "Run");
         const lapsHtml = lapError !== null
@@ -4426,6 +4594,7 @@ export function createWeb(options: WebOptions): WebApp {
           activities: options.store.listActivities(user.userId, 5000),
           changeSets: options.store.listChangeSets(user.userId, 500),
           muscleCheckIns: options.store.listMuscleCheckIns(user.userId, 500),
+          muscleStatusControls: options.store.listMuscleStatusControls(user.userId),
         });
         response.writeHead(200, {
           "content-type": "application/json; charset=utf-8",

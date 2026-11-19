@@ -1,8 +1,9 @@
 /** Shared POC3 records. Every record belongs to exactly one runner. */
 
 import type { MuscleCheckIn } from "./muscles";
+import type { MuscleStatusControl } from "./muscle-status";
 
-export type { MuscleCheckIn };
+export type { MuscleCheckIn, MuscleStatusControl };
 
 export type MessageRole = "user" | "assistant";
 
@@ -473,6 +474,13 @@ export interface Store {
   getMuscleCheckIn(userId: string, checkInId: string): MuscleCheckIn | undefined;
   /** Newest first. */
   listMuscleCheckIns(userId: string, limit?: number): MuscleCheckIn[];
+  /**
+   * Per-muscle status controls (hold-constant and the user-claimed end). One row per muscle at most; a check-in
+   * that mentions the muscle resets its control, so the stored row always belongs to the newest report.
+   */
+  listMuscleStatusControls(userId: string): MuscleStatusControl[];
+  /** Insert or replace one muscle's status control. */
+  upsertMuscleStatusControl(control: MuscleStatusControl): void;
   /** Record one batch of calendar writes; a revert is recorded as its own change set. */
   appendChangeSet(changeSet: ChangeSet): void;
   /** Newest first. */

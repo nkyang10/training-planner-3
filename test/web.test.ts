@@ -869,7 +869,7 @@ describe("calendar run peek", () => {
     expect(html).toContain("Training log week");
     expect(html).toContain("View day");
     expect(html).toContain("Open full detail");
-    expect(html).toContain("app.css?v=22");
+    expect(html).toContain("app.css?v=24");
 
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain("#activity-peek");
@@ -1110,7 +1110,7 @@ describe("calendar session peek", () => {
     expect(html).toContain("Loading session details");
     expect(html).toContain("peek-status-");
     expect(html).toContain("View day →");
-    expect(html).toContain("app.css?v=22");
+    expect(html).toContain("app.css?v=24");
 
     const data = (await (
       await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
@@ -2567,7 +2567,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=22");
+    expect(html).toContain("app.css?v=24");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -2632,7 +2632,8 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('data-month="2026-11"');
     expect(html).toContain('data-day="2026-11-06"');
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    expect(scripts).toHaveLength(4);
+    // The coach bubble, notifications, the account menu, the calendar wiring and the muscle attention badge.
+    expect(scripts).toHaveLength(5);
     for (const script of scripts) expect(() => new Function(script[1] ?? "")).not.toThrow();
   });
 

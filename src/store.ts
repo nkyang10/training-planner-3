@@ -14,6 +14,7 @@ import type {
   Memory,
   Message,
   MuscleCheckIn,
+  MuscleStatusControl,
   Store,
   TrainingSession,
   UserProfile,
@@ -133,6 +134,14 @@ CREATE TABLE IF NOT EXISTS muscle_checkins (
 CREATE INDEX IF NOT EXISTS muscle_checkins_user_day ON muscle_checkins (user_id, day);
 CREATE INDEX IF NOT EXISTS muscle_checkins_user_created ON muscle_checkins (user_id, created_at);
 
+CREATE TABLE IF NOT EXISTS muscle_status_controls (
+  user_id TEXT NOT NULL,
+  muscle_id TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  PRIMARY KEY (user_id, muscle_id)
+);
+
 CREATE TABLE IF NOT EXISTS change_sets (
   change_set_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -246,6 +255,12 @@ const INSERT_NOTIFICATION =
   "INSERT INTO notifications (notification_id, user_id, created_at, read_at, payload) VALUES (?, ?, ?, ?, ?)";
 const INSERT_MUSCLE_CHECKIN =
   "INSERT INTO muscle_checkins (check_in_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)";
+const UPSERT_MUSCLE_STATUS_CONTROL = `
+  INSERT INTO muscle_status_controls (user_id, muscle_id, updated_at, payload) VALUES (?, ?, ?, ?)
+  ON CONFLICT(user_id, muscle_id) DO UPDATE SET
+    updated_at = excluded.updated_at,
+    payload = excluded.payload
+`;
 const MARK_NOTIFICATIONS_READ =
   "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL";
 const UPSERT_SESSION =
@@ -639,6 +654,19 @@ class SqliteStore implements Store {
       )
       .all(userId, take);
     return rows.map((row) => decode<MuscleCheckIn>(String(row["payload"])));
+  }
+
+  listMuscleStatusControls(userId: string): MuscleStatusControl[] {
+    const rows = this.db
+      .prepare("SELECT payload FROM muscle_status_controls WHERE user_id = ? ORDER BY muscle_id")
+      .all(userId);
+    return rows.map((row) => decode<MuscleStatusControl>(String(row["payload"])));
+  }
+
+  upsertMuscleStatusControl(control: MuscleStatusControl): void {
+    this.db
+      .prepare(UPSERT_MUSCLE_STATUS_CONTROL)
+      .run(control.userId, control.muscleId, control.updatedAt, JSON.stringify(control));
   }
 
   listNotifications(userId: string, limit = 20): AppNotification[] {

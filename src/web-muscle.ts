@@ -2,9 +2,9 @@
  * The Muscle tab: one page where the runner checks in on their muscles and reads what the tags mean.
  *
  * Everything with state is server-rendered first — the current heat map, the per-muscle readings, the drill
- * cards, the history — so the page is honest without script. The inline script then upgrades the same form into
- * a per-muscle tag editor over the two figures; the grouped checkbox list and the quick-set controls stay the
- * no-script submission path, so both worlds post the same record shape.
+ * cards, the history — so the page is honest without script. The reusable 3D muscle plugin
+ * (src/muscle-viewer.ts) carries the figure; the grouped checkbox list in its list tab and the quick-set
+ * controls stay the no-script submission path, so both worlds post the same record shape.
  */
 import type { AuthUser } from "./auth";
 import {
@@ -17,6 +17,7 @@ import {
   careEntriesForCheckIn,
   drillCardsForCheckIn,
   getMuscle,
+  muscleShortName,
   readinessForCheckIn,
   readMuscleTag,
   sorenessFill,
@@ -26,8 +27,9 @@ import {
   type MuscleTagLevel,
   type MuscleWork,
 } from "./muscles";
-import { MUSCLE_RIG, RIG_BODY, type RigShape } from "./muscle-rig";
-import { renderMuscleFigure, renderMuscleLegend, renderWorkedPair } from "./muscle-map";
+import { renderMuscleLegend } from "./muscle-map";
+import { renderMuscleViewerPanel, type MuscleViewerRegion } from "./muscle-viewer";
+import { MUSCLE_STATUS_WINDOW_DAYS, worstStatusLevel, type MuscleStatus } from "./muscle-status";
 import type { CoachStateKey } from "./types";
 import { escapeHtml, type ViewName } from "./web-html";
 
@@ -52,10 +54,18 @@ export interface MusclePageInput {
   /** The day the check-in form defaults to. */
   formDay: string;
   saved: boolean;
+  /** True right after a one-tap status control (hold, release, resolve) landed. */
+  statusSaved: boolean;
   errorCode: string | null;
-  /** The check-in the heat map and readings show: the viewed day's, else the latest. */
+  /** The check-in the readings show: the viewed day's, else the latest. */
   dayCheckIn: MuscleCheckIn | null;
   history: readonly MuscleCheckIn[];
+  /** The runner's live muscle statuses: dated periods computed from check-ins, controls and time. */
+  statuses: readonly MuscleStatus[];
+  /** The muscle a ?focus= deep link asked to update, when present. */
+  focusMuscleId: string | null;
+  /** The run a ?activity= link named when it is too old to link (older than the check-in window). */
+  oldRunId: string | null;
   trainingRows: readonly MuscleTrainingRow[];
   /** The runs linkable on the form's day. */
   activityOptions: readonly MuscleActivityOption[];
@@ -136,35 +146,82 @@ function levelChip(level: MuscleTagLevel): string {
   return `<span class="chip muscle-level ${chip.className}">${chip.label}</span>`;
 }
 
-/** The current-state fills for the heat map: severity colour, dashed stroke for care-needed tags. */
-function heatFillsFor(checkIn: MuscleCheckIn | null): Readonly<Record<string, { fill: string; dashed?: boolean }>> {
-  if (checkIn === null) return {};
-  const fills: Record<string, { fill: string; dashed?: boolean }> = {};
-  for (const tag of checkIn.muscles) {
-    const reading = readMuscleTag(tag);
-    fills[tag.muscleId] = {
-      fill: sorenessFill(tag.soreness),
-      ...(reading.level === "warning" || reading.level === "urgent" ? { dashed: true } : {}),
-    };
-  }
-  return fills;
-}
-
-function heatAriaLabels(checkIn: MuscleCheckIn | null): Readonly<Record<string, string>> {
-  if (checkIn === null) return {};
-  const labels: Record<string, string> = {};
-  for (const tag of checkIn.muscles) {
-    const muscle = getMuscle(tag.muscleId);
-    if (muscle === undefined) continue;
-    const reading = readMuscleTag(tag);
-    const care = reading.level === "warning" || reading.level === "urgent" ? ", needs care" : "";
-    labels[tag.muscleId] = `${muscle.name}, ${tagLine(tag)}${care}`;
-  }
-  return labels;
-}
-
 function readinessChipHtml(readiness: string): string {
   return `<span class="chip muscle-readiness ${READINESS_CHIP[readiness] ?? "readiness-steady"}">${escapeHtml(READINESS_LABELS[readiness as keyof typeof READINESS_LABELS] ?? readiness)}</span>`;
+}
+
+/** One compact one-tap action on a status row: a tiny form so it works without script too. */
+function statusActionForm(action: "hold" | "release" | "resolve", muscleId: string, label: string): string {
+  return `<form method="post" action="/muscle/status" class="status-action-form"><input type="hidden" name="action" value="${action}"><input type="hidden" name="muscleId" value="${escapeHtml(muscleId)}"><button class="chip status-action" type="submit">${escapeHtml(label)}</button></form>`;
+}
+
+/** One live status row: the muscle, today's computed level, the time story, and the three one-tap controls. */
+function statusRowHtml(status: MuscleStatus): string {
+  const muscle = getMuscle(status.muscleId);
+  const name = muscle?.name ?? status.muscleId;
+  const trend = status.hold
+    ? `Held constant since ${escapeHtml(formatDayLabel(status.startDay))} — it stays ${status.current}/10 until you change it.`
+    : status.current === status.reported
+      ? `Reported ${escapeHtml(formatDayLabel(status.startDay))} · fades on its own from here, expected clear by ${escapeHtml(formatDayLabel(status.expectedClearDay))}.`
+      : `Was ${status.reported}/10 on ${escapeHtml(formatDayLabel(status.startDay))} · now fading, expected clear by ${escapeHtml(formatDayLabel(status.expectedClearDay))}.`;
+  const linked = status.activityId === null
+    ? ""
+    : ` · about <a href="/activity/${encodeURIComponent(status.activityId)}">the linked run</a>`;
+  const holdToggle = status.hold
+    ? statusActionForm("release", status.muscleId, "Let it fade")
+    : statusActionForm("hold", status.muscleId, "Hold constant");
+  return `<li class="muscle-status-row">
+    <span class="muscle-attention-dot" style="background:${sorenessFill(status.current)}" aria-hidden="true"></span>
+    <div class="muscle-status-main">
+      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine({ soreness: status.current, conditions: [...status.conditions], side: status.side }))}</span>${levelChip(status.level)}</div>
+      <p class="muted small">${trend}${linked}</p>
+    </div>
+    <div class="muscle-status-actions">
+      <a class="chip" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in">Update</a>
+      ${holdToggle}
+      ${statusActionForm("resolve", status.muscleId, "All better")}
+    </div>
+  </li>`;
+}
+
+/**
+ * The live status card: what the app holds as true about the runner's muscles *today*. Perfect by default;
+ * each reported muscle carries its computed level, its fade clock and three one-tap controls. This is the
+ * section the attention badge points at.
+ */
+function statusSection(statuses: readonly MuscleStatus[]): string {
+  const count = statuses.length;
+  if (count === 0) {
+    return `<section class="card muscle-status-card" id="muscle-status">
+      <div class="splits-head"><h2>Muscle status · 肌肉狀態</h2><p class="muted small">Perfect by default — nothing is assumed sore until you report it.</p></div>
+      <p class="muscle-status-clear"><span class="chip muscle-readiness readiness-steady">All perfect</span> <span class="muted small">Every muscle is in perfect condition, and that is what the coach is told. Report from a run below, or tap a muscle on the figure, and a dated status appears here that fades on its own.</span></p>
+    </section>`;
+  }
+  const worst = worstStatusLevel(statuses);
+  const worstRow =
+    worst === null
+      ? null
+      : statuses.reduce<MuscleStatus | null>(
+          (worstStatus, status) =>
+            worstStatus === null || LEVEL_RANK[status.level] > LEVEL_RANK[worstStatus.level] ? status : worstStatus,
+          null,
+        );
+  const worstName = worstRow === null ? "" : `worst: ${escapeHtml(muscleShortName(worstRow.muscleId))} · ${LEVEL_CHIP[worstRow.level].label.toLowerCase()}`;
+  const allBetter = count >= 2
+    ? `<form method="post" action="/muscle/status" class="status-allbetter-form"><input type="hidden" name="action" value="resolve-all"><button class="btn ghost" type="submit">Everything's better</button></form>`
+    : "";
+  const summary = statuses
+    .map((status) => `${muscleShortName(status.muscleId)} ${status.current}/10${status.hold ? " (held)" : ""}`)
+    .join(", ");
+  const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My muscles today: ${summary} — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">Ask coach about this status · 問問教練</button>`;
+  return `<section class="card muscle-status-card" id="muscle-status">
+    <div class="splits-head">
+      <h2>Muscle status · 肌肉狀態 <span class="attention-badge" role="status" aria-label="${count} muscle${count === 1 ? "" : "s"} need attention">${count}</span></h2>
+      <p class="muted small">Live levels computed from your reports — each one fades on its own over about ${MUSCLE_STATUS_WINDOW_DAYS} days, ${worstName.length === 0 ? "" : `${worstName} · `}hold one to keep it, or mark it better when it is.</p>
+    </div>
+    <ul class="muscle-status-list">${statuses.map(statusRowHtml).join("")}</ul>
+    <div class="review-actions">${allBetter}${askCoach}</div>
+  </section>`;
 }
 
 /** One reading row: the muscle, the tag line, the level chip and the guidance paragraph. */
@@ -286,18 +343,19 @@ function trainingSection(rows: readonly MuscleTrainingRow[]): string {
   return `<section class="card"><div class="splits-head"><h2>From your training · 最近訓練</h2><p class="muted small">What your recent runs worked — primary movers first. One tap starts a check-in on those muscles.</p></div><ul class="training-list">${items}</ul></section>`;
 }
 
-/** The grouped checkbox list: the figure's text alternative and the no-script selection path. */
-function muscleListSection(): string {
+/** The list tab's content: the figure's text alternative and the no-script selection path. */
+function muscleListSection(prefillIds: readonly string[]): string {
   const groups = new Map<string, string[]>();
   for (const muscle of MUSCLE_CATALOG) {
+    const checked = prefillIds.includes(muscle.id) ? " checked" : "";
     const options = groups.get(muscle.group) ?? [];
-    options.push(`<li><label><input type="checkbox" class="muscle-check" name="muscleIds" value="${escapeHtml(muscle.id)}"> ${escapeHtml(muscle.name)}</label><span class="muted small">${escapeHtml(muscle.meaning)}</span></li>`);
+    options.push(`<li><label><input type="checkbox" class="muscle-check" name="muscleIds" value="${escapeHtml(muscle.id)}"${checked}> ${escapeHtml(muscle.name)}</label><span class="muted small">${escapeHtml(muscle.meaning)}</span></li>`);
     groups.set(muscle.group, options);
   }
   const groupHtml = [...groups.entries()]
     .map(([group, items]) => `<li><strong>${escapeHtml(MUSCLE_GROUP_LABELS[group as keyof typeof MUSCLE_GROUP_LABELS] ?? group)}</strong><ul class="muscle-list-items">${items.join("")}</ul></li>`)
     .join("");
-  return `<details class="muscle-list-details" id="muscle-list"><summary>All muscles — list view (keyboard-friendly)</summary><p class="muted small">The same muscles as the map, as checkboxes. Without JavaScript these plus the quick set below are the whole form.</p><ul class="muscle-list-groups">${groupHtml}</ul></details>`;
+  return `<div class="muscle-list-tab"><p class="muted small">The same muscles as the figure, as checkboxes — the keyboard and no-JavaScript path. Without script these plus the quick set below are the whole form.</p><ul class="muscle-list-groups">${groupHtml}</ul></div>`;
 }
 
 function formSection(input: MusclePageInput): string {
@@ -309,19 +367,43 @@ function formSection(input: MusclePageInput): string {
     .map((condition) => `<label class="quick-condition"><input type="checkbox" class="quick-condition-input" name="conditions" value="${condition.key}"> ${condition.label}</label>`)
     .join("");
   const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === 5 ? " selected" : ""}>${value} · ${sorenessLabel(value)}</option>`).join("");
-  const selectedFigureIds = input.prefillMuscleIds;
-  const fills = heatFillsFor(input.dayCheckIn);
-  const ariaLabels = heatAriaLabels(input.dayCheckIn);
-  const figures = [
-    renderMuscleFigure("front", { fills, ariaLabels, selected: selectedFigureIds, viewLabel: "Front view" }),
-    renderMuscleFigure("back", { fills, ariaLabels, selected: selectedFigureIds, viewLabel: "Back view" }),
-  ].join("");
+  const focusNote = input.focusMuscleId === null
+    ? ""
+    : `<p class="ok" role="status">Updating <strong>${escapeHtml(getMuscle(input.focusMuscleId)?.name ?? input.focusMuscleId)}</strong> — set how it feels today and save.</p>`;
   const prefillNote = input.prefillActivityId === null
     ? ""
     : `<p class="ok" role="status">Selected the muscles from that run — set how each one feels and save.</p>`;
+  const oldRunNote = input.oldRunId === null
+    ? ""
+    : `<p class="ok" role="status">That run is older than the 14-day check-in window, so the report is for <strong>today</strong> — its muscles are selected below.</p>`;
+  // The figure paints today's status heat; selecting a muscle takes the ember, hovering names it.
+  const regions: Record<string, MuscleViewerRegion> = {};
+  for (const status of input.statuses) {
+    regions[status.muscleId] = {
+      fill: sorenessFill(status.current),
+      ...(status.level === "warning" || status.level === "urgent" ? { dashed: true } : {}),
+      note: `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} today${status.hold ? " · held" : ""}`,
+    };
+  }
+  const panel = renderMuscleViewerPanel({
+    panelId: "muscle",
+    regions,
+    mode: { kind: "bridge", bridgeName: "__muscleTabBridge" },
+    listHtml: muscleListSection(input.prefillMuscleIds),
+    figureTabLabel: "3D figure",
+    listTabLabel: "Muscle list",
+    tablistLabel: "3D muscle figure or muscle list",
+    viewerLabel: "3D muscle figure. Drag to rotate, scroll or pinch to zoom, click a muscle to select it.",
+    viewerNote: `Drag to rotate · scroll or pinch to zoom · click a muscle to tag it. The figure turns slowly while you decide; <strong>Pause</strong> holds it still. Your live muscle status paints the heat you see on the muscles.`,
+    noScriptHint: "The 3D figure needs JavaScript and WebGL — the Muscle list tab carries every muscle.",
+    legendHtml: renderMuscleLegend(),
+    height: "tall",
+  });
   return `<section class="card muscle-checkin-card" id="check-in">
     <div class="splits-head"><h2>How do your muscles feel today? · 今天肌肉感覺如何</h2><p class="muted small">Tap a muscle on the figure, then set its soreness and tags. It takes under a minute.</p></div>
+    ${focusNote}
     ${prefillNote}
+    ${oldRunNote}
     <form method="post" action="/muscle/checkin" id="muscle-form" class="muscle-form">
       <div class="muscle-form-row">
         <label for="muscle-day">Day</label>
@@ -331,23 +413,7 @@ function formSection(input: MusclePageInput): string {
       </div>
       <div class="muscle-workspace">
         <div class="muscle-map-col">
-          <div class="muscle-viewer-wrap">
-            <div id="muscle-viewer" class="muscle-viewer" aria-label="3D muscle figure. Drag to rotate, scroll or pinch to zoom, click a muscle to select it."></div>
-            <div class="viewer-controls">
-              <button type="button" class="chip" id="viewer-rotation" aria-pressed="true">Pause rotation</button>
-              <button type="button" class="chip" id="viewer-front">Front</button>
-              <button type="button" class="chip" id="viewer-back">Back</button>
-              <button type="button" class="chip" id="viewer-reset">Reset</button>
-            </div>
-            <div id="viewer-tooltip" class="viewer-tooltip" role="status" hidden></div>
-            <p class="muted small muscle-viewer-note">Drag to rotate · scroll or pinch to zoom · click a muscle to tag it. The figure turns slowly while you decide; <strong>Pause</strong> holds it still. A recent check-in paints the heat you see on the muscles.</p>
-          </div>
-          ${renderMuscleLegend()}
-          <details class="muscle-2d-fallback" id="muscle-2d">
-            <summary>Flat figure (no 3D needed) · 平面圖</summary>
-            <p class="muted small">The same muscles front and back. This view works without JavaScript or WebGL, and its regions are plain buttons for keyboard users who prefer them.</p>
-            <div class="muscle-figures">${figures}</div>
-          </details>
+          ${panel}
         </div>
         <div class="muscle-editor-col">
           <div id="muscle-tray" class="muscle-tray" aria-label="Selected muscles"></div>
@@ -367,8 +433,8 @@ function formSection(input: MusclePageInput): string {
           <button type="button" class="btn ghost" id="quick-apply">Apply to selected</button>
         </div>
         <p class="muted small">${escapeHtml(anchors)}</p>
+        <label class="quick-hold" for="quick-hold"><input type="checkbox" id="quick-hold" name="hold" value="1"> <strong>Keep these levels until I change them</strong> <span class="muted small">(skip the auto-fade — for something that is not settling on its own)</span></label>
       </fieldset>
-      ${muscleListSection()}
       <label for="muscle-note">Note for the coach <span class="muted small">(optional)</span></label>
       <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="e.g. calves tight since Thursday's hills">
       <input type="hidden" name="musclesJson" id="muscle-json" value="">
@@ -637,14 +703,8 @@ function muscleScript(input: MusclePageInput): string {
 
     const toggle = (id) => { if (state.has(id)) deselect(id); else select(id); };
 
-    for (const node of document.querySelectorAll('.muscle-region')) {
-      node.addEventListener('click', () => { toggle(node.dataset.muscle || ''); });
-      node.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        event.preventDefault();
-        toggle(node.dataset.muscle || '');
-      });
-    }
+    // The 3D figure drives selection through the plugin's bridge; the checkbox list (the plugin's list tab) is
+    // the text path, so both surfaces share one state map here.
     for (const box of document.querySelectorAll('input.muscle-check')) {
       box.addEventListener('change', () => { toggle(box.value); });
     }
@@ -731,442 +791,130 @@ function muscleScript(input: MusclePageInput): string {
   </script>`;
 }
 
-/**
- * The 3D muscle viewer: three.js over the rig data, physically rendered, with the same selection state as the
- * flat figure. It runs as a module script behind an import map that resolves the vendored builds, and it degrades
- * to the flat figure (the details opens itself) when WebGL cannot start. Selection flows through the classic
- * script's bridge, so the tray, the editor, the checkbox list, the 2D figure and the 3D figure stay in step.
- */
-function muscleViewerScript(input: MusclePageInput): string {
-  const rig = {
-    body: RIG_BODY.map((part) => ({ mirror: part.mirror, shape: part.shape as RigShape })),
-    muscles: MUSCLE_RIG.map((entry) => ({ id: entry.muscleId, mirror: entry.mirror, shapes: entry.shapes })),
-  };
-  const heat: Record<string, { fill: string; dashed?: boolean }> = {};
-  for (const [id, value] of Object.entries(heatFillsFor(input.dayCheckIn))) heat[id] = value;
-  const names: Record<string, string> = {};
-  for (const muscle of MUSCLE_CATALOG) names[muscle.id] = muscle.name;
-  return `<script type="importmap">{"imports":{"three":"/static/three.module.js"}}</script>
-  <script type="module">
-  import * as THREE from 'three';
-  import { OrbitControls } from '/static/orbit-controls.js';
-  (async () => {
-    const RIG = ${jsonForScript(rig)};
-    const HEAT = ${jsonForScript(heat)};
-    const NAMES = ${jsonForScript(names)};
-    const container = document.getElementById('muscle-viewer');
-    const tooltip = document.getElementById('viewer-tooltip');
-    const rotationButton = document.getElementById('viewer-rotation');
-    const bridge = window.__muscleTabBridge;
-    if (container === null || tooltip === null || bridge === undefined) return;
-    const showFallback = (reason) => {
-      container.textContent = reason;
-      container.classList.add('muscle-viewer-failed');
-      const fallback = document.getElementById('muscle-2d');
-      if (fallback !== null) fallback.open = true;
-    };
-    let renderer;
-    try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-    } catch (error) {
-      showFallback('The 3D figure could not start here; the flat figure below carries every muscle.');
-      return;
-    }
-    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const labelFor = (value) => {
-      if (value <= 0) return 'Nothing';
-      if (value <= 2) return 'Barely there';
-      if (value <= 3) return 'Mild';
-      if (value <= 5) return 'Noticeable';
-      if (value <= 6) return 'Clear DOMS';
-      if (value <= 7) return 'Sore to touch';
-      if (value <= 8) return 'Strong';
-      return 'Severe';
-    };
-
-    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    container.replaceChildren(renderer.domElement);
-
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#fbf1e3');
-    scene.fog = new THREE.Fog('#fbf1e3', 9, 18);
-    const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 60);
-    const defaultView = { radius: 7.4, polar: 1.42, azimuth: 0.5 };
-    const setCamera = (radius, polar, azimuth) => {
-      camera.position.set(
-        Math.sin(polar) * Math.sin(azimuth) * radius,
-        Math.cos(polar) * radius + 2.35,
-        Math.sin(polar) * Math.cos(azimuth) * radius,
-      );
-      camera.lookAt(0, 2.35, 0);
-    };
-    setCamera(defaultView.radius, defaultView.polar, defaultView.azimuth);
-
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, 2.35, 0);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-    controls.minDistance = 3.6;
-    controls.maxDistance = 11;
-    controls.maxPolarAngle = Math.PI * 0.56;
-    controls.autoRotateSpeed = 1.0;
-    let running = !reduced;
-    controls.autoRotate = running;
-    if (rotationButton !== null) {
-      rotationButton.setAttribute('aria-pressed', running ? 'true' : 'false');
-      rotationButton.textContent = running ? 'Pause rotation' : 'Play rotation';
-      rotationButton.addEventListener('click', () => {
-        running = !running;
-        controls.autoRotate = running;
-        rotationButton.setAttribute('aria-pressed', running ? 'true' : 'false');
-        rotationButton.textContent = running ? 'Pause rotation' : 'Play rotation';
-      });
-    }
-
-    scene.add(new THREE.HemisphereLight(0xfff4e4, 0xd9c2a8, 0.6));
-    const key = new THREE.DirectionalLight(0xffffff, 1.7);
-    key.position.set(3.6, 6.4, 4.2);
-    key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -3;
-    key.shadow.camera.right = 3;
-    key.shadow.camera.top = 6;
-    key.shadow.camera.bottom = 0;
-    key.shadow.bias = -0.0008;
-    scene.add(key);
-    const fill = new THREE.DirectionalLight(0xdfe8ff, 0.35);
-    fill.position.set(-4.2, 3.2, 2.4);
-    scene.add(fill);
-    const rim = new THREE.DirectionalLight(0xffb37a, 0.85);
-    rim.position.set(-1.2, 4.4, -5.2);
-    scene.add(rim);
-
-    const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(2.3, 48),
-      new THREE.MeshStandardMaterial({ color: '#f2dfc4', roughness: 0.95 }),
-    );
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    scene.add(ground);
-
-    const figure = new THREE.Group();
-    scene.add(figure);
-
-    // One interaction layer for both figure modes: the region's shared material, its base colour, its meshes.
-    const regionMaterials = new Map();
-    const baseColors = new Map();
-    const pickMeshes = [];
-
-    const buildShape = (shape, mirrored, material) => {
-      const at = shape.at;
-      let geometry;
-      if (shape.kind === 'sphere') geometry = new THREE.SphereGeometry(shape.radius, 28, 20);
-      else if (shape.kind === 'capsule') geometry = new THREE.CapsuleGeometry(shape.radius, shape.length, 6, 18);
-      else if (shape.kind === 'box') geometry = new THREE.BoxGeometry(shape.size[0], shape.size[1], shape.size[2]);
-      else {
-        const points = shape.profile.map((point) => new THREE.Vector2(point[0], point[1]));
-        const top = shape.profile[shape.profile.length - 1];
-        points.push(new THREE.Vector2(0, top[1] + 0.03));
-        geometry = new THREE.LatheGeometry(points, 44);
-      }
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(mirrored ? -at[0] : at[0], at[1], at[2]);
-      if (shape.scale !== undefined) mesh.scale.set(shape.scale[0], shape.scale[1], shape.scale[2]);
-      if (shape.scaleZ !== undefined) mesh.scale.z = shape.scaleZ;
-      if (shape.tilt !== undefined) mesh.rotation.z = (mirrored ? -1 : 1) * shape.tilt * Math.PI / 180;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      return mesh;
-    };
-
-    // The real figure first: BodyParts3D muscles over bones, one RegionMuscle material per catalog region.
-    const buildAnatomy = async () => {
-      const { GLTFLoader } = await import('/static/gltf-loader.js');
-      const gltf = await new GLTFLoader().loadAsync('/static/anatomy-muscles.glb');
-      gltf.scene.traverse((child) => {
-        if (child.isMesh !== true) return;
-        child.castShadow = true;
-        child.receiveShadow = true;
-        const materialName = child.material !== null && typeof child.material.name === 'string' ? child.material.name : '';
-        if (!materialName.startsWith('RegionMuscle-')) return; // bones stay visible but unpickable
-        const region = String(child.name).split('__')[0];
-        child.userData.region = region;
-        if (!regionMaterials.has(region)) {
-          regionMaterials.set(region, child.material);
-          baseColors.set(region, child.material.color.clone());
-        }
-        pickMeshes.push(child);
-      });
-      figure.add(gltf.scene);
-    };
-
-    // The procedural sculpt stays as the catch-path when the asset or WebGL cannot deliver.
-    const buildProcedural = () => {
-      const bodyMat = new THREE.MeshPhysicalMaterial({
-        color: '#c8b193',
-        roughness: 0.55,
-        metalness: 0,
-        clearcoat: 0.25,
-        clearcoatRoughness: 0.55,
-        sheen: 0.4,
-        sheenColor: new THREE.Color('#ffe6c8'),
-      });
-      const muscleMatBase = {
-        roughness: 0.42,
-        metalness: 0,
-        clearcoat: 0.35,
-        clearcoatRoughness: 0.5,
-        sheen: 0.3,
-        sheenColor: new THREE.Color('#ffd9b8'),
-      };
-      for (const part of RIG.body) {
-        figure.add(buildShape(part.shape, false, bodyMat));
-        if (part.mirror) figure.add(buildShape(part.shape, true, bodyMat));
-      }
-      for (const muscle of RIG.muscles) {
-        const material = new THREE.MeshPhysicalMaterial({ ...muscleMatBase, color: '#cfa173' });
-        const group = new THREE.Group();
-        group.userData.region = muscle.id;
-        const addShapes = (mirrored) => {
-          for (const shape of muscle.shapes) {
-            const mesh = buildShape(shape, mirrored, material);
-            mesh.userData.region = muscle.id;
-            group.add(mesh);
-            pickMeshes.push(mesh);
-          }
-        };
-        addShapes(false);
-        if (muscle.mirror) addShapes(true);
-        figure.add(group);
-        regionMaterials.set(muscle.id, material);
-        baseColors.set(muscle.id, new THREE.Color('#cfa173'));
-      }
-    };
-
-    let hoveredId = null;
-    // Hover and selection share one ember: the muscle under the cursor changes colour exactly like a
-    // click-select does — one obvious signal, not a subtle half-tint that is easy to miss.
-    const EMBER = '#ff5a1f';
-    const syncMuscle = (id, tag) => {
-      const material = regionMaterials.get(id);
-      if (material === undefined) return; // a region with no mesh here (lats in the anatomy build) simply does not paint
-      const heat = HEAT[id];
-      const selected = bridge.has(id);
-      const warning = heat !== undefined && heat.dashed === true;
-      const base = baseColors.get(id);
-      const baseHex = base === undefined ? '#cfa173' : '#' + base.getHexString();
-      const hovered = id === hoveredId && !selected;
-      const resting = tag !== null && heat !== undefined ? heat.fill : baseHex;
-      material.color.set(hovered || selected ? EMBER : resting);
-      if (hovered || selected) {
-        material.emissive.set(EMBER);
-        material.emissiveIntensity = 0.4;
-      } else if (warning) {
-        material.emissive.set('#c03a2b');
-        material.emissiveIntensity = 0.32;
-      } else {
-        material.emissive.set('#000000');
-        material.emissiveIntensity = 0;
-      }
-    };
-    window.__muscleViewer = { syncMuscle };
-
-    const raycaster = new THREE.Raycaster();
-    const pointer = new THREE.Vector2();
-    const pick = (event) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
-      raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(pickMeshes, false);
-      return hits.length > 0 ? hits[0].object.userData.region : null;
-    };
-    let downAt = null;
-    renderer.domElement.addEventListener('pointerdown', (event) => {
-      downAt = { x: event.clientX, y: event.clientY };
-    });
-    renderer.domElement.addEventListener('pointerup', (event) => {
-      if (downAt === null) return;
-      const moved = Math.abs(event.clientX - downAt.x) + Math.abs(event.clientY - downAt.y);
-      downAt = null;
-      if (moved > 7) return;
-      const id = pick(event);
-      if (id === null || id === undefined) return;
-      bridge.toggle(id);
-      tooltip.hidden = true;
-    });
-    let moveAt = 0;
-    let trailingHover = null;
-    const applyHover = (event) => {
-      const id = pick(event);
-      if (id === hoveredId) {
-        if (id !== null && id !== undefined) positionTip(event);
-        return;
-      }
-      const previous = hoveredId;
-      hoveredId = id === undefined ? null : id;
-      if (previous !== null) syncMuscle(previous, bridge.peek(previous));
-      if (hoveredId === null) {
-        tooltip.hidden = true;
-        renderer.domElement.style.cursor = 'grab';
-        return;
-      }
-      syncMuscle(hoveredId, bridge.peek(hoveredId));
-      renderer.domElement.style.cursor = 'pointer';
-      const tag = bridge.peek(hoveredId);
-      const heat = HEAT[hoveredId];
-      const state = tag === null ? 'not tagged yet' : tag.soreness + '/10 · ' + labelFor(tag.soreness) + (heat !== undefined && heat.dashed === true ? ' · needs care' : '');
-      tooltip.textContent = NAMES[hoveredId] + ' — ' + state;
-      positionTip(event);
-      tooltip.hidden = false;
-    };
-    renderer.domElement.addEventListener('pointermove', (event) => {
-      const now = Date.now();
-      if (now - moveAt < 60) {
-        // A glide that stops between throttle windows must still land its resting position: the trailing
-        // edge re-picks the last event, so the muscle under the still cursor is always the highlighted one.
-        if (trailingHover !== null) clearTimeout(trailingHover);
-        trailingHover = setTimeout(() => { trailingHover = null; applyHover(event); }, 60);
-        return;
-      }
-      moveAt = now;
-      if (trailingHover !== null) { clearTimeout(trailingHover); trailingHover = null; }
-      applyHover(event);
-    });
-    renderer.domElement.addEventListener('pointerleave', () => {
-      const previous = hoveredId;
-      hoveredId = null;
-      if (previous !== null) syncMuscle(previous, bridge.peek(previous));
-      tooltip.hidden = true;
-    });
-    const positionTip = (event) => {
-      const rect = container.getBoundingClientRect();
-      const x = Math.min(event.clientX - rect.left + 14, rect.width - 170);
-      const y = event.clientY - rect.top + 14;
-      tooltip.style.left = Math.max(4, x) + 'px';
-      tooltip.style.top = Math.max(4, y) + 'px';
-    };
-
-    // Front, Back and Reset tween the camera once around the figure, then hand control back.
-    let orbitTween = null;
-    const tweenTo = (azimuth) => {
-      const offset = camera.position.clone().sub(controls.target);
-      const spherical = new THREE.Spherical().setFromVector3(offset);
-      let from = spherical.theta;
-      let to = azimuth;
-      while (to - from > Math.PI) to -= Math.PI * 2;
-      while (to - from < -Math.PI) to += Math.PI * 2;
-      orbitTween = { fromTheta: from, toTheta: to, fromPhi: spherical.phi, toPhi: defaultView.polar, fromR: spherical.radius, toR: defaultView.radius, at: 0 };
-    };
-    const front = document.getElementById('viewer-front');
-    const back = document.getElementById('viewer-back');
-    const reset = document.getElementById('viewer-reset');
-    if (front !== null) front.addEventListener('click', () => tweenTo(0));
-    if (back !== null) back.addEventListener('click', () => tweenTo(Math.PI));
-    if (reset !== null) reset.addEventListener('click', () => tweenTo(defaultView.azimuth));
-
-    const clock = new THREE.Clock();
-    const animate = () => {
-      requestAnimationFrame(animate);
-      if (document.hidden) return;
-      const elapsed = clock.getElapsedTime();
-      if (orbitTween !== null) {
-        orbitTween.at = Math.min(1, orbitTween.at + 0.035);
-        const eased = orbitTween.at * orbitTween.at * (3 - 2 * orbitTween.at);
-        const theta = orbitTween.fromTheta + (orbitTween.toTheta - orbitTween.fromTheta) * eased;
-        const phi = orbitTween.fromPhi + (orbitTween.toPhi - orbitTween.fromPhi) * eased;
-        const radius = orbitTween.fromR + (orbitTween.toR - orbitTween.fromR) * eased;
-        setCamera(radius, phi, theta);
-        controls.autoRotate = false;
-        if (orbitTween.at >= 1) {
-          orbitTween = null;
-          controls.autoRotate = running;
-        }
-      } else if (running) {
-        const breathe = 1 + Math.sin(elapsed * 1.7) * 0.008;
-        figure.scale.set(breathe, 1, breathe);
-        for (const [id, heat] of Object.entries(HEAT)) {
-          if (heat.dashed !== true) continue;
-          const material = regionMaterials.get(id);
-          if (material === undefined || bridge.has(id)) continue;
-          material.emissiveIntensity = 0.24 + Math.sin(elapsed * 2.6) * 0.14;
-        }
-        controls.update();
-      } else {
-        controls.update();
-      }
-      renderer.render(scene, camera);
-    };
-    animate();
-
-    const resize = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      if (width === 0 || height === 0) return;
-      camera.aspect = width / height;
-      camera.updateProjectionMatrix();
-      renderer.setSize(width, height, false);
-    };
-    if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(container);
-    else window.addEventListener('resize', resize);
-    resize();
-
-    // Real anatomy first; the procedural sculpt catches whatever fails. Only then mark the viewer ready, so a
-    // fixture capture can never fire before a figure is on screen.
-    try {
-      await buildAnatomy();
-    } catch (error) {
-      buildProcedural();
-    }
-    for (const id of Object.keys(NAMES)) syncMuscle(id, bridge.peek(id));
-    container.dataset.viewerReady = '1';
-  })();
-  </script>`;
-}
 
 export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps): string {
   const savedBanner = input.saved
-    ? `<p class="banner ok" role="status">Check-in saved · 回報已儲存. The coach now sees it in your facts.</p>`
+    ? `<p class="banner ok" role="status">Check-in saved · 回報已儲存. It is now today's muscle status, and the coach sees the same facts.</p>`
+    : "";
+  const statusSavedBanner = input.statusSaved
+    ? `<p class="banner ok" role="status">Muscle status updated · 狀態已更新.</p>`
     : "";
   const errorBanner = input.errorCode === null ? "" : `<p class="banner error" role="alert">${escapeHtml(errorTextFor(input.errorCode) ?? "The check-in could not be saved.")}</p>`;
+  const count = input.statuses.length;
+  const worst = worstStatusLevel(input.statuses);
+  const worstRow =
+    worst === null
+      ? null
+      : input.statuses.reduce<MuscleStatus | null>(
+          (worstStatus, status) =>
+            worstStatus === null || LEVEL_RANK[status.level] > LEVEL_RANK[worstStatus.level] ? status : worstStatus,
+          null,
+        );
+  const attentionLine =
+    count === 0
+      ? ""
+      : `<p class="muted small">Now: <a href="#muscle-status"><span class="chip muscle-attention-chip">${count} muscle${count === 1 ? "" : "s"} need attention</span></a>${worstRow === null || worst === null ? "" : ` — worst: ${escapeHtml(muscleShortName(worstRow.muscleId))}, ${LEVEL_CHIP[worst].label.toLowerCase()}`}</p>`;
   const readiness = input.dayCheckIn === null ? "" : readinessForCheckIn(input.dayCheckIn.muscles);
   const readinessLine = input.dayCheckIn === null
     ? ""
-    : `<p class="muted small">Latest: ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness)}</p>`;
+    : `<p class="muted small">Latest report: ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness)}</p>`;
   const readingSections = input.dayCheckIn === null
     ? `<section class="card"><h2>Latest check-in</h2><p class="muted small">No check-ins yet. Tag a few muscles above and save — the reading (normal soreness, watch, or needs care) appears here, with drills matched to what you tagged.</p></section>`
     : `${careSection(input.dayCheckIn)}${readingsSection(input.dayCheckIn)}${drillSection(input.dayCheckIn)}`;
   const body = `<header class="page-head"><p class="eyebrow">Muscles · 肌肉回報</p>
     <h1>Muscle check-in</h1>
-    <p class="muted">A private map of how your muscles feel, after your runs and between them. The heat shows your latest check-in; the coach reads the same facts when you ask, and never diagnoses.</p>
+    <p class="muted">A private map of how your muscles feel, after your runs and between them. Report something and it becomes a dated status that fades on its own — the heat below is that status, live; the coach reads the same facts when you ask, and never diagnoses.</p>
+    ${attentionLine}
     ${readinessLine}</header>
     ${savedBanner}
+    ${statusSavedBanner}
     ${errorBanner}
+    ${statusSection(input.statuses)}
     ${formSection(input)}
     ${trainingSection(input.trainingRows)}
     ${readingSections}
     ${historySection(input.history, input.dayCheckIn)}
     ${safetySection()}
-    ${muscleScript(input)}
-    ${muscleViewerScript(input)}`;
+    ${muscleScript(input)}`;
   return deps.layout("Muscles", body, input.user, "muscle");
 }
 
-/** The readiness chip the calendar shows when the latest check-in needs attention. */
-export function muscleCalendarChip(checkIn: MuscleCheckIn): string | null {
-  const readiness = readinessForCheckIn(checkIn.muscles);
-  if (readiness !== "care" && readiness !== "urgent") return null;
-  const label = readiness === "urgent" ? "Muscles · care now" : "Muscles · watch";
-  return `<a class="chip muscle-calendar-chip" href="/muscle" title="Your latest muscle check-in needs attention">${escapeHtml(label)}</a>`;
+/** The attention chip the calendar shows while muscles are in a special (non-perfect) status. */
+export function muscleCalendarChip(statuses: readonly MuscleStatus[]): string | null {
+  const count = statuses.length;
+  if (count === 0) return null;
+  const worst = worstStatusLevel(statuses);
+  const label =
+    worst === "urgent"
+      ? "Muscles · care now"
+      : worst === "warning" || worst === "heavy"
+        ? "Muscles · needs care"
+        : `Muscles · ${count} sore`;
+  return `<a class="chip muscle-calendar-chip" href="/muscle" title="Your current muscle status needs attention">${escapeHtml(label)}</a>`;
 }
 
 /**
- * The muscles-worked card for the activity detail: the read-only front/back pair, the named chip alternative and
- * the deep link that starts a check-in on exactly those muscles.
+ * The muscles-worked card for the activity detail: the same reusable 3D muscle plugin as the Muscle tab, in
+ * link mode — primary movers ember, helpers light, and clicking a muscle deep-links into a check-in on exactly
+ * that muscle. The list tab is the text representation (primary/helper chips, the spoken summary), the live
+ * status chips and the report already linked to this run stay readable without script, and the button starts a
+ * check-in on exactly these muscles with the run preselected.
  */
-export function musclesWorkedCard(activityId: string, work: MuscleWork): string {
-  return `<section class="card muscles-worked-card"><div class="splits-head"><h2>Muscles worked · 訓練到的肌肉</h2><p class="muted small">Primary movers darker, helpers lighter — the honest default for this run, not EMG data.</p></div>${renderWorkedPair(work)}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">Check in these muscles · 回報感覺</a></div></section>`;
+export function musclesWorkedCard(
+  activityId: string,
+  work: MuscleWork,
+  statuses: readonly MuscleStatus[] = [],
+  linkedCheckIn: MuscleCheckIn | null = null,
+): string {
+  const workedIds = [...work.primary, ...work.secondary];
+  const active = statuses.filter((status) => workedIds.includes(status.muscleId));
+  // The figure paints the run's footprint first, then today's status heat wins where a muscle has one.
+  const regions: Record<string, MuscleViewerRegion> = {};
+  for (const id of work.primary) regions[id] = { fill: "#f28034", note: "primary mover" };
+  for (const id of work.secondary) regions[id] = { fill: "#fbd5a8", note: "helper muscle" };
+  for (const status of active) {
+    const role = regions[status.muscleId]?.note ?? "";
+    const note = `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} today${status.hold ? " · held" : ""}${role.length === 0 ? "" : ` · ${role}`}`;
+    regions[status.muscleId] = {
+      fill: sorenessFill(status.current),
+      ...(status.level === "warning" || status.level === "urgent" ? { dashed: true } : {}),
+      note,
+    };
+  }
+  const chips = (ids: readonly string[], emphasis: "primary" | "secondary"): string =>
+    ids
+      .map((id) => `<a class="chip worked-chip ${emphasis}" href="/muscle?focus=${encodeURIComponent(id)}#check-in">${escapeHtml(getMuscle(id)?.name ?? id)}</a>`)
+      .join("");
+  const primaryLine = chips(work.primary, "primary");
+  const secondaryLine = work.secondary.length === 0 ? "" : chips(work.secondary, "secondary");
+  const spoken = `Primary muscles: ${work.primary.map((id) => getMuscle(id)?.name ?? id).join(", ")}.${work.secondary.length === 0 ? "" : ` Secondary: ${work.secondary.map((id) => getMuscle(id)?.name ?? id).join(", ")}.`}`;
+  const listHtml = `<div class="worked-list-tab"><p class="muted small"><strong>Primary movers</strong></p><div class="muscle-list-chip-row">${primaryLine}</div>${work.secondary.length === 0 ? "" : `<p class="muted small"><strong>Helpers</strong></p><div class="muscle-list-chip-row">${secondaryLine}</div>`}<p class="muted small">${escapeHtml(spoken)}</p></div>`;
+  const panel = renderMuscleViewerPanel({
+    panelId: "worked",
+    regions,
+    mode: { kind: "link", href: "/muscle?focus=" },
+    listHtml,
+    figureTabLabel: "3D figure",
+    listTabLabel: "Worked list",
+    tablistLabel: "3D muscles worked or worked list",
+    viewerLabel: "3D muscle figure of this run. Drag to rotate; click a muscle to report how it feels.",
+    viewerNote: "Drag to rotate · scroll or pinch to zoom · click a muscle to report how it feels. Primary movers ember, helpers light; today's soreness heat paints on top.",
+    noScriptHint: "The 3D figure needs JavaScript and WebGL — the Worked list tab carries every muscle.",
+    height: "compact",
+  });
+  const statusChips = active
+    .map((status) => {
+      const name = muscleShortName(status.muscleId);
+      const fill = sorenessFill(status.current);
+      return `<a class="chip muscle-worked-status" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in" title="Update this muscle"><span class="muscle-attention-dot" style="background:${fill}" aria-hidden="true"></span>${escapeHtml(name)} · ${status.current}/10${status.hold ? " · held" : ""}</a>`;
+    })
+    .join("");
+  const statusLine =
+    active.length === 0
+      ? ""
+      : `<p class="muted small muscle-worked-status-row">From these muscles now: ${statusChips}</p>`;
+  const linkedLine = linkedCheckIn === null
+    ? ""
+    : `<p class="muted small">You reported after this run: <a href="/muscle?day=${escapeHtml(linkedCheckIn.day)}">${escapeHtml(summarizeCheckIn(linkedCheckIn))}</a></p>`;
+  return `<section class="card muscles-worked-card"><div class="splits-head"><h2>Muscles worked · 訓練到的肌肉</h2><p class="muted small">Primary movers ember, helpers light — the honest default for this run, not EMG data. Click a muscle to report how it feels.</p></div>${panel}${statusLine}${linkedLine}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">Check in these muscles · 回報感覺</a></div></section>`;
 }
