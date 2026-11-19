@@ -122,6 +122,14 @@ const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  */
 const THREE_MODULE = readFileSync(new URL("./vendor/three.module.min.js", import.meta.url), "utf8");
 const ORBIT_CONTROLS_MODULE = readFileSync(new URL("./vendor/OrbitControls.js", import.meta.url), "utf8");
+const GLTF_LOADER_MODULE = readFileSync(new URL("./vendor/GLTFLoader.js", import.meta.url), "utf8");
+const BUFFER_GEOMETRY_UTILS_MODULE = readFileSync(new URL("./vendor/BufferGeometryUtils.js", import.meta.url), "utf8");
+/**
+ * The real 3D muscle figure (BodyParts3D, CC BY 4.0; see src/vendor/THREE-LICENSE.txt and
+ * docs/MUSCLE-ANATOMY-3D-RESEARCH.md). Read once at startup: the viewer fetches it and falls back to the
+ * procedural sculpt when it cannot load or render.
+ */
+const ANATOMY_MUSCLES_GLB = readFileSync(new URL("./vendor/anatomy-muscles.glb", import.meta.url));
 
 const SESSION_COOKIE = "poc3sid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -472,7 +480,7 @@ function recentChangesCard(changeSets: readonly ChangeSet[], next: string): stri
       .join(" · ");
     // The visible question names the day and the batch so the coach discusses the exact change, never a guess.
     const discussMessage = `Why did the plan change on ${formatShortDate(set.createdAt.slice(0, 10))}? (${set.summary})`;
-    const discussButton = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">Discuss this change</button>`;
+    const discussButton = `<button type="button" class="coach-ask" title="Chat with the coach about what this change did. Your calendar will not change." data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">Discuss this change</button>`;
     const undoForm = undone
       ? `<div class="change-undo">${discussButton}</div>`
       : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo"><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit">Undo this change</button>${discussButton}</form>`;
@@ -3126,6 +3134,21 @@ export function createWeb(options: WebOptions): WebApp {
         response.end(ORBIT_CONTROLS_MODULE);
         return;
       }
+      if (url.pathname === "/static/gltf-loader.js") {
+        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+        response.end(GLTF_LOADER_MODULE);
+        return;
+      }
+      if (url.pathname === "/static/utils/BufferGeometryUtils.js") {
+        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+        response.end(BUFFER_GEOMETRY_UTILS_MODULE);
+        return;
+      }
+      if (url.pathname === "/static/anatomy-muscles.glb") {
+        response.writeHead(200, { "content-type": "model/gltf-binary", "cache-control": "no-store" });
+        response.end(ANATOMY_MUSCLES_GLB);
+        return;
+      }
       if (url.pathname === "/health") {
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify({ status: "ok" }));
@@ -3686,6 +3709,16 @@ export function createWeb(options: WebOptions): WebApp {
           text: message.text,
           createdAt: message.createdAt,
         }));
+        // The first-hour onboarding moment (US-8): a runner with no conversation yet gets a
+        // server-authored greeting instead of a blank log. It is not stored and costs no model
+        // call; the first real message replaces it.
+        if (messages.length === 0) {
+          const goalText = typeof user.goal === "string" ? user.goal.trim().slice(0, 120) : "";
+          const welcome = goalText.length > 0
+            ? `Hi - I'm your coach. You told me your goal: "${goalText}". Want me to sketch a first week toward it? Or tell me anything I should know first - I never book anything you didn't ask for.`
+            : "Hi - I'm your coach. Tell me what you're training for - a race, a distance, or just getting back into it - and I'll sketch a plan you can change or undo. Connect Garmin or log runs by hand whenever suits you; I never book anything you didn't ask for.";
+          messages.push({ role: "assistant", text: welcome, createdAt: now() });
+        }
         const states = sortCoachStates(options.store.getActiveCoachStates(user.userId, now()))
           .filter((state) => state.key !== "no_key")
           .map((state) => {
@@ -3940,10 +3973,10 @@ export function createWeb(options: WebOptions): WebApp {
         if (load !== null) {
           const prompt = coachPromptForWeek(periodLabel, load, activities, sessions);
           const loadStats = [
-            load.hasLoad ? `<div class="load-stat"><strong>${load.weekLoad}</strong><span>load</span></div>` : "",
-            load.acwr === null ? "" : `<div class="load-stat"><strong>${load.acwr.toFixed(2)}</strong><span>ACWR</span></div>`,
-            load.weekChangePct === null ? "" : `<div class="load-stat"><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>vs last week</span></div>`,
-            load.hasIntensity ? `<div class="load-stat"><strong>Hard ${load.hardDistanceKm} km · Easy ${load.easyDistanceKm} km</strong><span>split</span></div>` : "",
+            load.hasLoad ? `<div class="load-stat" title="Load: Garmin's training load, or duration x reported effort for runs logged by hand."><strong>${load.weekLoad}</strong><span>load</span></div>` : "",
+            load.acwr === null ? "" : `<div class="load-stat" title="ACWR: this week's load compared with your 28-day average."><strong>${load.acwr.toFixed(2)}</strong><span>ACWR</span></div>`,
+            load.weekChangePct === null ? "" : `<div class="load-stat" title="Week-over-week change in total load."><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>vs last week</span></div>`,
+            load.hasIntensity ? `<div class="load-stat" title="Hard vs easy kilometres; a reported effort of 7 or above counts as hard."><strong>Hard ${load.hardDistanceKm} km · Easy ${load.easyDistanceKm} km</strong><span>split</span></div>` : "",
           ].filter((part) => part.length > 0).join("");
           const intensityLine = load.hasIntensity
             ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>`

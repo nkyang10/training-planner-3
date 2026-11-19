@@ -1595,6 +1595,9 @@ describe("training log", () => {
     expect(html).toContain("Easy 1 run");
     expect(html).toContain(" km · Easy ");
     expect(html).toContain("<span>split</span>");
+    expect(html).toContain(`title="Load: Garmin's training load, or duration x reported effort for runs logged by hand."`);
+    expect(html).toContain(`title="ACWR: this week's load compared with your 28-day average."`);
+    expect(html).toContain(`title="Hard vs easy kilometres; a reported effort of 7 or above counts as hard."`);
     expect(html).toContain("ACWR compares this week's load with the 28-day average");
     expect(html).toContain("Load is Garmin's training load, or duration x reported effort for runs logged by hand");
     expect(html).toContain("Review my week with the coach");
@@ -2979,6 +2982,35 @@ describe("conversation history after refresh", () => {
     expect(body.messages.map((message) => message.text)).toEqual(["first", "second"]);
     expect(body.messages.some((message) => message.text === "foreign")).toBe(false);
   });
+
+  it("greets a fresh runner on first open instead of an empty log, reflecting their goal", async () => {
+    const { base } = await start();
+    const noGoal = await fetch(`${base}/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: "greet_nogoal", displayName: "Greet No Goal", password: "greet-password-123", timezone: "UTC" }),
+      redirect: "manual",
+    });
+    const noGoalCookie = cookieFrom(noGoal.headers.get("set-cookie") ?? "");
+    const first = (await (await fetch(`${base}/chat/history`, { headers: { cookie: noGoalCookie } })).json()) as { messages: Array<{ role: string; text: string }> };
+    expect(first.messages).toHaveLength(1);
+    expect(first.messages[0]?.role).toBe("assistant");
+    expect(first.messages[0]?.text).toContain("Hi - I'm your coach");
+    expect(first.messages[0]?.text).toContain("I never book anything you didn't ask for");
+    expect(first.messages[0]?.text).not.toContain("You told me your goal");
+
+    const withGoal = await fetch(`${base}/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: "greet_goal", displayName: "Greet Goal", password: "greet-password-123", timezone: "UTC", goal: "10k in February" }),
+      redirect: "manual",
+    });
+    const goalCookie = cookieFrom(withGoal.headers.get("set-cookie") ?? "");
+    const second = (await (await fetch(`${base}/chat/history`, { headers: { cookie: goalCookie } })).json()) as { messages: Array<{ role: string; text: string }> };
+    expect(second.messages).toHaveLength(1);
+    expect(second.messages[0]?.text).toContain('You told me your goal: "10k in February"');
+    expect(second.messages[0]?.text).toContain("Want me to sketch a first week toward it?");
+  });
 });
 
 describe("month navigation label", () => {
@@ -3720,6 +3752,7 @@ describe("honest demo slice", () => {
     expect(calendar).toContain("Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)");
     expect(calendar).toContain("discuss-change");
     expect(calendar).toContain("recent-changes");
+    expect(calendar).toContain(`title="Chat with the coach about what this change did. Your calendar will not change."`);
 
     const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
     expect(undo.status).toBe(303);

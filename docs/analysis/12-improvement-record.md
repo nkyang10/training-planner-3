@@ -73,9 +73,28 @@ parallel, not by this session.
 
 - The muscle feature received the root's safety review and the owner's explicit approval, but no adversarial review
   pass; its docs are the owner's; its 3D viewer was not exercised beyond the route render in the live probe.
-- PR-17 is implemented as the single inline gloss line plus the demoted stat grid, not a full tooltip system.
-- US-8 (the first-hour onboarding moment) remains open - the third independent rediscovery in docs 08, 11 and the
-  vision critiques; it is the top structural item for the next slice.
+- PR-17 shipped as the single inline gloss line, the demoted stat grid and, in the addendum below, per-stat
+  tooltips; there is no wider tooltip framework.
+- US-8 was open when this record was first drafted; the addendum below closes it.
+
+## 5. Addendum (same day): the onboarding moment and the tooltip pass
+
+After the record's first draft, the owner said "do the remaining", and the two named items shipped:
+
+- **US-8, the first-hour onboarding moment.** `/chat/history` now returns one server-authored greeting when the
+  runner has no conversation yet - no model call, nothing stored, gone the moment a real turn exists. Without a
+  goal: "Hi - I'm your coach. Tell me what you're training for - a race, a distance, or just getting back into
+  it - and I'll sketch a plan you can change or undo. Connect Garmin or log runs by hand whenever suits you; I
+  never book anything you didn't ask for." With a goal: "You told me your goal: '<goal>'. Want me to sketch a
+  first week toward it? Or tell me anything I should know first - I never book anything you didn't ask for."
+  Live-verified 11/11: both variants render for fresh accounts, and the greeting disappears after one real turn
+  (the live turn also booked an explicit ask with reasoning, as the contract requires).
+- **US-6 and the tooltip depth.** Every load stat cell carries a plain title gloss (load, ACWR, vs last week,
+  the hard/easy split), and "Discuss this change" carries "Chat with the coach about what this change did. Your
+  calendar will not change."
+
+Verification: full gate 452/452 across 19 files (the owner's parallel muscle-anatomy tests are green in the same
+tree); live deploy Deploy OK (pid 38780); the greeting probe passed 11/11 with both temp accounts removed (0 rows).
 - The copy pass has no post-ship vision-model re-critique; doc 11's screen findings were the input, and the live
   probe asserts the changed strings, but a fresh first-impression pass would be the honest closing layer.
 - The stylesheet version history v19 -> v21 is the dead agent's artifact, not a deliberate cache-busting schedule;
