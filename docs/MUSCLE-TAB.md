@@ -25,7 +25,7 @@ The muscle loop closes that gap with the same philosophy as the rest of the app:
 | Surface | What it adds |
 |---|---|
 | App bar | A third tab: **Plan / Training log / Muscles** |
-| `/muscle` | The Muscle tab: check-in form, heat map, latest diagnosis, drills, coach knowledge, history |
+| `/muscle` | The Muscle tab: a 3D interactive figure (three.js) plus the flat-figure fallback, check-in form, heat, latest diagnosis, drills, coach knowledge, history |
 | `POST /muscle/checkin` | Stores one check-in (validated server-side) |
 | `/activity/<id>` | A **Muscles worked** card (primary/secondary) + "Check in these muscles" link |
 | Run review card (new run synced / run logged) | A "Log muscle feel · 回報肌肉" link into `/muscle?activity=<id>` |
@@ -33,6 +33,7 @@ The muscle loop closes that gap with the same philosophy as the rest of the app:
 | Coach | `review-muscles` intent (comment-only), muscle facts in every prompt, per-muscle knowledge blocks |
 | `/coach-states` | Reachable one-tap from a warning check-in: set `pain_injury` (or `medical_red_flag`) with prefilled note |
 | `/export.json` | Muscle check-ins are part of the runner's data bundle |
+| `/static/three.module.js`, `/static/orbit-controls.js` | Pinned three.js r170 builds (MIT), vendored in `src/vendor/` and served as static scripts behind an import map — no runtime npm dependency |
 
 ## 3. Data model
 
@@ -83,6 +84,39 @@ paths), chosen for a running-first app that also covers gym cross-training:
 Each region carries coach knowledge: function, common issues, what soreness there usually means for a runner,
 recovery guidance, and 2-4 concrete drills (mobility / activation / recovery) with dosage text (§6 of the research
 report).
+
+## 4b. The 3D figure
+
+The Muscle tab's primary view is an interactive **3D anatomy figure** built with three.js:
+
+- **Realistic rendering.** ACES filmic tone mapping, a three-point light rig (warm key with soft shadows, cool
+  fill, ember rim), a shadow-catching ground disc, and physical materials with clearcoat and sheen — the figure
+  reads as a lit clay anatomy model rather than a flat drawing.
+- **The rig is typed data** (`src/muscle-rig.ts`): the body silhouette (a lathe trunk plus capsule limbs) and one
+  overlay shape set per catalog muscle, mirrored across the axis exactly like the 2D figure. Tests hold the rig
+  to the catalog, the authoring convention and the figure's bounds.
+- **Interaction.** Drag to orbit, scroll or pinch to zoom, click or tap a muscle to select it (raycast against
+  the overlay meshes); hover shows a name-and-state tooltip. Front / Back / Reset buttons tween the camera.
+- **The animation can be stopped.** While the runner decides, the figure turns slowly on a turntable and
+  breathes subtly; the **Pause rotation** button holds it still (and `prefers-reduced-motion` starts it paused).
+  Care-needed muscles pulse a low red so the flag never relies on hue alone.
+- **One selection state, two surfaces.** The 3D viewer and the flat figure drive the same bridge
+  (`window.__muscleTabBridge`), so a click on the 3D figure updates the tray, the editor, the checkbox list and
+  the 2D figure — and vice versa. Recent check-ins paint the same heat ramp on the overlay muscles.
+- **Resilience.** The 3D layer is an ES module behind an import map that resolves the vendored builds; if WebGL
+  cannot start, the viewer says so and opens the flat figure automatically. The flat figure (inside its
+  "no 3D needed" details) carries the no-JavaScript and keyboard paths, so the form works in every browser.
+- **Browser-verified.** A headless-Chrome harness (tmp scripts, seeded data) loads the page over HTTP and asserts
+  from inside the page: the import map resolves, the modules load, `viewerReady=1`, a canvas exists and WebGL
+  initialized — then captures [docs/design/muscle-tab-demo.png](design/muscle-tab-demo.png). The capture waits on a
+  long-poll load blocker released by the viewer's ready beacon, so the screenshot shows the rendered figure rather
+  than the first blank paint.
+
+A photoreal anatomical mesh is the documented follow-up — and the path is now **researched and pipeline-proven**:
+BodyParts3D (CC BY 4.0) provides one named mesh per real muscle and bone, and a Blender→GLB→three.js pipeline was
+run end-to-end on this machine (real anatomy rendered under the app's light rig, raycast picking returning
+anatomical names). Options compared, licenses, the curated part mapping and the integration plan live in
+[MUSCLE-ANATOMY-3D-RESEARCH.md](MUSCLE-ANATOMY-3D-RESEARCH.md).
 
 ## 5. The check-in flow
 
@@ -191,7 +225,11 @@ source for `?activity=<id>`.
 - Every region is an SVG group with `role="button"`, `tabindex`, and an `aria-label`; the muscle list below the
   map is real checkboxes, so the form works fully without script. Severity uses a `<input type="range">` with a
   visible anchor line, not color alone; the heat ramp is amber→ember→red (never green/red alone) and warning
-  regions also get a dashed outline.
+  regions also get a dashed outline (and a red pulse in 3D).
+- The 3D figure is a pointer-driven surface: orbit, zoom, click-select and the pause control all work with a
+  mouse or touch, and its status is announced to the page (`viewerReady`, tooltip `role="status"`). Keyboard
+  users keep the flat figure's button regions and the checkbox list; `prefers-reduced-motion` pauses the
+  turntable before it starts.
 - The no-JS path posts the same shape with shared severity/conditions; the script path posts per-muscle JSON.
 - Copy keeps the app's honesty: DOMS is normalized, "no soreness" is never called a wasted session, and urgent
   flags hand the runner to medical care instead of pretending the app can advise.
@@ -204,10 +242,16 @@ source for `?activity=<id>`.
   validation (ids, soreness bounds, condition keys, note caps, day backfill window), interpretation rules
   (each level, modifiers, urgent combinations), muscles-worked mapping (kind + title keywords + elevation), and
   prompt-facts rendering.
+- `test/muscle-rig.test.ts`: the 3D rig covers the catalog once, authors mirrored parts on the left, stays
+  inside the figure's bounds, uses only the shape kinds the viewer builds, and the trunk lathe closes upward.
 - `test/store.test.ts`: append/list/get scoping by user.
-- `test/web-muscle.test.ts`: `/muscle` renders (map regions, catalog list, empty and seeded states),
+- `test/web-muscle.test.ts`: `/muscle` renders (viewer container, import map, controls, the flat-figure
+  fallback, catalog list, empty and seeded states), the vendored three.js builds serve with the right type,
   `POST /muscle/checkin` accept/reject paths, `?activity=` prefill, history rows, warning chip on the calendar,
   activity-detail muscles card, export bundle inclusion.
 - `test/directives.test.ts`: `review-muscles` parsing and directive build (comment-only, source, muscleId
   reference).
 - `test/coach.test.ts`: prompt facts block and referenced-muscle context.
+- Headless Chrome (fixture pipeline, not part of the suite): loads the served page and reports from inside it
+  that the import map resolved, the modules loaded, the viewer reached `viewerReady=1` with a live canvas and
+  WebGL context, then captures the demo screenshot.

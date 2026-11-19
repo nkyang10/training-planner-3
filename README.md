@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 439 passing" src="https://img.shields.io/badge/tests-439%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 446 passing" src="https://img.shields.io/badge/tests-446%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (439 tests in 17 files). |
+| `pnpm test` | Run the Vitest suite (446 tests in 18 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -119,8 +119,16 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 
 ### ?? Muscles
 
-- A third app-bar tab, **Muscles** (`/muscle`): an interactive front/back body map where the runner taps a muscle
-  (click, Enter/Space, or the grouped checkbox list) and tags how it feels — a 0-10 anchored soreness slider
+- A third app-bar tab, **Muscles** (`/muscle`): an interactive **3D anatomy figure** (three.js, vendored and
+  served as static scripts behind an import map — no runtime npm dependency). The figure is physically rendered
+  (ACES tone mapping, key/fill/rim lights, soft shadows, clearcoat-and-sheen materials) from a typed rig
+  (`src/muscle-rig.ts`) shared with the flat figure. Drag to orbit, scroll or pinch to zoom, click or tap a
+  muscle to select it, hover for a name-and-state tooltip; **Pause rotation** stops the slow turntable and
+  breathing while you decide (it starts paused under `prefers-reduced-motion`), and Front / Back / Reset tween
+  the camera. If WebGL cannot start, the viewer says so and opens the flat figure — which stays available in a
+  collapsible "no 3D needed" details for keyboard and no-JavaScript users, and shares one selection state with
+  the 3D view.
+- Tagging is per muscle: a 0-10 anchored soreness slider
   (0 nothing · 5 noticeable · 7 sore to touch · 9-10 severe), condition tags (tight, cramp, fatigued, dull ache,
   sharp pain, swelling, numbness, old-injury flare), a left/right/both side, and a "better once warmed up?" toggle.
   A quick set applies one severity and tags to the whole selection, and the same controls are the no-JavaScript
@@ -238,7 +246,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 439 Vitest tests across 17 files. |
+| `test/` | 446 Vitest tests across 18 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -250,6 +258,7 @@ One SQLite file, two processes:
 | [Coaching states](docs/COACH-STATES.md) | The durable-state model, catalog, detectors, chat/user proposals, precedence, guardrails, UI/API, research citations and what is needed versus deliberately skipped. |
 | [Training-log plan](docs/TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented load/ramp, rich-metrics, per-kilometre-split, lap/interval, HR-zone, best-efforts/PR, metric-trend, Garmin-workout and weekly-review slices. |
 | [Muscle tab](docs/MUSCLE-TAB.md) | Research basis (scales, DOMS course, red flags), the check-in flow, the interpretation rules, drill suggestions, coach integration, accessibility and safety copy for the Muscles tab. |
+| [Muscle anatomy 3D research](docs/MUSCLE-ANATOMY-3D-RESEARCH.md) | How to get a nicer muscle/skeleton figure: options with licenses (BodyParts3D recommended), the proven download→Blender→GLB→three.js pipeline, the curated per-muscle part mapping, and the integration plan. |
 | [Garmin training programs](docs/GARMIN-TRAINING-PROGRAMS.md) | What the Garmin Personal API exposes about training programs (per-activity executed workout), what it does not (future scheduled workouts, Coach/adaptive plans), and what a full-plan import would require. |
 | [Feature backlog](docs/FEATURES-FOR-REVIEW.md) | Remaining candidate features, prioritised and waiting for owner review. |
 | [ADR-0001](docs/adr/0001-server-validated-coach.md) | LLM proposes; the server validates before writing. |
@@ -353,7 +362,9 @@ detail is one tap away (headless Chrome, fake demo data:
 [session peek](docs/design/session-peek-demo.png), [coach audit](docs/design/coach-audit-demo.png)).
 
 **Not in scope:** admin console, Strava, payments, external calendar sync, production multi-tenant deployment, Garmin
-wellness/HRV/sleep data, weather/air-quality providers, and clinical decision support.
+wellness/HRV/sleep data, weather/air-quality providers, and clinical decision support. The Muscle tab's 3D figure is a
+procedurally rigged, physically rendered anatomy sculpt; the upgrade to real anatomy meshes is researched with a
+pipeline-proven path in [docs/MUSCLE-ANATOMY-3D-RESEARCH.md](docs/MUSCLE-ANATOMY-3D-RESEARCH.md).
 
 ## Honest limits
 
@@ -376,7 +387,8 @@ wellness/HRV/sleep data, weather/air-quality providers, and clinical decision su
 - **Code shape:** the calendar-cell union and its single renderer live in `src/calendar-items.ts`; the state catalog in
   `src/coach-state-catalog.ts`, the state/audit page render in `src/web-coach-states.ts`, and shared HTML helpers in
   `src/web-html.ts`. The muscle domain (catalog, taxonomy, interpretation rules, drills, validation) lives in
-  `src/muscles.ts`, the SVG figures in `src/muscle-map.ts`, and the Muscle tab page in `src/web-muscle.ts`.
+  `src/muscles.ts`, the SVG figures in `src/muscle-map.ts`, the 3D rig in `src/muscle-rig.ts` (with the vendored
+  three.js builds in `src/vendor/`), and the Muscle tab page in `src/web-muscle.ts`.
   `src/web.ts` still holds the routes and the inline client script, so a route/client-script split is a
   follow-up refactor, not a behavior change.
 - **Garmin:** capped at **100 activities per pull**; the Personal API key is stored per runner in SQLite in plaintext, so

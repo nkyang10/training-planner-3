@@ -81,6 +81,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .sessions { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .sessions li { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--wash); }
 .chip { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+/* Action chips read as buttons, not status badges: sentence case, no tracking. */
+.chip.action { text-transform: none; letter-spacing: 0; font-weight: 600; font-size: 12px; padding: 4px 10px; }
 .chip.kind-easy { border-color: #2f9e5f; color: #17653b; }
 .chip.kind-long { border-color: #dfa000; color: #7d5100; }
 .chip.kind-interval, .chip.kind-tempo { border-color: var(--ember); color: #9e2409; }
@@ -270,8 +272,9 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .load-chip.high { background: #ffe4dc; color: #a3260b; border-color: #ffb7a6; }
 .load-chip.insufficient, .load-chip.no-data { background: var(--wash); color: var(--muted); border-color: var(--line); }
 .load-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-.load-stat { padding: 10px 11px; background: var(--wash); border: 1px solid var(--line); border-radius: 12px; }
-.load-stat strong { display: block; font-size: 18px; letter-spacing: -.02em; }
+/* The plain-English warning leads; the raw numbers stay secondary so jargon never outranks the sentence. */
+.load-stat { padding: 8px 10px; background: transparent; border: 1px dashed var(--line); border-radius: 12px; }
+.load-stat strong { display: block; font-size: 15px; letter-spacing: -.01em; color: var(--ink-2); }
 .load-stat span { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
 .load-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 /* The consultative ramp warning: data first, the decision handed back, in the watch-chip amber. */
@@ -535,6 +538,8 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .audit-background { margin: 4px 0 0; padding: 8px 10px; border-left: 3px solid var(--solar); background: #fffaf1; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink); }
 
 .state-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.state-chips-label { align-self: center; font-size: 12px; font-weight: 700; color: var(--muted); }
+.state-ttl-row { display: flex; align-items: center; gap: 6px; }
 .state-chip { text-decoration: none; }
 .state-status.state-active { color: #1f6b45; border-color: #bfe0cd; background: #eef8f2; }
 .state-status.state-observing { color: #8a5a00; border-color: #f0d9a8; background: #fff8e8; }

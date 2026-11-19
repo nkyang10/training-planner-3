@@ -336,7 +336,10 @@ describe("authentication pages", () => {
 
     const calendar = await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: signupCookie } });
     expect(calendar.status).toBe(200);
-    expect(await calendar.text()).toContain("Welcome back, New Runner");
+    const calendarHtml = await calendar.text();
+    expect(calendarHtml).toContain("Welcome back, New Runner");
+    expect(calendarHtml).toContain("Your training calendar");
+    expect(calendarHtml).toContain('class="chip action"');
 
     const duplicate = await fetch(`${base}/signup`, {
       method: "POST",
@@ -1489,6 +1492,7 @@ describe("training log", () => {
     expect(html).toContain("Sun, 8 Nov 2026");
     expect(html).toContain("Average pace");
     expect(html).toContain("Consistency");
+    expect(html).toContain("% of days");
     expect(html).toContain('class="trend-chart"');
     expect(html).toContain("data-coach-message=");
     expect(html).toContain("Ask coach");
@@ -1589,6 +1593,10 @@ describe("training log", () => {
     expect(html).toContain("1.00");
     expect(html).toContain("Hard 1 run");
     expect(html).toContain("Easy 1 run");
+    expect(html).toContain(" km · Easy ");
+    expect(html).toContain("<span>split</span>");
+    expect(html).toContain("ACWR compares this week's load with the 28-day average");
+    expect(html).toContain("Load is Garmin's training load, or duration x reported effort for runs logged by hand");
     expect(html).toContain("Review my week with the coach");
     expect(html).toContain("Review my training week 2–8 Nov 2026");
     expect(html).toContain("Garmin load 200");
@@ -3042,6 +3050,10 @@ describe("coach states page", () => {
     expect(html).toContain("Confirm");
     expect(html).toContain("Dismiss");
     expect(html).toContain("Set a state");
+    expect(html).toContain("Covers the next N days");
+    expect(html).toContain("days, starting today");
+    expect(html).toContain("Choose a state...");
+    expect(html).toContain("never lock your calendar");
     expect(html).toContain("Not medical advice");
     expect(html).toContain("Recent state history");
     expect(html).toContain("Travel");

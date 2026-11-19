@@ -1446,6 +1446,7 @@ function trendSection(
   periodLabel: string,
   volumeTitle: string,
   volumeAria: string,
+  consistencyUnit?: string,
 ): string {
   const paceActivities = activities.filter(
     (activity) => activity.paceSecPerKm !== null && activity.distanceKm !== null && activity.durationMin !== null && activity.distanceKm > 0,
@@ -1460,7 +1461,8 @@ function trendSection(
     ? null
     : Math.round(cadenceActivities.reduce((sum, activity) => sum + (activity.cadenceSpm ?? 0), 0) / cadenceActivities.length);
   const summaryRow = (label: string, value: string): string => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
-  return `<section class="trends"><div class="trend-head"><h2>Trends</h2><p class="muted small">${escapeHtml(periodLabel)} · ${activities.length} runs</p>${activities.length > 12 ? `<p class="muted small trend-window">The trend plots the last 12 runs with the selected metric; the volume chart covers the whole period.</p>` : ""}</div><div class="trend-grid">${volumeChart(buckets, volumeTitle, `${sumDistance(activities)} km · ${periodLabel}`, volumeAria)}<figure class="trend-card trend-stats"><figcaption>Summary</figcaption><dl>${summaryRow("Average pace", averagePace === null ? "—" : escapeHtml(formatPace(averagePace)))}${summaryRow("Average HR", averageHr === null ? "—" : `${averageHr} bpm`)}${summaryRow("Average cadence", averageCadence === null ? "—" : `${averageCadence} spm`)}${summaryRow("Consistency", `${consistency}%`)}</dl></figure></div>${trendPicker(activities, periodLabel)}</section>`;
+  const consistencyValue = consistencyUnit === undefined ? `${consistency}%` : `${consistency}% of ${consistencyUnit}`;
+  return `<section class="trends"><div class="trend-head"><h2>Trends</h2><p class="muted small">${escapeHtml(periodLabel)} · ${activities.length} runs</p>${activities.length > 12 ? `<p class="muted small trend-window">The trend plots the last 12 runs with the selected metric; the volume chart covers the whole period.</p>` : ""}</div><div class="trend-grid">${volumeChart(buckets, volumeTitle, `${sumDistance(activities)} km · ${periodLabel}`, volumeAria)}<figure class="trend-card trend-stats"><figcaption>Summary</figcaption><dl>${summaryRow("Average pace", averagePace === null ? "No data yet" : escapeHtml(formatPace(averagePace)))}${summaryRow("Average HR", averageHr === null ? "No data yet" : `${averageHr} bpm`)}${summaryRow("Average cadence", averageCadence === null ? "No data yet" : `${averageCadence} spm`)}${summaryRow("Consistency", consistencyValue)}</dl></figure></div>${trendPicker(activities, periodLabel)}</section>`;
 }
 
 /** SameSite=Lax covers most CSRF; this also rejects a browser POST whose Origin is another host. */
@@ -3875,6 +3877,8 @@ export function createWeb(options: WebOptions): WebApp {
         let consistency = 0;
         let volumeTitle = "Daily volume";
         let volumeAria = `Daily volume for ${periodLabel}`;
+        // What the consistency percentage counts, so the summary row never reads as a mystery grade.
+        let consistencyUnit: "days" | "weeks" | "months" = "days";
 
         if (view === "week") {
           const weekDays = Array.from({ length: 7 }, (_, index) => addDays(periodStart, index));
@@ -3909,6 +3913,7 @@ export function createWeb(options: WebOptions): WebApp {
           }));
           const activeWeeks = weekStarts.filter((start) => activities.some((activity) => activity.day >= start && activity.day <= addDays(start, 6))).length;
           consistency = Math.round((activeWeeks / Math.max(weekStarts.length, 1)) * 100);
+          consistencyUnit = "weeks";
           volumeTitle = "Weekly volume";
           volumeAria = `Weekly volume for ${periodLabel}`;
         } else {
@@ -3926,6 +3931,7 @@ export function createWeb(options: WebOptions): WebApp {
           }));
           const activeMonths = MONTHS.filter((_, index) => activities.some((activity) => activity.day.slice(0, 7) === `${periodValue}-${String(index + 1).padStart(2, "0")}`)).length;
           consistency = Math.round((activeMonths / 12) * 100);
+          consistencyUnit = "months";
           volumeTitle = "Monthly volume";
           volumeAria = `Monthly volume for ${periodValue}`;
         }
@@ -3937,7 +3943,7 @@ export function createWeb(options: WebOptions): WebApp {
             load.hasLoad ? `<div class="load-stat"><strong>${load.weekLoad}</strong><span>load</span></div>` : "",
             load.acwr === null ? "" : `<div class="load-stat"><strong>${load.acwr.toFixed(2)}</strong><span>ACWR</span></div>`,
             load.weekChangePct === null ? "" : `<div class="load-stat"><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>vs last week</span></div>`,
-            load.hasIntensity ? `<div class="load-stat"><strong>${load.hardDistanceKm} / ${load.easyDistanceKm} km</strong><span>hard / easy</span></div>` : "",
+            load.hasIntensity ? `<div class="load-stat"><strong>Hard ${load.hardDistanceKm} km · Easy ${load.easyDistanceKm} km</strong><span>split</span></div>` : "",
           ].filter((part) => part.length > 0).join("");
           const intensityLine = load.hasIntensity
             ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>`
@@ -3952,9 +3958,9 @@ export function createWeb(options: WebOptions): WebApp {
           const rampChip = rising
             ? `<button type="button" class="coach-ask" data-coach-message="The last week or two ramped up - can we talk it through?" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">Talk through this ramp</button>`
             : "";
-          const acwrNote = load.acwr === null
-            ? ""
-            : `<p class="muted small">ACWR compares this week with the 28-day average; a soft signal, not medical advice.</p>`;
+          const acwrNote = load.hasLoad
+            ? `<p class="muted small">ACWR compares this week's load with the 28-day average · Load is Garmin's training load, or duration x reported effort for runs logged by hand · a soft signal, not medical advice.</p>`
+            : "";
           loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div>${warningLine}${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}${hardEasyNote}<p class="muted small">${escapeHtml(load.note)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">Review my week with the coach</button>${rampChip}</div></section>`;
         }
 
@@ -3988,7 +3994,7 @@ export function createWeb(options: WebOptions): WebApp {
           ${manualReviewCard}
           ${reviewCard}
           ${loadCard}
-          ${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria)}
+          ${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit)}
           ${bestEffortsCard}
           ${noActivities}
           ${content}`;
@@ -4015,7 +4021,7 @@ export function createWeb(options: WebOptions): WebApp {
         const stateChips =
           activeStates.length === 0 && muscleChip.length === 0
             ? ""
-            : `<div class="state-chips">${activeStates.map((state) => stateChipHtml(state)).join("")}${muscleChip}${activeStates.length === 0 ? "" : `<a class="chip" href="/coach-states">All states</a>`}</div>`;
+            : `<div class="state-chips"><span class="state-chips-label">Coaching states:</span>${activeStates.map((state) => stateChipHtml(state)).join("")}${muscleChip}${activeStates.length === 0 ? "" : `<a class="chip action" href="/coach-states">All states</a>`}</div>`;
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         // Fill this month's missing workouts before rendering so every run with a Garmin workout is paired in the grid.
@@ -4074,11 +4080,11 @@ export function createWeb(options: WebOptions): WebApp {
                   : `<div class="today-strip-main"><p class="today-strip-empty">Nothing booked today — ask the coach to fill it, or log a run by hand.</p></div>
               <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Add a session on ${today}: `)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", day: today, source: "today-strip" }))}">Ask the coach</button><a class="chip" href="/day/${escapeHtml(today)}#log-run">Log a run</a></div>`
             }</section>`;
-        const body = `<header class="page-head"><p class="eyebrow">Private calendar</p>
+        const body = `<header class="page-head"><p class="eyebrow">Your training calendar</p>
           <h1>Your plan</h1>
           <p class="muted">Welcome back, ${escapeHtml(user.displayName)}.</p>
           <p class="cal-legend">Colored row: planned session · green ✓ row: recorded run · green+purple ◈ row: recorded run + the Garmin workout it followed.</p>
-          <p class="head-actions"><a class="chip" href="/day/${escapeHtml(today)}#log-run">Log a run</a> <a class="chip" href="#recent-changes">Recent changes</a>${syncChip}</p>${stateChips}</header>
+          <p class="head-actions"><a class="chip action" href="/day/${escapeHtml(today)}#log-run">Log a run</a> <a class="chip action" href="#recent-changes">Recent changes</a>${syncChip}</p>${stateChips}</header>
           ${todayStrip}
           ${reviewCard}
           ${emptyCard}

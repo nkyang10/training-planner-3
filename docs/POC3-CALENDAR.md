@@ -131,7 +131,7 @@ Key properties:
 | Period selector | Week / Month / Year | `src/web.ts` + `src/styles.ts` | mode switch, previous/next/current and date/month/year picker; preserves the period anchor |
 | Activity detail | `/activity/<activityId>` (`:8091`) | `src/web.ts` + `src/garmin.ts` + `src/garmin-workout.ts` + `src/training.ts` | one run's metrics, rich Garmin metrics, fastest efforts, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, Garmin workout step card, planned-vs-actual deltas, comparison bars, comment-only Ask coach |
 | View switcher | Plan / Training log / Muscles | `layout()` in `src/web.ts` | sliding segmented control inside the app bar; rendered only on the pages that name a view (calendar, day detail, training log, activity detail, muscle tab) |
-| Muscle tab | `/muscle?day=…&activity=…` (`:8091`) | `src/web-muscle.ts` + `src/muscles.ts` + `src/muscle-map.ts` + `src/styles.ts` | interactive front/back muscle map (click, keyboard and a checkbox-list alternative), 0-10 anchored soreness with condition tags, deterministic readings (normal soreness → watch → warning → urgent), drill suggestions matched to the tags, per-muscle coach knowledge, one-tap pain/red-flag states, history; `POST /muscle/checkin` stores it; the muscles a run worked appear on the activity detail and can prefill a check-in |
+| Muscle tab | `/muscle?day=…&activity=…` (`:8091`) | `src/web-muscle.ts` + `src/muscles.ts` + `src/muscle-map.ts` + `src/muscle-rig.ts` + `src/vendor/` (three.js r170) + `src/styles.ts` | an interactive 3D anatomy figure (three.js, orbit/zoom, raycast click-select, pausable turntable and breathing, camera tweens) over a typed rig shared with the flat figure; 0-10 anchored soreness with condition tags, deterministic readings (normal soreness → watch → warning → urgent), drill suggestions matched to the tags, per-muscle coach knowledge, one-tap pain/red-flag states, history; `POST /muscle/checkin` stores it; the muscles a run worked appear on the activity detail and can prefill a check-in |
 | Coach bubble | bottom-right of both views | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation; reloads the recent conversation on open |
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
 | Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
@@ -995,6 +995,9 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
   programs, what it does not, and what a full-plan import would require.
 - [`MUSCLE-TAB.md`](MUSCLE-TAB.md) ??the Muscle tab: research basis (scales, DOMS course, red flags), the check-in
   flow, the interpretation rules, drill suggestions, coach integration and safety copy.
+- [`MUSCLE-ANATOMY-3D-RESEARCH.md`](MUSCLE-ANATOMY-3D-RESEARCH.md) ??how to get a nicer muscle/skeleton 3D figure:
+  source options with licenses, the proven BodyParts3D ??Blender ??GLB ??three.js pipeline, the per-muscle part
+  mapping, and the integration plan for the existing viewer.
 - [`adr/0001-server-validated-coach.md`](adr/0001-server-validated-coach.md)
 - [`adr/0002-calendar-first-bubble.md`](adr/0002-calendar-first-bubble.md)
 - [`adr/0003-validation-feedback-loop.md`](adr/0003-validation-feedback-loop.md)

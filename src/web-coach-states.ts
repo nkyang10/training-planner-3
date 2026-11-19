@@ -234,14 +234,14 @@ export function renderCoachStates(
   const errorMessage = stateErrorMessage(error);
   return deps.layout(
     "Coaching states",
-    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a></p><h1>Coaching states · 教練狀態</h1><p class="muted">Temporary situations that change your training — race phase, load, travel, heat, pain, illness or a focus block. Some are detected automatically; others are suggested by the coach or set by you. States are not diagnoses.</p><p class="muted small">Active ${active.length} · Proposed ${observing.length} · Resolved ${resolvedCount}</p>${errorBanner(errorMessage)}</section>
+    `<section class="page-head"><p class="eyebrow"><a href="/profile">← Profile</a></p><h1>Coaching states · 教練狀態</h1><p class="muted">Temporary situations that change your training — race phase, load, travel, heat, pain, illness or a focus block. Some are detected automatically; others are suggested by the coach or set by you. States shape the coach's advice; they never lock your calendar, and they are not diagnoses.</p><p class="muted small">Active ${active.length} · Proposed ${observing.length} · Resolved ${resolvedCount}</p>${errorBanner(errorMessage)}</section>
     ${setupHtml}
     <section class="card"><h2>Active states · 生效狀態</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit" title="Re-check automatic states">Refresh · 更新</button></form>${activeHtml}</section>
     ${observingHtml}
     <section class="card"><h2>Set a state · 設定狀態</h2><p class="muted small">Use this for travel, heat, time pressure, pain, illness, sleep debt or a focus block. Sensitive states are never inferred; they are yours to set.</p>
       <form method="post" action="/coach-states" class="state-form">
-        <label for="state-key">State</label><select id="state-key" name="key" required>${stateOptions}</select>
-        <label for="state-ttl">Days</label><input id="state-ttl" name="ttlDays" type="number" min="1" max="365" value="7" required>
+        <label for="state-key">State</label><select id="state-key" name="key" required><option value="" disabled selected>Choose a state...</option>${stateOptions}</select>
+        <label for="state-ttl">Covers the next N days</label><div class="state-ttl-row"><input id="state-ttl" name="ttlDays" type="number" min="1" max="365" value="7" required aria-label="Days from today this state covers"> <span class="muted small">days, starting today</span></div>
         <label for="state-note">Note <span class="muted small">(optional)</span></label><input id="state-note" name="note" maxlength="200" autocomplete="off" placeholder="e.g. travelling to Tokyo 20-24 Nov">
         <button class="btn" type="submit">Set state · 儲存</button>
       </form>
