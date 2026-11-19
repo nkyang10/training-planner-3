@@ -32,6 +32,7 @@ import { renderMuscleViewerPanel, type MuscleViewerRegion } from "./muscle-viewe
 import { MUSCLE_STATUS_WINDOW_DAYS, worstStatusLevel, type MuscleStatus } from "./muscle-status";
 import type { CoachStateKey } from "./types";
 import { escapeHtml, type ViewName } from "./web-html";
+import { defaultTranslator, type MessageKey, type Translator } from "./i18n";
 
 export interface MuscleActivityOption {
   activityId: string;
@@ -93,29 +94,38 @@ const READINESS_CHIP: Readonly<Record<string, string>> = {
   urgent: "readiness-urgent",
 };
 
-function errorTextFor(code: string | null): string | undefined {
+const LEVEL_CHIP_KEY: Readonly<Record<MuscleTagLevel, MessageKey>> = {
+  ok: "muscle.levelOk",
+  sore: "muscle.levelSore",
+  heavy: "muscle.levelHeavy",
+  watch: "muscle.levelWatch",
+  warning: "muscle.levelWarning",
+  urgent: "muscle.levelUrgent",
+};
+
+function errorTextFor(code: string | null, tx: Translator = defaultTranslator): string | undefined {
   switch (code) {
     case null:
     case "":
       return undefined;
     case "empty":
-      return "Select at least one muscle before saving.";
+      return tx.t("muscle.errEmpty");
     case "day":
-      return "Pick a valid day — not in the future, and within the last 14 days.";
+      return tx.t("muscle.errDay");
     case "activity":
-      return "That run could not be linked; it may belong to another day.";
+      return tx.t("muscle.errActivity");
     case "severity":
-      return "Soreness must be 0-10.";
+      return tx.t("muscle.errSeverity");
     case "conditions":
-      return "One of the condition tags was not recognized.";
+      return tx.t("muscle.errConditions");
     case "muscles":
-      return "One of the selected muscles was not recognized.";
+      return tx.t("muscle.errMuscles");
     case "note":
-      return "The note must be at most 200 characters.";
+      return tx.t("muscle.errNote");
     case "too-many":
-      return "That check-in had too many muscles in it.";
+      return tx.t("muscle.errTooMany");
     default:
-      return "The check-in could not be saved.";
+      return tx.t("muscle.errDefault");
   }
 }
 
@@ -141,9 +151,9 @@ function tagLine(tag: { soreness: number; conditions: readonly string[]; side: s
   return parts.join(" · ") + side;
 }
 
-function levelChip(level: MuscleTagLevel): string {
+function levelChip(level: MuscleTagLevel, tx: Translator = defaultTranslator): string {
   const chip = LEVEL_CHIP[level];
-  return `<span class="chip muscle-level ${chip.className}">${chip.label}</span>`;
+  return `<span class="chip muscle-level ${chip.className}">${escapeHtml(tx.t(LEVEL_CHIP_KEY[level]))}</span>`;
 }
 
 function readinessChipHtml(readiness: string): string {
@@ -156,30 +166,37 @@ function statusActionForm(action: "hold" | "release" | "resolve", muscleId: stri
 }
 
 /** One live status row: the muscle, today's computed level, the time story, and the three one-tap controls. */
-function statusRowHtml(status: MuscleStatus): string {
+function statusRowHtml(status: MuscleStatus, tx: Translator = defaultTranslator): string {
   const muscle = getMuscle(status.muscleId);
   const name = muscle?.name ?? status.muscleId;
   const trend = status.hold
-    ? `Held constant since ${escapeHtml(formatDayLabel(status.startDay))} — it stays ${status.current}/10 until you change it.`
+    ? tx.t("muscle.heldTrend", { day: escapeHtml(formatDayLabel(status.startDay)), current: status.current })
     : status.current === status.reported
-      ? `Reported ${escapeHtml(formatDayLabel(status.startDay))} · fades on its own from here, expected clear by ${escapeHtml(formatDayLabel(status.expectedClearDay))}.`
-      : `Was ${status.reported}/10 on ${escapeHtml(formatDayLabel(status.startDay))} · now fading, expected clear by ${escapeHtml(formatDayLabel(status.expectedClearDay))}.`;
+      ? tx.t("muscle.reportedTrend", {
+          day: escapeHtml(formatDayLabel(status.startDay)),
+          clear: escapeHtml(formatDayLabel(status.expectedClearDay)),
+        })
+      : tx.t("muscle.fadingTrend", {
+          reported: status.reported,
+          day: escapeHtml(formatDayLabel(status.startDay)),
+          clear: escapeHtml(formatDayLabel(status.expectedClearDay)),
+        });
   const linked = status.activityId === null
     ? ""
-    : ` · about <a href="/activity/${encodeURIComponent(status.activityId)}">the linked run</a>`;
+    : tx.t("muscle.linkedRun", { href: `/activity/${encodeURIComponent(status.activityId)}` });
   const holdToggle = status.hold
-    ? statusActionForm("release", status.muscleId, "Let it fade")
-    : statusActionForm("hold", status.muscleId, "Hold constant");
+    ? statusActionForm("release", status.muscleId, tx.t("muscle.letItFade"))
+    : statusActionForm("hold", status.muscleId, tx.t("muscle.holdConstant"));
   return `<li class="muscle-status-row">
     <span class="muscle-attention-dot" style="background:${sorenessFill(status.current)}" aria-hidden="true"></span>
     <div class="muscle-status-main">
-      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine({ soreness: status.current, conditions: [...status.conditions], side: status.side }))}</span>${levelChip(status.level)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine({ soreness: status.current, conditions: [...status.conditions], side: status.side }))}</span>${levelChip(status.level, tx)}</div>
       <p class="muted small">${trend}${linked}</p>
     </div>
     <div class="muscle-status-actions">
-      <a class="chip" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in">Update</a>
+      <a class="chip" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in">${escapeHtml(tx.t("muscle.updateButton"))}</a>
       ${holdToggle}
-      ${statusActionForm("resolve", status.muscleId, "All better")}
+      ${statusActionForm("resolve", status.muscleId, tx.t("muscle.allBetter"))}
     </div>
   </li>`;
 }
@@ -189,12 +206,12 @@ function statusRowHtml(status: MuscleStatus): string {
  * each reported muscle carries its computed level, its fade clock and three one-tap controls. This is the
  * section the attention badge points at.
  */
-function statusSection(statuses: readonly MuscleStatus[]): string {
+function statusSection(statuses: readonly MuscleStatus[], tx: Translator = defaultTranslator): string {
   const count = statuses.length;
   if (count === 0) {
     return `<section class="card muscle-status-card" id="muscle-status">
-      <div class="splits-head"><h2>Muscle status · 肌肉狀態</h2><p class="muted small">Perfect by default — nothing is assumed sore until you report it.</p></div>
-      <p class="muscle-status-clear"><span class="chip muscle-readiness readiness-steady">All perfect</span> <span class="muted small">Every muscle is in perfect condition, and that is what the coach is told. Report from a run below, or tap a muscle on the figure, and a dated status appears here that fades on its own.</span></p>
+      <div class="splits-head"><h2>${escapeHtml(tx.t("muscle.statusHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.statusEmptyProse"))}</p></div>
+      <p class="muscle-status-clear"><span class="chip muscle-readiness readiness-steady">${escapeHtml(tx.t("muscle.allPerfect"))}</span> <span class="muted small">${escapeHtml(tx.t("muscle.statusClearProse"))}</span></p>
     </section>`;
   }
   const worst = worstStatusLevel(statuses);
@@ -206,45 +223,50 @@ function statusSection(statuses: readonly MuscleStatus[]): string {
             worstStatus === null || LEVEL_RANK[status.level] > LEVEL_RANK[worstStatus.level] ? status : worstStatus,
           null,
         );
-  const worstName = worstRow === null ? "" : `worst: ${escapeHtml(muscleShortName(worstRow.muscleId))} · ${LEVEL_CHIP[worstRow.level].label.toLowerCase()}`;
+  const worstName = worstRow === null
+    ? ""
+    : tx.t("muscle.worstPrefix", {
+        name: escapeHtml(muscleShortName(worstRow.muscleId)),
+        level: escapeHtml(tx.t(LEVEL_CHIP_KEY[worstRow.level]).toLowerCase()),
+      });
   const allBetter = count >= 2
-    ? `<form method="post" action="/muscle/status" class="status-allbetter-form"><input type="hidden" name="action" value="resolve-all"><button class="btn ghost" type="submit">Everything's better</button></form>`
+    ? `<form method="post" action="/muscle/status" class="status-allbetter-form"><input type="hidden" name="action" value="resolve-all"><button class="btn ghost" type="submit">${tx.t("muscle.everythingBetter")}</button></form>`
     : "";
   const summary = statuses
     .map((status) => `${muscleShortName(status.muscleId)} ${status.current}/10${status.hold ? " (held)" : ""}`)
     .join(", ");
-  const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My muscles today: ${summary} — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">Ask coach about this status · 問問教練</button>`;
+  const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My muscles today: ${summary} — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askCoachStatus"))}</button>`;
   return `<section class="card muscle-status-card" id="muscle-status">
     <div class="splits-head">
-      <h2>Muscle status · 肌肉狀態 <span class="attention-badge" role="status" aria-label="${count} muscle${count === 1 ? "" : "s"} need attention">${count}</span></h2>
-      <p class="muted small">Live levels computed from your reports — each one fades on its own over about ${MUSCLE_STATUS_WINDOW_DAYS} days, ${worstName.length === 0 ? "" : `${worstName} · `}hold one to keep it, or mark it better when it is.</p>
+      <h2>${escapeHtml(tx.t("muscle.statusHeading"))} <span class="attention-badge" role="status" aria-label="${escapeHtml(tx.t("muscle.needAttentionAria", { count }))}">${count}</span></h2>
+      <p class="muted small">${tx.t("muscle.liveLevels", { days: MUSCLE_STATUS_WINDOW_DAYS, worst: worstName.length === 0 ? "" : `${worstName} · ` })}</p>
     </div>
-    <ul class="muscle-status-list">${statuses.map(statusRowHtml).join("")}</ul>
+    <ul class="muscle-status-list">${statuses.map((status) => statusRowHtml(status, tx)).join("")}</ul>
     <div class="review-actions">${allBetter}${askCoach}</div>
   </section>`;
 }
 
 /** One reading row: the muscle, the tag line, the level chip and the guidance paragraph. */
-function readingRowHtml(tag: { muscleId: string; soreness: number; conditions: readonly string[]; side: string }): string {
+function readingRowHtml(tag: { muscleId: string; soreness: number; conditions: readonly string[]; side: string }, tx: Translator = defaultTranslator): string {
   const muscle = getMuscle(tag.muscleId);
   if (muscle === undefined) return "";
   const reading = readMuscleTag(tag as Parameters<typeof readMuscleTag>[0]);
   return `<li class="muscle-reading">
-    <div class="muscle-reading-head"><strong>${escapeHtml(muscle.name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine(tag))}</span>${levelChip(reading.level)}</div>
+    <div class="muscle-reading-head"><strong>${escapeHtml(muscle.name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine(tag))}</span>${levelChip(reading.level, tx)}</div>
     <p class="muted small">${escapeHtml(reading.guidance)}</p>
   </li>`;
 }
 
-function readingsSection(checkIn: MuscleCheckIn): string {
+function readingsSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator): string {
   const readiness = readinessForCheckIn(checkIn.muscles);
-  const rows = checkIn.muscles.map(readingRowHtml).join("");
+  const rows = checkIn.muscles.map((tag) => readingRowHtml(tag, tx)).join("");
   const linked = checkIn.activityId === null
     ? ""
-    : ` · about <a href="/activity/${encodeURIComponent(checkIn.activityId)}">the linked run</a>`;
-  const note = checkIn.note === null ? "" : `<p class="muted small">Your note: “${escapeHtml(checkIn.note)}”</p>`;
-  const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`I checked in on my muscles today (${summarizeCheckIn(checkIn)}) — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">Ask coach about this check-in · 問問教練</button>`;
+    : tx.t("muscle.linkedRun", { href: `/activity/${encodeURIComponent(checkIn.activityId)}` });
+  const note = checkIn.note === null ? "" : `<p class="muted small">${tx.t("muscle.yourNote", { note: escapeHtml(checkIn.note) })}</p>`;
+  const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`I checked in on my muscles today (${summarizeCheckIn(checkIn)}) — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askCoachCheckIn"))}</button>`;
   return `<section class="card muscle-reading-card" id="latest-reading">
-    <div class="muscle-reading-head-row"><h2>Latest check-in · 最新回報</h2>${readinessChipHtml(readiness)}</div>
+    <div class="muscle-reading-head-row"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2>${readinessChipHtml(readiness)}</div>
     <p class="muted small">${escapeHtml(formatDayLabel(checkIn.day))}${linked}</p>
     ${note}
     <ul class="muscle-reading-list">${rows}</ul>
@@ -261,7 +283,7 @@ function stateOfferForm(key: CoachStateKey, ttlDays: number, note: string, label
  * existing guardrails, and a coach question scoped to that muscle. No drills here — drills would read as advice
  * the app must not give at this level.
  */
-function careSection(checkIn: MuscleCheckIn): string {
+function careSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator): string {
   const entries = careEntriesForCheckIn(checkIn.muscles);
   if (entries.length === 0) return "";
   const blocks = entries.map(({ tag, reading }) => {
@@ -274,60 +296,60 @@ function careSection(checkIn: MuscleCheckIn): string {
       stateKey,
       isUrgent ? 7 : 21,
       note,
-      isUrgent ? "Set the medical red-flag state" : "Set the pain/injury state",
+      tx.t(isUrgent ? "muscle.setRedFlag" : "muscle.setPainState"),
     );
-    const ask = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My ${name} is ${tagLine(tag)} after training — what should I do?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", muscleId: tag.muscleId, source: "muscle-tab" }))}">Ask coach about my ${escapeHtml(name.toLowerCase())}</button>`;
+    const ask = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My ${name} is ${tagLine(tag)} after training — what should I do?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", muscleId: tag.muscleId, source: "muscle-tab" }))}">${tx.t("muscle.askCoachMuscle", { name: escapeHtml(name.toLowerCase()) })}</button>`;
     return `<li class="muscle-reading care">
-      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong>${levelChip(reading.level)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong>${levelChip(reading.level, tx)}</div>
       <p class="muted small">${escapeHtml(reading.guidance)}</p>
       <div class="review-actions">${offer}${ask}</div>
     </li>`;
   }).join("");
   return `<section class="card muscle-care-card">
-    <h2>Needs care first</h2>
-    <p class="muted small">These tags read as more than training soreness. The state offer switches on the existing guardrail — no intensity or racing while it is active, and a clinician line in the coach's advice. You can resolve it from the <a href="/coach-states">coaching states</a> page.</p>
+    <h2>${escapeHtml(tx.t("muscle.careHeading"))}</h2>
+    <p class="muted small">${tx.t("muscle.careProse")}</p>
     <ul class="muscle-reading-list">${blocks}</ul>
   </section>`;
 }
 
-function drillSection(checkIn: MuscleCheckIn): string {
+function drillSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator): string {
   const cards = drillCardsForCheckIn(checkIn.muscles);
   if (cards.length === 0) return "";
   const cardHtml = cards.map((card) => {
     const drills = card.drills
       .map((drill) => `<li><span class="chip drill-cat drill-${drill.category}">${drill.category}</span><strong>${escapeHtml(drill.name)}</strong><span class="muted small">${escapeHtml(drill.how)}</span></li>`)
       .join("");
-    const ask = `<button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Can we work a short ${card.level === "heavy" ? "easy recovery" : "mobility and activation"} session for my ${card.muscleName.toLowerCase()} into this week?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "muscle-tab" }))}">Ask the coach to work this in</button>`;
+    const ask = `<button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Can we work a short ${card.level === "heavy" ? "easy recovery" : "mobility and activation"} session for my ${card.muscleName.toLowerCase()} into this week?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askWorkIn"))}</button>`;
     return `<article class="muscle-drill-card">
-      <div class="muscle-reading-head"><strong>${escapeHtml(card.muscleName)}</strong>${levelChip(card.level)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(card.muscleName)}</strong>${levelChip(card.level, tx)}</div>
       <p class="muted small">${escapeHtml(card.guidance)}</p>
       <ul class="muscle-drills">${drills}</ul>
       <div class="review-actions">${ask}</div>
     </article>`;
   }).join("");
-  return `<section class="card muscle-drill-section"><div class="splits-head"><h2>Suggested drills · 建議動作</h2><p class="muted small">Matched to what you tagged, at the level your muscles are at today.</p></div><div class="muscle-drill-grid">${cardHtml}</div></section>`;
+  return `<section class="card muscle-drill-section"><div class="splits-head"><h2>${escapeHtml(tx.t("muscle.drillHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.drillProse"))}</p></div><div class="muscle-drill-grid">${cardHtml}</div></section>`;
 }
 
-function historySection(history: readonly MuscleCheckIn[], dayCheckIn: MuscleCheckIn | null): string {
+function historySection(history: readonly MuscleCheckIn[], dayCheckIn: MuscleCheckIn | null, tx: Translator = defaultTranslator): string {
   const rows = history
     .filter((checkIn) => checkIn !== dayCheckIn)
     .slice(0, 8)
     .map((checkIn) => {
       const worst = checkIn.muscles.map((tag) => readMuscleTag(tag).level).reduce((a, b) => (LEVEL_RANK[b] > LEVEL_RANK[a] ? b : a), "ok" as MuscleTagLevel);
-      return `<li><a class="chip" href="/muscle?day=${escapeHtml(checkIn.day)}">${escapeHtml(formatDayLabel(checkIn.day))}</a><span class="muted small">${escapeHtml(summarizeCheckIn(checkIn))}</span>${levelChip(worst)}</li>`;
+      return `<li><a class="chip" href="/muscle?day=${escapeHtml(checkIn.day)}">${escapeHtml(formatDayLabel(checkIn.day))}</a><span class="muted small">${escapeHtml(summarizeCheckIn(checkIn))}</span>${levelChip(worst, tx)}</li>`;
     })
     .join("");
   const list = rows.length === 0
-    ? `<p class="muted small">No other check-ins yet. Each saved check-in appears here, so you can see how a muscle settled over the week.</p>`
+    ? `<p class="muted small">${escapeHtml(tx.t("muscle.historyEmpty"))}</p>`
     : `<ul class="muscle-history">${rows}</ul>`;
-  return `<section class="card"><h2>Recent check-ins</h2>${list}</section>`;
+  return `<section class="card"><h2>${escapeHtml(tx.t("muscle.recentCheckIns"))}</h2>${list}</section>`;
 }
 
 const LEVEL_RANK: Readonly<Record<MuscleTagLevel, number>> = { ok: 0, sore: 1, heavy: 2, watch: 3, warning: 4, urgent: 5 };
 
-function trainingSection(rows: readonly MuscleTrainingRow[]): string {
+function trainingSection(rows: readonly MuscleTrainingRow[], tx: Translator = defaultTranslator): string {
   if (rows.length === 0) {
-    return `<section class="card"><h2>From your training</h2><p class="muted small">No recorded runs in the last two weeks. Log a run or sync Garmin, and the muscles it worked will show up here for one-tap tagging.</p></section>`;
+    return `<section class="card"><h2>${escapeHtml(tx.t("muscle.trainingHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.trainingEmptyProse"))}</p></section>`;
   }
   const items = rows.map((row) => {
     const chips = [
@@ -337,14 +359,14 @@ function trainingSection(rows: readonly MuscleTrainingRow[]): string {
     return `<li class="training-row">
       <div class="training-row-main"><strong>${escapeHtml(row.title)}</strong><span class="muted small">${escapeHtml(formatDayLabel(row.day))}</span></div>
       <div class="training-row-chips">${chips}</div>
-      <div class="training-row-actions"><a class="chip" href="/muscle?activity=${encodeURIComponent(row.activityId)}" data-tag-activity="${escapeHtml(row.activityId)}">Tag these muscles</a><a class="chip" href="/activity/${encodeURIComponent(row.activityId)}">Detail</a></div>
+      <div class="training-row-actions"><a class="chip" href="/muscle?activity=${encodeURIComponent(row.activityId)}" data-tag-activity="${escapeHtml(row.activityId)}">${escapeHtml(tx.t("muscle.tagThese"))}</a><a class="chip" href="/activity/${encodeURIComponent(row.activityId)}">${escapeHtml(tx.t("muscle.detailLink"))}</a></div>
     </li>`;
   }).join("");
-  return `<section class="card"><div class="splits-head"><h2>From your training · 最近訓練</h2><p class="muted small">What your recent runs worked — primary movers first. One tap starts a check-in on those muscles.</p></div><ul class="training-list">${items}</ul></section>`;
+  return `<section class="card"><div class="splits-head"><h2>${escapeHtml(tx.t("muscle.trainingHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.trainingProse"))}</p></div><ul class="training-list">${items}</ul></section>`;
 }
 
 /** The list tab's content: the figure's text alternative and the no-script selection path. */
-function muscleListSection(prefillIds: readonly string[]): string {
+function muscleListSection(prefillIds: readonly string[], tx: Translator = defaultTranslator): string {
   const groups = new Map<string, string[]>();
   for (const muscle of MUSCLE_CATALOG) {
     const checked = prefillIds.includes(muscle.id) ? " checked" : "";
@@ -355,10 +377,10 @@ function muscleListSection(prefillIds: readonly string[]): string {
   const groupHtml = [...groups.entries()]
     .map(([group, items]) => `<li><strong>${escapeHtml(MUSCLE_GROUP_LABELS[group as keyof typeof MUSCLE_GROUP_LABELS] ?? group)}</strong><ul class="muscle-list-items">${items.join("")}</ul></li>`)
     .join("");
-  return `<div class="muscle-list-tab"><p class="muted small">The same muscles as the figure, as checkboxes — the keyboard and no-JavaScript path. Without script these plus the quick set below are the whole form.</p><ul class="muscle-list-groups">${groupHtml}</ul></div>`;
+  return `<div class="muscle-list-tab"><p class="muted small">${escapeHtml(tx.t("muscle.listIntro"))}</p><ul class="muscle-list-groups">${groupHtml}</ul></div>`;
 }
 
-function formSection(input: MusclePageInput): string {
+function formSection(input: MusclePageInput, tx: Translator = defaultTranslator): string {
   const activityOptions = input.activityOptions.map(
     (option) => `<option value="${escapeHtml(option.activityId)}"${option.activityId === input.prefillActivityId ? " selected" : ""}>${escapeHtml(option.label)}</option>`,
   ).join("");
@@ -369,13 +391,13 @@ function formSection(input: MusclePageInput): string {
   const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === 5 ? " selected" : ""}>${value} · ${sorenessLabel(value)}</option>`).join("");
   const focusNote = input.focusMuscleId === null
     ? ""
-    : `<p class="ok" role="status">Updating <strong>${escapeHtml(getMuscle(input.focusMuscleId)?.name ?? input.focusMuscleId)}</strong> — set how it feels today and save.</p>`;
+    : `<p class="ok" role="status">${tx.t("muscle.focusNote", { name: escapeHtml(getMuscle(input.focusMuscleId)?.name ?? input.focusMuscleId) })}</p>`;
   const prefillNote = input.prefillActivityId === null
     ? ""
-    : `<p class="ok" role="status">Selected the muscles from that run — set how each one feels and save.</p>`;
+    : `<p class="ok" role="status">${tx.t("muscle.prefillNote")}</p>`;
   const oldRunNote = input.oldRunId === null
     ? ""
-    : `<p class="ok" role="status">That run is older than the 14-day check-in window, so the report is for <strong>today</strong> — its muscles are selected below.</p>`;
+    : `<p class="ok" role="status">${tx.t("muscle.oldRunNote")}</p>`;
   // The figure paints today's status heat; selecting a muscle takes the ember, hovering names it.
   const regions: Record<string, MuscleViewerRegion> = {};
   for (const status of input.statuses) {
@@ -389,67 +411,67 @@ function formSection(input: MusclePageInput): string {
     panelId: "muscle",
     regions,
     mode: { kind: "bridge", bridgeName: "__muscleTabBridge" },
-    listHtml: muscleListSection(input.prefillMuscleIds),
-    figureTabLabel: "3D figure",
-    listTabLabel: "Muscle list",
-    tablistLabel: "3D muscle figure or muscle list",
-    viewerLabel: "3D muscle figure. Drag to rotate, scroll or pinch to zoom, click a muscle to select it.",
-    viewerNote: `Drag to rotate · scroll or pinch to zoom · click a muscle to tag it. The figure turns slowly while you decide; <strong>Pause</strong> holds it still. Your live muscle status paints the heat you see on the muscles.`,
-    noScriptHint: "The 3D figure needs JavaScript and WebGL — the Muscle list tab carries every muscle.",
+    listHtml: muscleListSection(input.prefillMuscleIds, tx),
+    figureTabLabel: tx.t("muscle.figureTab"),
+    listTabLabel: tx.t("muscle.tabList"),
+    tablistLabel: tx.t("muscle.tabTablist"),
+    viewerLabel: tx.t("muscle.tabViewerLabel"),
+    viewerNote: tx.t("muscle.tabViewerNote"),
+    noScriptHint: tx.t("muscle.tabNoScript"),
     legendHtml: renderMuscleLegend(),
     height: "tall",
   });
   return `<section class="card muscle-checkin-card" id="check-in">
-    <div class="splits-head"><h2>How do your muscles feel today? · 今天肌肉感覺如何</h2><p class="muted small">Tap a muscle on the figure, then set its soreness and tags. It takes under a minute.</p></div>
+    <div class="splits-head"><h2>${escapeHtml(tx.t("muscle.formHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.formProse"))}</p></div>
     ${focusNote}
     ${prefillNote}
     ${oldRunNote}
     <form method="post" action="/muscle/checkin" id="muscle-form" class="muscle-form">
       <div class="muscle-form-row">
-        <label for="muscle-day">Day</label>
+        <label for="muscle-day">${escapeHtml(tx.t("muscle.labelDay"))}</label>
         <input id="muscle-day" name="day" type="date" value="${escapeHtml(input.formDay)}" min="${escapeHtml(input.earliestDay)}" max="${escapeHtml(input.today)}" required>
-        <label for="muscle-activity">About which run? <span class="muted small">(optional)</span></label>
-        <select id="muscle-activity" name="activityId"><option value="">Not linked to a run</option>${activityOptions}</select>
+        <label for="muscle-activity">${escapeHtml(tx.t("muscle.labelRun"))} <span class="muted small">${escapeHtml(tx.t("muscle.optional"))}</span></label>
+        <select id="muscle-activity" name="activityId"><option value="">${escapeHtml(tx.t("muscle.notLinked"))}</option>${activityOptions}</select>
       </div>
       <div class="muscle-workspace">
         <div class="muscle-map-col">
           ${panel}
         </div>
         <div class="muscle-editor-col">
-          <div id="muscle-tray" class="muscle-tray" aria-label="Selected muscles"></div>
-          <div id="muscle-editor" class="muscle-editor" aria-live="polite"><p class="muted small muscle-editor-hint">Select a muscle on the figure or in the list to tag it.</p></div>
+          <div id="muscle-tray" class="muscle-tray" aria-label="${escapeHtml(tx.t("muscle.selectedAria"))}"></div>
+          <div id="muscle-editor" class="muscle-editor" aria-live="polite"><p class="muted small muscle-editor-hint">${escapeHtml(tx.t("muscle.editorHint"))}</p></div>
         </div>
       </div>
       <fieldset class="muscle-quick">
-        <legend>Quick set — applied to every selected muscle</legend>
+        <legend>${escapeHtml(tx.t("muscle.quickSetLegend"))}</legend>
         <div class="muscle-quick-row">
-          <label for="quick-soreness">Soreness</label>
+          <label for="quick-soreness">${escapeHtml(tx.t("muscle.labelSoreness"))}</label>
           <select id="quick-soreness" name="soreness">${sorenessOptions}</select>
           <span class="muscle-quick-conditions">${conditionBoxes}</span>
-          <label for="quick-side">Side</label>
-          <select id="quick-side" name="side"><option value="both" selected>Both sides</option><option value="left">Left</option><option value="right">Right</option></select>
-          <label for="quick-warmup">With warm-up</label>
-          <select id="quick-warmup" name="warmUp"><option value="" selected>—</option><option value="eases">Eases</option><option value="same">Same</option><option value="worse">Worse</option></select>
-          <button type="button" class="btn ghost" id="quick-apply">Apply to selected</button>
+          <label for="quick-side">${escapeHtml(tx.t("muscle.labelSide"))}</label>
+          <select id="quick-side" name="side"><option value="both" selected>${escapeHtml(tx.t("muscle.sideBoth"))}</option><option value="left">${escapeHtml(tx.t("muscle.sideLeft"))}</option><option value="right">${escapeHtml(tx.t("muscle.sideRight"))}</option></select>
+          <label for="quick-warmup">${escapeHtml(tx.t("muscle.labelWarmup"))}</label>
+          <select id="quick-warmup" name="warmUp"><option value="" selected>—</option><option value="eases">${escapeHtml(tx.t("muscle.warmEases"))}</option><option value="same">${escapeHtml(tx.t("muscle.warmSame"))}</option><option value="worse">${escapeHtml(tx.t("muscle.warmWorse"))}</option></select>
+          <button type="button" class="btn ghost" id="quick-apply">${escapeHtml(tx.t("muscle.applySelected"))}</button>
         </div>
         <p class="muted small">${escapeHtml(anchors)}</p>
-        <label class="quick-hold" for="quick-hold"><input type="checkbox" id="quick-hold" name="hold" value="1"> <strong>Keep these levels until I change them</strong> <span class="muted small">(skip the auto-fade — for something that is not settling on its own)</span></label>
+        <label class="quick-hold" for="quick-hold"><input type="checkbox" id="quick-hold" name="hold" value="1"> <strong>${escapeHtml(tx.t("muscle.holdLabel"))}</strong> <span class="muted small">${escapeHtml(tx.t("muscle.holdHint"))}</span></label>
       </fieldset>
-      <label for="muscle-note">Note for the coach <span class="muted small">(optional)</span></label>
-      <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="e.g. calves tight since Thursday's hills">
+      <label for="muscle-note">${escapeHtml(tx.t("muscle.noteLabel"))} <span class="muted small">${escapeHtml(tx.t("muscle.optional"))}</span></label>
+      <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="${tx.t("muscle.notePlaceholder")}">
       <input type="hidden" name="musclesJson" id="muscle-json" value="">
-      <div class="review-actions"><button class="btn" type="submit">Save check-in · 儲存回報</button><button type="button" class="btn ghost" id="muscle-clear">Clear selection</button></div>
+      <div class="review-actions"><button class="btn" type="submit">${escapeHtml(tx.t("muscle.saveButton"))}</button><button type="button" class="btn ghost" id="muscle-clear">${escapeHtml(tx.t("muscle.clearButton"))}</button></div>
     </form>
   </section>`;
 }
 
-function safetySection(): string {
-  return `<section class="card muscle-safety"><h2>Honest notes about this page</h2>
+function safetySection(tx: Translator = defaultTranslator): string {
+  return `<section class="card muscle-safety"><h2>${tx.t("muscle.safetyHeading")}</h2>
     <ul class="muscle-safety-list">
-      <li>The readings are guidance, not a diagnosis. The app cannot tell a strain from normal soreness — that is exactly why warning levels end in "see a clinician".</li>
-      <li>Normal soreness peaks 24-72 h after a session and eases once you are moving; it is not damage, and its absence never means a wasted session.</li>
-      <li>Severe soreness with swelling, weakness or dark tea-coloured urine means seeking medical care now — that pattern (rhabdomyolysis) needs a blood test, not a drill.</li>
-      <li>Everything here is private to your account, joins the coach's facts when you ask, and is included in your <a href="/export.json">data export</a>.</li>
+      <li>${tx.t("muscle.safetyNote1")}</li>
+      <li>${tx.t("muscle.safetyNote2")}</li>
+      <li>${tx.t("muscle.safetyNote3")}</li>
+      <li>${tx.t("muscle.safetyNote4")}</li>
     </ul>
   </section>`;
 }
@@ -792,14 +814,14 @@ function muscleScript(input: MusclePageInput): string {
 }
 
 
-export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps): string {
+export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, tx: Translator = defaultTranslator): string {
   const savedBanner = input.saved
-    ? `<p class="banner ok" role="status">Check-in saved · 回報已儲存. It is now today's muscle status, and the coach sees the same facts.</p>`
+    ? `<p class="banner ok" role="status">${tx.t("muscle.savedBanner")}</p>`
     : "";
   const statusSavedBanner = input.statusSaved
-    ? `<p class="banner ok" role="status">Muscle status updated · 狀態已更新.</p>`
+    ? `<p class="banner ok" role="status">${tx.t("muscle.statusSavedBanner")}</p>`
     : "";
-  const errorBanner = input.errorCode === null ? "" : `<p class="banner error" role="alert">${escapeHtml(errorTextFor(input.errorCode) ?? "The check-in could not be saved.")}</p>`;
+  const errorBanner = input.errorCode === null ? "" : `<p class="banner error" role="alert">${escapeHtml(errorTextFor(input.errorCode, tx) ?? tx.t("muscle.errDefault"))}</p>`;
   const count = input.statuses.length;
   const worst = worstStatusLevel(input.statuses);
   const worstRow =
@@ -813,44 +835,44 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps): 
   const attentionLine =
     count === 0
       ? ""
-      : `<p class="muted small">Now: <a href="#muscle-status"><span class="chip muscle-attention-chip">${count} muscle${count === 1 ? "" : "s"} need attention</span></a>${worstRow === null || worst === null ? "" : ` — worst: ${escapeHtml(muscleShortName(worstRow.muscleId))}, ${LEVEL_CHIP[worst].label.toLowerCase()}`}</p>`;
+      : `<p class="muted small">${escapeHtml(tx.t("muscle.attentionNow"))} <a href="#muscle-status"><span class="chip muscle-attention-chip">${escapeHtml(tx.t("muscle.needAttentionAria", { count }))}</span></a>${worstRow === null || worst === null ? "" : ` ${tx.t("muscle.attentionWorst", { name: escapeHtml(muscleShortName(worstRow.muscleId)), level: escapeHtml(LEVEL_CHIP[worst].label.toLowerCase()) })}`}</p>`;
   const readiness = input.dayCheckIn === null ? "" : readinessForCheckIn(input.dayCheckIn.muscles);
   const readinessLine = input.dayCheckIn === null
     ? ""
-    : `<p class="muted small">Latest report: ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness)}</p>`;
+    : `<p class="muted small">${escapeHtml(tx.t("muscle.latestReport"))} ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness)}</p>`;
   const readingSections = input.dayCheckIn === null
-    ? `<section class="card"><h2>Latest check-in</h2><p class="muted small">No check-ins yet. Tag a few muscles above and save — the reading (normal soreness, watch, or needs care) appears here, with drills matched to what you tagged.</p></section>`
-    : `${careSection(input.dayCheckIn)}${readingsSection(input.dayCheckIn)}${drillSection(input.dayCheckIn)}`;
-  const body = `<header class="page-head"><p class="eyebrow">Muscles · 肌肉回報</p>
-    <h1>Muscle check-in</h1>
-    <p class="muted">A private map of how your muscles feel, after your runs and between them. Report something and it becomes a dated status that fades on its own — the heat below is that status, live; the coach reads the same facts when you ask, and never diagnoses.</p>
+    ? `<section class="card"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.readingsEmptyProse"))}</p></section>`
+    : `${careSection(input.dayCheckIn, tx)}${readingsSection(input.dayCheckIn, tx)}${drillSection(input.dayCheckIn, tx)}`;
+  const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("nav.muscles"))}</p>
+    <h1>${escapeHtml(tx.t("muscle.pageTitle"))}</h1>
+    <p class="muted">${escapeHtml(tx.t("muscle.pageIntro"))}</p>
     ${attentionLine}
     ${readinessLine}</header>
     ${savedBanner}
     ${statusSavedBanner}
     ${errorBanner}
-    ${statusSection(input.statuses)}
-    ${formSection(input)}
-    ${trainingSection(input.trainingRows)}
+    ${statusSection(input.statuses, tx)}
+    ${formSection(input, tx)}
+    ${trainingSection(input.trainingRows, tx)}
     ${readingSections}
-    ${historySection(input.history, input.dayCheckIn)}
-    ${safetySection()}
+    ${historySection(input.history, input.dayCheckIn, tx)}
+    ${safetySection(tx)}
     ${muscleScript(input)}`;
-  return deps.layout("Muscles", body, input.user, "muscle");
+  return deps.layout(tx.t("nav.muscles"), body, input.user, "muscle");
 }
 
 /** The attention chip the calendar shows while muscles are in a special (non-perfect) status. */
-export function muscleCalendarChip(statuses: readonly MuscleStatus[]): string | null {
+export function muscleCalendarChip(statuses: readonly MuscleStatus[], tx: Translator = defaultTranslator): string | null {
   const count = statuses.length;
   if (count === 0) return null;
   const worst = worstStatusLevel(statuses);
   const label =
     worst === "urgent"
-      ? "Muscles · care now"
+      ? tx.t("muscle.calendarCareNow")
       : worst === "warning" || worst === "heavy"
-        ? "Muscles · needs care"
-        : `Muscles · ${count} sore`;
-  return `<a class="chip muscle-calendar-chip" href="/muscle" title="Your current muscle status needs attention">${escapeHtml(label)}</a>`;
+        ? tx.t("muscle.calendarNeedsCare")
+        : tx.t("muscle.calendarSore", { count });
+  return `<a class="chip muscle-calendar-chip" href="/muscle" title="${escapeHtml(tx.t("muscle.calendarChipTitle"))}">${escapeHtml(label)}</a>`;
 }
 
 /**
@@ -865,16 +887,19 @@ export function musclesWorkedCard(
   work: MuscleWork,
   statuses: readonly MuscleStatus[] = [],
   linkedCheckIn: MuscleCheckIn | null = null,
+  tx: Translator = defaultTranslator,
 ): string {
   const workedIds = [...work.primary, ...work.secondary];
   const active = statuses.filter((status) => workedIds.includes(status.muscleId));
   // The figure paints the run's footprint first, then today's status heat wins where a muscle has one.
   const regions: Record<string, MuscleViewerRegion> = {};
-  for (const id of work.primary) regions[id] = { fill: "#f28034", note: "primary mover" };
-  for (const id of work.secondary) regions[id] = { fill: "#fbd5a8", note: "helper muscle" };
+  const moverRole = tx.t("muscle.rolePrimaryMover");
+  const helperRole = tx.t("muscle.roleHelperMuscle");
+  for (const id of work.primary) regions[id] = { fill: "#f28034", note: moverRole };
+  for (const id of work.secondary) regions[id] = { fill: "#fbd5a8", note: helperRole };
   for (const status of active) {
     const role = regions[status.muscleId]?.note ?? "";
-    const note = `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} today${status.hold ? " · held" : ""}${role.length === 0 ? "" : ` · ${role}`}`;
+    const note = `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} ${tx.t("muscle.wordToday")}${status.hold ? ` · ${tx.t("muscle.wordHeld")}` : ""}${role.length === 0 ? "" : ` · ${role}`}`;
     regions[status.muscleId] = {
       fill: sorenessFill(status.current),
       ...(status.level === "warning" || status.level === "urgent" ? { dashed: true } : {}),
@@ -887,34 +912,36 @@ export function musclesWorkedCard(
       .join("");
   const primaryLine = chips(work.primary, "primary");
   const secondaryLine = work.secondary.length === 0 ? "" : chips(work.secondary, "secondary");
-  const spoken = `Primary muscles: ${work.primary.map((id) => getMuscle(id)?.name ?? id).join(", ")}.${work.secondary.length === 0 ? "" : ` Secondary: ${work.secondary.map((id) => getMuscle(id)?.name ?? id).join(", ")}.`}`;
-  const listHtml = `<div class="worked-list-tab"><p class="muted small"><strong>Primary movers</strong></p><div class="muscle-list-chip-row">${primaryLine}</div>${work.secondary.length === 0 ? "" : `<p class="muted small"><strong>Helpers</strong></p><div class="muscle-list-chip-row">${secondaryLine}</div>`}<p class="muted small">${escapeHtml(spoken)}</p></div>`;
+  const primaryNames = work.primary.map((id) => getMuscle(id)?.name ?? id).join(", ");
+  const secondaryNames = work.secondary.map((id) => getMuscle(id)?.name ?? id).join(", ");
+  const spoken = `${tx.t("muscle.spokenPrimary")} ${primaryNames}.${work.secondary.length === 0 ? "" : ` ${tx.t("muscle.spokenSecondary")} ${secondaryNames}.`}`;
+  const listHtml = `<div class="worked-list-tab"><p class="muted small"><strong>${escapeHtml(tx.t("muscle.primaryMovers"))}</strong></p><div class="muscle-list-chip-row">${primaryLine}</div>${work.secondary.length === 0 ? "" : `<p class="muted small"><strong>${escapeHtml(tx.t("muscle.helpers"))}</strong></p><div class="muscle-list-chip-row">${secondaryLine}</div>`}<p class="muted small">${escapeHtml(spoken)}</p></div>`;
   const panel = renderMuscleViewerPanel({
     panelId: "worked",
     regions,
     mode: { kind: "link", href: "/muscle?focus=" },
     listHtml,
-    figureTabLabel: "3D figure",
-    listTabLabel: "Worked list",
-    tablistLabel: "3D muscles worked or worked list",
-    viewerLabel: "3D muscle figure of this run. Drag to rotate; click a muscle to report how it feels.",
-    viewerNote: "Drag to rotate · scroll or pinch to zoom · click a muscle to report how it feels. Primary movers ember, helpers light; today's soreness heat paints on top.",
-    noScriptHint: "The 3D figure needs JavaScript and WebGL — the Worked list tab carries every muscle.",
+    figureTabLabel: tx.t("muscle.figureTab"),
+    listTabLabel: tx.t("muscle.listTab"),
+    tablistLabel: tx.t("muscle.tablistLabel"),
+    viewerLabel: tx.t("muscle.viewerLabel"),
+    viewerNote: tx.t("muscle.viewerNote"),
+    noScriptHint: tx.t("muscle.noScriptHint"),
     height: "compact",
   });
   const statusChips = active
     .map((status) => {
       const name = muscleShortName(status.muscleId);
       const fill = sorenessFill(status.current);
-      return `<a class="chip muscle-worked-status" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in" title="Update this muscle"><span class="muscle-attention-dot" style="background:${fill}" aria-hidden="true"></span>${escapeHtml(name)} · ${status.current}/10${status.hold ? " · held" : ""}</a>`;
+      return `<a class="chip muscle-worked-status" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in" title="${escapeHtml(tx.t("muscle.updateTitle"))}"><span class="muscle-attention-dot" style="background:${fill}" aria-hidden="true"></span>${escapeHtml(name)} · ${status.current}/10${status.hold ? ` · ${escapeHtml(tx.t("muscle.wordHeld"))}` : ""}</a>`;
     })
     .join("");
   const statusLine =
     active.length === 0
       ? ""
-      : `<p class="muted small muscle-worked-status-row">From these muscles now: ${statusChips}</p>`;
+      : `<p class="muted small muscle-worked-status-row">${escapeHtml(tx.t("muscle.fromTheseNow"))} ${statusChips}</p>`;
   const linkedLine = linkedCheckIn === null
     ? ""
-    : `<p class="muted small">You reported after this run: <a href="/muscle?day=${escapeHtml(linkedCheckIn.day)}">${escapeHtml(summarizeCheckIn(linkedCheckIn))}</a></p>`;
-  return `<section class="card muscles-worked-card"><div class="splits-head"><h2>Muscles worked · 訓練到的肌肉</h2><p class="muted small">Primary movers ember, helpers light — the honest default for this run, not EMG data. Click a muscle to report how it feels.</p></div>${panel}${statusLine}${linkedLine}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">Check in these muscles · 回報感覺</a></div></section>`;
+    : `<p class="muted small">${escapeHtml(tx.t("muscle.reportedAfterRun"))} <a href="/muscle?day=${escapeHtml(linkedCheckIn.day)}">${escapeHtml(summarizeCheckIn(linkedCheckIn))}</a></p>`;
+  return `<section class="card muscles-worked-card"><div class="splits-head"><h2>${escapeHtml(tx.t("muscle.workedHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.workedProse"))}</p></div>${panel}${statusLine}${linkedLine}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">${escapeHtml(tx.t("muscle.checkInButton"))}</a></div></section>`;
 }

@@ -160,9 +160,12 @@ try {
     if ($cssText -notmatch '\.muscle-plugin-tabs' -or $cssText -notmatch '\.muscle-viewer\.compact' -or $cssText -notmatch '\.muscle-editor') {
         throw 'The deployed stylesheet does not contain the muscle plugin styles.'
     }
+    if ($cssText -notmatch '\.coach-dock' -or $cssText -notmatch '\.coach-tabs' -or $cssText -notmatch 'body\.coach-open') {
+        throw 'The deployed stylesheet does not contain the coach dock and tab styles.'
+    }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=24') {
-        throw 'The deployed login page does not reference app.css?v=24.'
+    if ($loginText -notmatch 'app\.css\?v=26') {
+        throw 'The deployed login page does not reference app.css?v=26.'
     }
 
     $gatewayText = [string]$gateway.Content

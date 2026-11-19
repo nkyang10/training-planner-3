@@ -56,6 +56,19 @@ import {
   type MuscleTrainingRow,
 } from "./web-muscle";
 import { CSS } from "./styles";
+import {
+  LOCALES,
+  LOCALE_COOKIE,
+  clientStrings,
+  createTranslator,
+  defaultTranslator,
+  isLocale,
+  languageCookie,
+  resolveLocale,
+  type DateFormat,
+  type MessageKey,
+  type Translator,
+} from "./i18n";
 import { errorBanner, escapeHtml, type ViewName } from "./web-html";
 import {
   renderCalendarItems,
@@ -116,9 +129,6 @@ export interface WebApp {
   whenSynced(): Promise<void>;
 }
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 /**
  * The pinned three.js builds the 3D muscle viewer imports (see src/vendor/THREE-LICENSE.txt). Read once at
  * startup and served as static scripts, so the app keeps its zero-runtime-npm-dependency rule.
@@ -137,13 +147,6 @@ const ANATOMY_MUSCLES_GLB = readFileSync(new URL("./vendor/anatomy-muscles.glb",
 const SESSION_COOKIE = "poc3sid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_SESSIONS = 500;
-
-/**
- * Starter prompts for the suggestion rail when the conversation has no live coach suggestions. The rail is the single
- * place for next steps: starters on first open, then the coach's 1-3 follow-ups. The tone book's voice applies here
- * too: the runner opens with a question or an invitation, and the coach responds.
- */
-const STARTER_SUGGESTIONS = ["Can we plan my week together?", "Where could a 5 km run fit this week?", "How did last week go?"];
 
 /** Inline JSON that cannot close the surrounding script element. */
 function jsonForScript(value: unknown): string {
@@ -247,9 +250,18 @@ function withParams(path: string, params: Record<string, string | number>): stri
   return `${path}${path.includes("?") ? "&" : "?"}${query.toString()}`;
 }
 
+/** A same-origin in-app path for the language switch redirect; rejects absolute URLs and protocol-relative targets. */
+function safeLanguageNext(value: string | null | undefined): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.includes("://")) return null;
+  const parsed = new URL(value, "http://localhost");
+  if (parsed.origin !== "http://localhost") return null;
+  return `${parsed.pathname}${parsed.search}`;
+}
+
 /** The page to return to after a key save/sync, without transient result params. */
-function cleanNext(url: URL): string {
-  const params = new URLSearchParams(url.search);
+function cleanNext(url: URL): string {  const params = new URLSearchParams(url.search);
   for (const name of ["synced", "syncError", "newest", "garmin", "keyError"]) params.delete(name);
   const query = params.toString();
   const path = url.pathname === "/" ? "/calendar" : url.pathname;
@@ -264,39 +276,49 @@ function syncResultParams(result: GarminSyncOutcome): Record<string, string> {
   return params;
 }
 
+/** A failed undo carries a fixed reason through the redirect URL. Map the canonical reason to a key so the banner localizes while the URL param stays stable. */
+const UNDO_REASON_KEYS: Record<string, MessageKey> = {
+  "invalid change id": "flash.undoReason.invalid",
+  "that change no longer exists": "flash.undoReason.missing",
+  "that change was already undone": "flash.undoReason.undone",
+  "the calendar could not be restored": "flash.undoReason.failed",
+};
+
 /**
  * The one-line result of a sync, key save, manual log or undo that survives the redirect. The params already exist;
  * before this helper nothing rendered them, so "I pressed Sync and nothing happened" was the expected reading.
  */
-function syncFlash(params: URLSearchParams): string {
+function syncFlash(params: URLSearchParams, tx: Translator): string {
   const error = params.get("syncError");
   if (error !== null && error.length > 0) {
-    return `<p class="banner error" role="alert">Garmin sync failed: ${escapeHtml(error)}</p>`;
+    return `<p class="banner error" role="alert">${escapeHtml(tx.t("flash.syncFailed", { detail: error }))}</p>`;
   }
   const synced = params.get("synced");
   if (synced !== null) {
     const count = Number(synced);
     const label = Number.isFinite(count) && count > 0
-      ? `${Math.floor(count)} new ${count === 1 ? "activity" : "activities"}`
-      : "no new activities";
-    return `<p class="banner ok" role="status">Garmin sync finished: ${label}.</p>`;
+      ? tx.t(count === 1 ? "flash.newOne" : "flash.newOther", { count: Math.floor(count) })
+      : tx.t("flash.noNew");
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.syncDone", { label }))}</p>`;
   }
   if (params.get("garmin") === "deleted") {
-    return `<p class="banner ok" role="status">Garmin key removed. Sync is off until you connect again.</p>`;
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.keyRemoved"))}</p>`;
   }
   if (params.get("logged") === "1") {
-    return `<p class="banner ok" role="status">Run logged. It is now part of your calendar and training log.</p>`;
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.runLogged"))}</p>`;
   }
   if (params.get("undone") === "1") {
-    return `<p class="banner ok" role="status">Change undone. The calendar is back to its previous state.</p>`;
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.changeUndone"))}</p>`;
   }
   const undoError = params.get("undoError");
   if (undoError !== null && undoError.length > 0) {
-    return `<p class="banner error" role="alert">Could not undo that change: ${escapeHtml(undoError)}</p>`;
+    const reasonKey = UNDO_REASON_KEYS[undoError];
+    const detail = reasonKey === undefined ? undoError : tx.t(reasonKey);
+    return `<p class="banner error" role="alert">${escapeHtml(tx.t("flash.undoFailed", { detail }))}</p>`;
   }
   const logError = params.get("logError");
   if (logError !== null && logError.length > 0) {
-    return `<p class="banner error" role="alert">Could not log the run: ${escapeHtml(logError)}</p>`;
+    return `<p class="banner error" role="alert">${escapeHtml(tx.t("flash.logFailed", { detail: logError }))}</p>`;
   }
   return "";
 }
@@ -437,59 +459,57 @@ function calendarDayItems(
 }
 
 /** How a recorded activity reached the calendar; "Reported" is the runner telling the coach about it. */
-function activitySourceLabel(activity: Activity): string {
-  return activity.source === "garmin" ? "Garmin" : "Reported";
+function activitySourceLabel(activity: Activity, tx: Translator = defaultTranslator): string {
+  return activity.source === "garmin" ? tx.t("activity.source.garmin") : tx.t("activity.source.reported");
 }
 
-function activityLine(activity: Activity): string {
+function activityLine(activity: Activity, tx: Translator = defaultTranslator): string {
   const amount = [activity.distanceKm === null ? "" : `${activity.distanceKm} km`, activity.durationMin === null ? "" : formatMinutes(activity.durationMin), activity.paceSecPerKm === null ? "" : `${Math.floor(activity.paceSecPerKm / 60)}:${String(activity.paceSecPerKm % 60).padStart(2, "0")}/km`, activity.avgHr === null ? "" : `${activity.avgHr} bpm`]
     .filter((part) => part.length > 0)
     .join(" · ");
-  return `<li><span class="tick">✓</span> ${escapeHtml(activity.title)}${amount.length === 0 ? "" : ` — ${escapeHtml(amount)}`} <span class="muted">(${escapeHtml(activitySourceLabel(activity))})</span> <a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a></li>`;
+  return `<li><span class="tick">✓</span> ${escapeHtml(activity.title)}${amount.length === 0 ? "" : ` — ${escapeHtml(amount)}`} <span class="muted">(${escapeHtml(activitySourceLabel(activity, tx))})</span> <a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">${escapeHtml(tx.t("activity.detail"))}</a></li>`;
 }
 
-function formatDayLabel(day: string): string {
-  return new Date(`${day}T00:00:00.000Z`).toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
-  });
+function formatDayLabel(day: string, date: DateFormat = defaultTranslator.date): string {
+  return date.dayLabel(day);
 }
 
-function formatShortDate(day: string): string {
-  return new Date(`${day}T00:00:00.000Z`).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", timeZone: "UTC",
-  });
+function formatShortDate(day: string, date: DateFormat = defaultTranslator.date): string {
+  return date.shortDate(day);
 }
 
-function changeActionLabel(action: string): string {
-  if (action === "add") return "Added";
-  if (action === "remove") return "Deleted";
-  if (action === "revert") return "Reverted";
-  return "Moved";
+function changeActionLabel(action: string, tx: Translator): string {
+  if (action === "add") return tx.t("changes.added");
+  if (action === "remove") return tx.t("changes.deleted");
+  if (action === "revert") return tx.t("changes.reverted");
+  return tx.t("changes.moved");
 }
 
 /**
  * The runner-facing change history. The journal already existed but was reachable only by asking the coach; this card
  * makes each batch visible with an Undo form that reuses the same audited revert path.
  */
-function recentChangesCard(changeSets: readonly ChangeSet[], next: string): string {
-  const heading = `<h2>Recent changes</h2>`;
+function recentChangesCard(changeSets: readonly ChangeSet[], next: string, tx: Translator): string {
+  const date = tx.date;
+  const heading = `<h2>${escapeHtml(tx.t("changes.title"))}</h2>`;
   if (changeSets.length === 0) {
-    return `<section class="card" id="recent-changes">${heading}<p class="muted small">No coach changes yet. When the coach edits your calendar, the batch appears here with an Undo button.</p></section>`;
+    return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.empty"))}</p></section>`;
   }
   const rows = changeSets.map((set) => {
     const undone = set.revertedAt !== null;
     const entries = set.entries
-      .map((entry) => `${changeActionLabel(entry.action)} ${entry.title}${entry.fromDay === null || entry.toDay === null ? "" : ` (${formatShortDate(entry.fromDay)} → ${formatShortDate(entry.toDay)})`}`)
+      .map((entry) => `${changeActionLabel(entry.action, tx)} ${entry.title}${entry.fromDay === null || entry.toDay === null ? "" : ` (${formatShortDate(entry.fromDay, date)} → ${formatShortDate(entry.toDay, date)})`}`)
       .join(" · ");
     // The visible question names the day and the batch so the coach discusses the exact change, never a guess.
-    const discussMessage = `Why did the plan change on ${formatShortDate(set.createdAt.slice(0, 10))}? (${set.summary})`;
-    const discussButton = `<button type="button" class="coach-ask" title="Chat with the coach about what this change did. Your calendar will not change." data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">Discuss this change</button>`;
+    const discussMessage = tx.t("changes.discussMessage", { date: formatShortDate(set.createdAt.slice(0, 10), date), summary: set.summary });
+    const discussButton = `<button type="button" class="coach-ask" title="${escapeHtml(tx.t("changes.discussTitle"))}" data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">${escapeHtml(tx.t("changes.discuss"))}</button>`;
     const undoForm = undone
       ? `<div class="change-undo">${discussButton}</div>`
-      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo"><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit">Undo this change</button>${discussButton}</form>`;
-    return `<li class="change-item${undone ? " undone" : ""}"><div class="change-head"><strong>${escapeHtml(set.summary)}</strong><span class="muted small">${escapeHtml(formatShortDate(set.createdAt.slice(0, 10)))} · ${set.entries.length} ${set.entries.length === 1 ? "change" : "changes"}${undone ? " · undone" : ""}</span></div><p class="muted small">${escapeHtml(entries)}</p>${undoForm}</li>`;
+      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo"><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit">${escapeHtml(tx.t("changes.undo"))}</button>${discussButton}</form>`;
+    const unit = set.entries.length === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
+    return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(set.summary)}</strong><span class="muted small">${escapeHtml(formatShortDate(set.createdAt.slice(0, 10), date))} · ${set.entries.length} ${escapeHtml(unit)}${undone ? ` · ${escapeHtml(tx.t("changes.undone"))}` : ""}</span></div><p class="muted small">${escapeHtml(entries)}</p>${undoForm}</li>`;
   }).join("");
-  return `<section class="card" id="recent-changes">${heading}<p class="muted small">Every coach batch, newest first. Undo is itself recorded as a change.</p><ul class="change-list">${rows}</ul></section>`;
+  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}</p><ul class="change-list">${rows}</ul></section>`;
 }
 
 type HistoryView = "week" | "month" | "year";
@@ -500,14 +520,14 @@ function addMonths(month: string, delta: number): string {
   return date.toISOString().slice(0, 7);
 }
 
-function formatMonthLabel(month: string): string {
-  return `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
+function formatMonthLabel(month: string, date: DateFormat = defaultTranslator.date): string {
+  return date.monthLabel(month);
 }
 
-function formatWeekRange(start: string): string {
+function formatWeekRange(start: string, date: DateFormat = defaultTranslator.date): string {
   const end = addDays(start, 6);
   const sameMonth = start.slice(0, 7) === end.slice(0, 7);
-  const range = sameMonth ? `${Number(start.slice(8, 10))}–${formatShortDate(end)}` : `${formatShortDate(start)} – ${formatShortDate(end)}`;
+  const range = sameMonth ? `${Number(start.slice(8, 10))}–${formatShortDate(end, date)}` : `${formatShortDate(start, date)} – ${formatShortDate(end, date)}`;
   return `${range} ${end.slice(0, 4)}`;
 }
 
@@ -519,10 +539,10 @@ function weekStartOf(day: string): string {
   return addDays(day, -weekdayIndex(day));
 }
 
-function weekLabel(start: string): string {
+function weekLabel(start: string, date: DateFormat = defaultTranslator.date): string {
   const end = addDays(start, 6);
-  if (start.slice(5, 7) === end.slice(5, 7)) return `${Number(start.slice(8, 10))}–${formatShortDate(end)}`;
-  return `${formatShortDate(start)} – ${formatShortDate(end)}`;
+  if (start.slice(5, 7) === end.slice(5, 7)) return `${Number(start.slice(8, 10))}–${formatShortDate(end, date)}`;
+  return `${formatShortDate(start, date)} – ${formatShortDate(end, date)}`;
 }
 
 function formatMinutes(minutes: number): string {
@@ -556,18 +576,18 @@ function activityMetrics(activity: Activity): string {
 }
 
 /** The reported-effort word for one run; the session-RPE convention counts 7 and up as hard work. */
-function rpeWord(rpe: number): string {
-  return rpe >= 7 ? "hard" : rpe >= 4 ? "moderate" : "easy";
+function rpeWord(rpe: number, tx: Translator = defaultTranslator): string {
+  return tx.t(rpe >= 7 ? "rpe.hard" : rpe >= 4 ? "rpe.moderate" : "rpe.easy");
 }
 
 /**
  * The runner's own effort line for a run they rated, e.g. "Felt 7/10 - hard". Runs logged before the field existed
  * leave it undefined and skipped runs store null; both simply show nothing.
  */
-function feltText(activity: Activity): string | null {
+function feltText(activity: Activity, tx: Translator = defaultTranslator): string | null {
   const rpe = activity.rpe ?? null;
   return typeof rpe === "number" && Number.isFinite(rpe) && rpe >= 0 && rpe <= 10
-    ? `Felt ${rpe}/10 - ${rpeWord(rpe)}`
+    ? tx.t("activity.feltLine", { rpe, word: rpeWord(rpe, tx) })
     : null;
 }
 
@@ -603,29 +623,29 @@ function coachPromptForMissed(day: string, sessions: readonly TrainingSession[])
  * same card and the same review-activity wiring, so a run the runner just told the coach about gets the same
  * conversation starter a synced one does.
  */
-function runReviewCard(activity: Activity, eyebrow: string): string {
-  return `<section class="card review-card"><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(activity.title)}</h2><p class="muted">${escapeHtml(formatDayLabel(activity.day))} · ${escapeHtml(activityMetrics(activity))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(activity))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "auto-sync" }))}">Review this run with the coach</button><a class="chip" href="/muscle?activity=${encodeURIComponent(activity.activityId)}">Log muscle feel</a><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a></div></section>`;
+function runReviewCard(activity: Activity, eyebrow: string, tx: Translator = defaultTranslator): string {
+  return `<section class="card review-card"><p class="eyebrow">${escapeHtml(eyebrow)}</p><h2>${escapeHtml(activity.title)}</h2><p class="muted">${escapeHtml(formatDayLabel(activity.day, tx.date))} · ${escapeHtml(activityMetrics(activity))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(activity))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "auto-sync" }))}">${escapeHtml(tx.t("review.coachAsk"))}</button><a class="chip" href="/muscle?activity=${encodeURIComponent(activity.activityId)}">${escapeHtml(tx.t("review.muscle"))}</a><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">${escapeHtml(tx.t("review.detail"))}</a></div></section>`;
 }
 
 /** The review param a manual log redirect carries, resolved to the stored run; a foreign or stale id shows nothing. */
-function manualReviewCardFor(store: Store, userId: string, params: URLSearchParams): string {
+function manualReviewCardFor(store: Store, userId: string, params: URLSearchParams, tx: Translator = defaultTranslator): string {
   const reviewId = params.get("review");
   if (reviewId === null) return "";
   const activity = store.getActivity(userId, reviewId);
-  return activity === undefined ? "" : runReviewCard(activity, "Run logged");
+  return activity === undefined ? "" : runReviewCard(activity, tx.t("review.eyebrowLogged"), tx);
 }
 
 /**
  * The review card a redirect can offer on the calendar and the day page: the run a sync just imported, else the run
  * a manual log just stored. The two flows never share one redirect, so at most one card renders.
  */
-function redirectReviewCardFor(store: Store, userId: string, params: URLSearchParams): string {
+function redirectReviewCardFor(store: Store, userId: string, params: URLSearchParams, tx: Translator = defaultTranslator): string {
   const newestId = params.get("newest");
   if (newestId !== null) {
     const activity = store.getActivity(userId, newestId);
-    if (activity !== undefined) return runReviewCard(activity, "New run synced");
+    if (activity !== undefined) return runReviewCard(activity, tx.t("review.eyebrowSynced"), tx);
   }
-  return manualReviewCardFor(store, userId, params);
+  return manualReviewCardFor(store, userId, params, tx);
 }
 
 /**
@@ -633,28 +653,28 @@ function redirectReviewCardFor(store: Store, userId: string, params: URLSearchPa
  * that is simply after the last Garmin import is not a missed run; only a past, imported day says so, and without
  * scolding.
  */
-function dayEmptyStateHtml(day: string, daySessions: readonly TrainingSession[], today: string, awaitingGarmin: boolean): string {
-  if (daySessions.length === 0) return `<p class="muted small">No session or activity.</p>`;
-  if (daySessions.every((session) => session.kind === "rest")) return `<p class="muted small">Planned rest.</p>`;
-  if (day >= today) return `<p class="muted small">Upcoming.</p>`;
+function dayEmptyStateHtml(day: string, daySessions: readonly TrainingSession[], today: string, awaitingGarmin: boolean, tx: Translator = defaultTranslator): string {
+  if (daySessions.length === 0) return `<p class="muted small">${escapeHtml(tx.t("empty.none"))}</p>`;
+  if (daySessions.every((session) => session.kind === "rest")) return `<p class="muted small">${escapeHtml(tx.t("empty.rest"))}</p>`;
+  if (day >= today) return `<p class="muted small">${escapeHtml(tx.t("empty.upcoming"))}</p>`;
   if (awaitingGarmin) {
-    return `<div class="history-missed"><span class="muted">Awaiting Garmin sync · a run from this day may not be imported yet.</span></div>`;
+    return `<div class="history-missed"><span class="muted">${escapeHtml(tx.t("empty.awaitingGarmin"))}</span></div>`;
   }
-  return `<div class="history-missed"><span class="muted">No run logged — the plan does not change.</span><a class="chip" href="/day/${escapeHtml(day)}#log-run">Log a run</a><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForMissed(day, daySessions))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day, source: "history" }))}">Ask coach</button></div>`;
+  return `<div class="history-missed"><span class="muted">${escapeHtml(tx.t("empty.noRunLogged"))}</span><a class="chip" href="/day/${escapeHtml(day)}#log-run">${escapeHtml(tx.t("empty.logRun"))}</a><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForMissed(day, daySessions))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day, source: "history" }))}">${escapeHtml(tx.t("coach.ask"))}</button></div>`;
 }
 
 /**
  * The consultative load warning for a rising week: the runner's own numbers first, then the decision handed back.
  * The muted note beside it keeps the load computation's honesty labels.
  */
-function loadWarningText(load: LoadSummary): string {
+function loadWarningText(load: LoadSummary, tx: Translator = defaultTranslator): string {
   const bits: string[] = [];
-  if (load.weekChangePct !== null) bits.push(`${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}% versus last week`);
+  if (load.weekChangePct !== null) bits.push(`${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}% ${tx.t("loadwarn.versusLastWeek")}`);
   if (load.acwr !== null) bits.push(`ACWR ${load.acwr.toFixed(2)}`);
   const detail = bits.length === 0 ? "" : ` (${bits.join(", ")})`;
   return load.signal === "high"
-    ? `This week's load is high${detail} - want to talk it through?`
-    : `This week's load is ramping up${detail} - worth talking through before it gets steep?`;
+    ? tx.t("loadwarn.high", { detail })
+    : tx.t("loadwarn.ramping", { detail });
 }
 
 function formatSeconds(total: number): string {
@@ -692,27 +712,27 @@ function pushMetricItem(
   }
 }
 
-function activityExtraItems(activity: Activity): ActivityMetricItem[] {
+function activityExtraItems(activity: Activity, tx: Translator = defaultTranslator): ActivityMetricItem[] {
   const items: ActivityMetricItem[] = [];
-  pushMetricItem(items, "Elevation", activity.elevationGainM, "m", "+");
-  pushMetricItem(items, "Calories", activity.calories, "kcal");
-  pushMetricItem(items, "Max HR", activity.maxHr, "bpm");
-  pushMetricItem(items, "Cadence", activity.cadenceSpm, "spm");
-  pushMetricItem(items, "Stride", activity.strideLengthCm, "cm");
-  pushMetricItem(items, "Ground contact", activity.groundContactMs, "ms");
-  pushMetricItem(items, "Aerobic effect", activity.aerobicTrainingEffect, "");
-  pushMetricItem(items, "Anaerobic effect", activity.anaerobicTrainingEffect, "");
-  pushMetricItem(items, "Training load", activity.trainingLoad, "");
+  pushMetricItem(items, tx.t("metric.elevation"), activity.elevationGainM, "m", "+");
+  pushMetricItem(items, tx.t("metric.calories"), activity.calories, "kcal");
+  pushMetricItem(items, tx.t("metric.maxHr"), activity.maxHr, "bpm");
+  pushMetricItem(items, tx.t("metric.cadence"), activity.cadenceSpm, "spm");
+  pushMetricItem(items, tx.t("metric.stride"), activity.strideLengthCm, "cm");
+  pushMetricItem(items, tx.t("metric.groundContact"), activity.groundContactMs, "ms");
+  pushMetricItem(items, tx.t("metric.aerobicEffect"), activity.aerobicTrainingEffect, "");
+  pushMetricItem(items, tx.t("metric.anaerobicEffect"), activity.anaerobicTrainingEffect, "");
+  pushMetricItem(items, tx.t("metric.trainingLoad"), activity.trainingLoad, "");
   if (activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined && activity.trainingEffectLabel.length > 0) {
-    items.push({ label: "Effect", value: humanizeEffect(activity.trainingEffectLabel) });
+    items.push({ label: tx.t("metric.effect"), value: humanizeEffect(activity.trainingEffectLabel) });
   }
-  const felt = feltText(activity);
-  if (felt !== null) items.push({ label: "Felt", value: felt });
+  const felt = feltText(activity, tx);
+  if (felt !== null) items.push({ label: tx.t("metric.felt"), value: felt });
   return items;
 }
 
-function activityExtraMetrics(activity: Activity): string {
-  const items = activityExtraItems(activity);
+function activityExtraMetrics(activity: Activity, tx: Translator = defaultTranslator): string {
+  const items = activityExtraItems(activity, tx);
   if (items.length === 0) return "";
   return `<div class="metric-extra-grid">${items.map((item) => `<div class="metric-extra"><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong></div>`).join("")}</div>`;
 }
@@ -758,33 +778,37 @@ function fastestEfforts(activity: Activity, prDistances: ReadonlySet<BestEffortD
   }).join("")}</div>`;
 }
 
-function splitsSection(splits: readonly ActivitySplit[], error: string | null): string {
+function splitsSection(splits: readonly ActivitySplit[], error: string | null, tx: Translator = defaultTranslator): string {
+  const title = escapeHtml(tx.t("splits.cardTitle"));
   if (error !== null) {
-    return `<section class="card splits-card"><h2>Per-kilometre splits</h2><p class="muted small">${escapeHtml(error)}</p></section>`;
+    return `<section class="card splits-card"><h2>${title}</h2><p class="muted small">${escapeHtml(error)}</p></section>`;
   }
   if (splits.length === 0) {
-    return `<section class="card splits-card"><h2>Per-kilometre splits</h2><p class="muted small">No per-kilometre samples for this run.</p></section>`;
+    return `<section class="card splits-card"><h2>${title}</h2><p class="muted small">${escapeHtml(tx.t("splits.empty"))}</p></section>`;
   }
   const rows = splits.map((split) => `<div class="split-row" role="row"><span>${split.partial ? `${split.distanceKm} km` : `${split.index} km`}</span><span>${formatSeconds(split.durationSec)}</span><span>${formatPace(split.paceSecPerKm)}</span><span>${split.avgHr === null ? "—" : `${split.avgHr} bpm`}</span></div>`).join("");
-  return `<section class="card splits-card"><div class="splits-head"><h2>Per-kilometre splits</h2><p class="muted small">Elapsed pace; the final split may be partial.</p></div><div class="splits-table" role="table" aria-label="Per-kilometre splits"><div class="split-row split-header" role="row"><span>KM</span><span>Time</span><span>Pace</span><span>Avg HR</span></div>${rows}</div></section>`;
+  return `<section class="card splits-card"><div class="splits-head"><h2>${title}</h2><p class="muted small">${escapeHtml(tx.t("splits.note"))}</p></div><div class="splits-table" role="table" aria-label="${title}"><div class="split-row split-header" role="row"><span>${escapeHtml(tx.t("splits.colKm"))}</span><span>${escapeHtml(tx.t("col.time"))}</span><span>${escapeHtml(tx.t("col.pace"))}</span><span>${escapeHtml(tx.t("splits.colAvgHr"))}</span></div>${rows}</div></section>`;
 }
 
-function lapsSection(laps: readonly ActivityLap[], error: string | null): string {
+function lapsSection(laps: readonly ActivityLap[], error: string | null, tx: Translator = defaultTranslator): string {
+  const title = escapeHtml(tx.t("laps.cardTitle"));
   if (error !== null) {
-    return `<section class="card laps-card"><h2>Garmin laps / intervals</h2><p class="muted small">${escapeHtml(error)}</p></section>`;
+    return `<section class="card laps-card"><h2>${title}</h2><p class="muted small">${escapeHtml(error)}</p></section>`;
   }
   if (laps.length === 0) return "";
   const rows = laps.map((lap) => `<div class="lap-row" role="row"><span>#${lap.index} · ${escapeHtml(lap.type)}</span><span>${lap.distanceKm} km</span><span>${formatSeconds(lap.durationSec)}</span><span>${formatPace(lap.paceSecPerKm)}</span><span>${lap.avgHr === null ? "—" : `${lap.avgHr} bpm`}</span></div>`).join("");
-  return `<section class="card laps-card"><div class="splits-head"><h2>Garmin laps / intervals</h2><p class="muted small">Garmin's own lap/interval summaries; separate from per-kilometre splits.</p></div><div class="laps-table" role="table" aria-label="Garmin laps and intervals"><div class="lap-row lap-header" role="row"><span>Lap</span><span>Dist</span><span>Time</span><span>Pace</span><span>HR</span></div>${rows}</div></section>`;
+  return `<section class="card laps-card"><div class="splits-head"><h2>${title}</h2><p class="muted small">${escapeHtml(tx.t("laps.note"))}</p></div><div class="laps-table" role="table" aria-label="${escapeHtml(tx.t("laps.aria"))}"><div class="lap-row lap-header" role="row"><span>${escapeHtml(tx.t("laps.colLap"))}</span><span>${escapeHtml(tx.t("laps.colDist"))}</span><span>${escapeHtml(tx.t("col.time"))}</span><span>${escapeHtml(tx.t("col.pace"))}</span><span>${escapeHtml(tx.t("laps.colHr"))}</span></div>${rows}</div></section>`;
 }
 
 /**
  * The Garmin workout a run followed. A fetch failure is a muted note, never a broken detail page, and a run that followed
  * no planned workout simply has no card.
  */
-function workoutSection(workout: ActivityWorkout | null, error: string | null): string {
+function workoutSection(workout: ActivityWorkout | null, error: string | null, tx: Translator = defaultTranslator): string {
+  const eyebrow = escapeHtml(tx.t("workout.eyebrow"));
+  const title = escapeHtml(tx.t("workout.cardTitle"));
   if (error !== null) {
-    return `<section class="card workout-card"><div class="workout-head"><div><p class="eyebrow">Training program · Garmin</p><h2>Garmin workout</h2></div></div><p class="muted small">${escapeHtml(error)}</p></section>`;
+    return `<section class="card workout-card"><div class="workout-head"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div></div><p class="muted small">${escapeHtml(error)}</p></section>`;
   }
   if (workout === null || workout.status !== "ok") return "";
   const rows = workout.steps
@@ -793,7 +817,8 @@ function workoutSection(workout: ActivityWorkout | null, error: string | null): 
   const name = workout.name === null ? "" : `<p class="workout-name">${escapeHtml(workout.name)}</p>`;
   const summary = workout.summary.length === 0 ? "" : `<p class="workout-summary">${escapeHtml(workout.summary)}</p>`;
   const notes = workout.notes === null ? "" : `<p class="workout-notes">${escapeHtml(workout.notes)}</p>`;
-  return `<section class="card workout-card"><div class="workout-head"><div><p class="eyebrow">Training program · Garmin</p><h2>Garmin workout</h2></div><span class="chip program-chip">${workout.steps.length} ${workout.steps.length === 1 ? "step" : "steps"}</span></div>${name}${summary}<div class="workout-table" role="table" aria-label="Garmin workout steps"><div class="workout-row workout-header" role="row"><span>#</span><span>Step</span><span>Duration</span><span>Target</span></div>${rows}</div>${notes}</section>`;
+  const stepChip = tx.t(workout.steps.length === 1 ? "workout.stepOne" : "workout.stepOther");
+  return `<section class="card workout-card"><div class="workout-head"><div><p class="eyebrow">${eyebrow}</p><h2>${title}</h2></div><span class="chip program-chip">${workout.steps.length} ${escapeHtml(stepChip)}</span></div>${name}${summary}<div class="workout-table" role="table" aria-label="${escapeHtml(tx.t("workout.aria"))}"><div class="workout-row workout-header" role="row"><span>#</span><span>${escapeHtml(tx.t("workout.colStep"))}</span><span>${escapeHtml(tx.t("workout.colDuration"))}</span><span>${escapeHtml(tx.t("workout.colTarget"))}</span></div>${rows}</div>${notes}</section>`;
 }
 
 /**
@@ -830,7 +855,7 @@ async function ensureActivityWorkout(
   }
 }
 
-function hrZonesSection(activity: Activity): string {  const zones = [
+function hrZonesSection(activity: Activity, tx: Translator = defaultTranslator): string {  const zones = [
     { zone: 1, seconds: activity.hrZone1Sec ?? 0 },
     { zone: 2, seconds: activity.hrZone2Sec ?? 0 },
     { zone: 3, seconds: activity.hrZone3Sec ?? 0 },
@@ -841,14 +866,14 @@ function hrZonesSection(activity: Activity): string {  const zones = [
   if (total <= 0) return "";
   const segments = zones.map((entry) => `<span class="zone-seg zone-${entry.zone}" style="width:${((entry.seconds / total) * 100).toFixed(1)}%" title="Z${entry.zone}"></span>`).join("");
   const legend = zones.map((entry) => `<span class="zone-key"><i class="zone-dot zone-${entry.zone}"></i>Z${entry.zone} ${formatSeconds(entry.seconds)}</span>`).join("");
-  return `<section class="card hr-zones-card"><div class="splits-head"><h2>HR zones</h2><p class="muted small">Garmin zone time; zones are defined in Garmin.</p></div><div class="zone-bar" role="img" aria-label="Time in heart-rate zones">${segments}</div><div class="zone-legend">${legend}</div></section>`;
+  return `<section class="card hr-zones-card"><div class="splits-head"><h2>${escapeHtml(tx.t("hrzones.cardTitle"))}</h2><p class="muted small">${escapeHtml(tx.t("hrzones.note"))}</p></div><div class="zone-bar" role="img" aria-label="${escapeHtml(tx.t("hrzones.aria"))}">${segments}</div><div class="zone-legend">${legend}</div></section>`;
 }
 
-function periodBestsCard(periodLabel: string, bests: readonly PersonalBest[]): string {
+function periodBestsCard(periodLabel: string, bests: readonly PersonalBest[], tx: Translator = defaultTranslator): string {
   const items = bests.length === 0
-    ? `<p class="muted small">No best-effort data in this period.</p>`
-    : `<div class="best-efforts">${bests.map((best) => `<div class="best-effort"><span>${bestEffortLabel(best.distance)}</span><strong>${formatSeconds(best.seconds)}</strong><small>${escapeHtml(formatShortDate(best.activity.day))} · ${escapeHtml(best.activity.title)}</small></div>`).join("")}</div>`;
-  return `<section class="card best-efforts-card"><div class="splits-head"><h2>Best efforts</h2><p class="muted small">${escapeHtml(periodLabel)} · fastest 1 km / 1 mi / 5 km</p></div>${items}<p class="muted small best-scope">Best efforts are within your stored history (the last 90 days, up to 100 activities), not lifetime records.</p></section>`;
+    ? `<p class="muted small">${escapeHtml(tx.t("besteffort.empty"))}</p>`
+    : `<div class="best-efforts">${bests.map((best) => `<div class="best-effort"><span>${bestEffortLabel(best.distance)}</span><strong>${formatSeconds(best.seconds)}</strong><small>${escapeHtml(formatShortDate(best.activity.day, tx.date))} · ${escapeHtml(best.activity.title)}</small></div>`).join("")}</div>`;
+  return `<section class="card best-efforts-card"><div class="splits-head"><h2>${escapeHtml(tx.t("besteffort.title"))}</h2><p class="muted small">${escapeHtml(periodLabel)} · ${escapeHtml(tx.t("besteffort.subtitle"))}</p></div>${items}<p class="muted small best-scope">${escapeHtml(tx.t("besteffort.scope"))}</p></section>`;
 }
 
 function coachPromptForWeek(
@@ -883,69 +908,69 @@ function formatDelta(value: number | null, unit: string): string {
  * The plan-match badge in the runner's words. "ON PLAN 0 KM" read as "zero km done", so the badge now leads with the
  * outcome - completed - and states the signed distance delta it was always about.
  */
-function planMatchBadge(match: ActivityPlanMatch): string {
-  if (match.session === null) return "Unplanned";
+function planMatchBadge(match: ActivityPlanMatch, tx: Translator = defaultTranslator): string {
+  if (match.session === null) return tx.t("plan.badgeUnplanned");
   const delta = match.distanceDeltaKm;
   if (delta === null) {
-    if (match.status === "short") return "Completed - shorter than plan";
-    if (match.status === "long") return "Completed - longer than plan";
-    return "Completed - on plan";
+    if (match.status === "short") return tx.t("plan.badgeShorter");
+    if (match.status === "long") return tx.t("plan.badgeLonger");
+    return tx.t("plan.badgeOnPlan");
   }
   if (match.status === "on-plan") {
-    return `Completed - on plan (${delta > 0 ? "+" : delta < 0 ? "-" : "+"}${Math.abs(delta).toFixed(1)} km)`;
+    return tx.t("plan.badgeOnPlanDelta", { sign: delta > 0 ? "+" : delta < 0 ? "-" : "+", delta: Math.abs(delta).toFixed(1) });
   }
-  return `Completed - ${Math.abs(delta).toFixed(1)} km ${match.status === "short" ? "short" : "over"}`;
+  return tx.t(match.status === "short" ? "plan.badgeShort" : "plan.badgeOver", { delta: Math.abs(delta).toFixed(1) });
 }
 
-function matchLabel(match: ActivityPlanMatch | undefined): string {
-  if (match === undefined) return `<span class="chip match-unplanned">Unplanned</span>`;
-  const title = match.session === null ? "" : ` title="Planned: ${escapeHtml(match.session.title)}"`;
-  return `<span class="chip match-${match.status}"${title}>${escapeHtml(planMatchBadge(match))}</span>`;
+function matchLabel(match: ActivityPlanMatch | undefined, tx: Translator = defaultTranslator): string {
+  if (match === undefined) return `<span class="chip match-unplanned">${escapeHtml(tx.t("plan.badgeUnplanned"))}</span>`;
+  const title = match.session === null ? "" : ` title="${escapeHtml(tx.t("plan.plannedTitle", { title: match.session.title }))}"`;
+  return `<span class="chip match-${match.status}"${title}>${escapeHtml(planMatchBadge(match, tx))}</span>`;
 }
 
-function planDistanceBar(match: ActivityPlanMatch): string {
+function planDistanceBar(match: ActivityPlanMatch, tx: Translator = defaultTranslator): string {
   if (match.session === null || match.session.distanceKm === null || match.activity.distanceKm === null) return "";
   const planned = match.session.distanceKm;
   const actual = match.activity.distanceKm;
   const max = Math.max(planned, actual, 1);
   const plannedWidth = Math.round((planned / max) * 100);
   const actualWidth = Math.round((actual / max) * 100);
-  return `<div class="plan-bar" role="img" aria-label="Planned ${planned} km versus actual ${actual} km">
-    <div class="plan-bar-row"><span>Plan</span><div class="plan-bar-track"><span class="plan-bar-fill plan-bar-plan" style="width:${plannedWidth}%"></span></div><strong>${planned} km</strong></div>
-    <div class="plan-bar-row"><span>Actual</span><div class="plan-bar-track"><span class="plan-bar-fill plan-bar-actual" style="width:${actualWidth}%"></span></div><strong>${actual} km</strong></div>
+  return `<div class="plan-bar" role="img" aria-label="${escapeHtml(tx.t("plan.barAria", { planned, actual }))}">
+    <div class="plan-bar-row"><span>${escapeHtml(tx.t("plan.barPlan"))}</span><div class="plan-bar-track"><span class="plan-bar-fill plan-bar-plan" style="width:${plannedWidth}%"></span></div><strong>${planned} km</strong></div>
+    <div class="plan-bar-row"><span>${escapeHtml(tx.t("plan.barActual"))}</span><div class="plan-bar-track"><span class="plan-bar-fill plan-bar-actual" style="width:${actualWidth}%"></span></div><strong>${actual} km</strong></div>
   </div>`;
 }
 
-function planComparison(match: ActivityPlanMatch): string {
+function planComparison(match: ActivityPlanMatch, tx: Translator = defaultTranslator): string {
   if (match.session === null) {
-    return `<section class="card plan-compare"><h2>Plan vs actual</h2><p class="muted">No planned session matched this run. It is logged as unplanned.</p></section>`;
+    return `<section class="card plan-compare"><h2>${escapeHtml(tx.t("plan.compareTitle"))}</h2><p class="muted">${escapeHtml(tx.t("plan.compareNoMatch"))}</p></section>`;
   }
-  const status = match.status === "on-plan" ? "On plan" : match.status === "short" ? "Short of plan" : "Longer than plan";
-  return `<section class="card plan-compare"><h2>Plan vs actual</h2>
+  const status = tx.t(match.status === "on-plan" ? "plan.statusOnPlan" : match.status === "short" ? "plan.statusShort" : "plan.statusLong");
+  return `<section class="card plan-compare"><h2>${escapeHtml(tx.t("plan.compareTitle"))}</h2>
     <div class="plan-compare-grid">
-      <div><span class="muted small">Planned</span><strong>${escapeHtml(match.session.title)}</strong><p class="muted">${escapeHtml(sessionKindLabel(match.session.kind))}${match.session.distanceKm === null ? "" : ` · ${match.session.distanceKm} km`}${match.session.durationMin === null ? "" : ` · ${formatMinutes(match.session.durationMin)}`}</p></div>
-      <div><span class="muted small">Actual</span><strong>${escapeHtml(match.activity.title)}</strong><p class="muted">${escapeHtml(activityMetrics(match.activity))}</p></div>
+      <div><span class="muted small">${escapeHtml(tx.t("plan.sidePlanned"))}</span><strong>${escapeHtml(match.session.title)}</strong><p class="muted">${escapeHtml(sessionKindLabel(match.session.kind, tx))}${match.session.distanceKm === null ? "" : ` · ${match.session.distanceKm} km`}${match.session.durationMin === null ? "" : ` · ${formatMinutes(match.session.durationMin)}`}</p></div>
+      <div><span class="muted small">${escapeHtml(tx.t("plan.sideActual"))}</span><strong>${escapeHtml(match.activity.title)}</strong><p class="muted">${escapeHtml(activityMetrics(match.activity))}</p></div>
     </div>
-    <div class="plan-deltas"><span class="chip match-${match.status}">${status}</span><span>Distance ${escapeHtml(formatDelta(match.distanceDeltaKm, "km"))}</span><span>Duration ${escapeHtml(formatDelta(match.durationDeltaMin, "min"))}</span></div>
-    ${planDistanceBar(match)}
+    <div class="plan-deltas"><span class="chip match-${match.status}">${escapeHtml(status)}</span><span>${escapeHtml(tx.t("plan.distance"))} ${escapeHtml(formatDelta(match.distanceDeltaKm, "km"))}</span><span>${escapeHtml(tx.t("plan.duration"))} ${escapeHtml(formatDelta(match.durationDeltaMin, "min"))}</span></div>
+    ${planDistanceBar(match, tx)}
   </section>`;
 }
 
 /** The six run metrics a calendar peek shows; the activity detail keeps the full list. */
 const PEEK_METRIC_LIMIT = 6;
 
-function activityPeekMetrics(activity: Activity): ActivityMetricItem[] {
+function activityPeekMetrics(activity: Activity, tx: Translator = defaultTranslator): ActivityMetricItem[] {
   const items: ActivityMetricItem[] = [];
-  pushMetricItem(items, "Training load", activity.trainingLoad, "");
+  pushMetricItem(items, tx.t("metric.trainingLoad"), activity.trainingLoad, "");
   if (activity.trainingEffectLabel !== null && activity.trainingEffectLabel !== undefined && activity.trainingEffectLabel.length > 0) {
-    items.push({ label: "Effect", value: humanizeEffect(activity.trainingEffectLabel) });
+    items.push({ label: tx.t("metric.effect"), value: humanizeEffect(activity.trainingEffectLabel) });
   }
-  const felt = feltText(activity);
-  if (felt !== null) items.push({ label: "Felt", value: felt });
-  pushMetricItem(items, "Elevation", activity.elevationGainM, "m", "+");
-  pushMetricItem(items, "Calories", activity.calories, "kcal");
-  pushMetricItem(items, "Max HR", activity.maxHr, "bpm");
-  pushMetricItem(items, "Cadence", activity.cadenceSpm, "spm");
+  const felt = feltText(activity, tx);
+  if (felt !== null) items.push({ label: tx.t("metric.felt"), value: felt });
+  pushMetricItem(items, tx.t("metric.elevation"), activity.elevationGainM, "m", "+");
+  pushMetricItem(items, tx.t("metric.calories"), activity.calories, "kcal");
+  pushMetricItem(items, tx.t("metric.maxHr"), activity.maxHr, "bpm");
+  pushMetricItem(items, tx.t("metric.cadence"), activity.cadenceSpm, "spm");
   return items.slice(0, PEEK_METRIC_LIMIT);
 }
 
@@ -956,16 +981,16 @@ interface ActivityPeekPlan {
   planned: string | null;
 }
 
-function activityPeekPlan(match: ActivityPlanMatch): ActivityPeekPlan {
+function activityPeekPlan(match: ActivityPlanMatch, tx: Translator = defaultTranslator): ActivityPeekPlan {
   if (match.session === null) {
-    return { status: "unplanned", label: "Unplanned", title: null, planned: null };
+    return { status: "unplanned", label: tx.t("plan.badgeUnplanned"), title: null, planned: null };
   }
-  const statusLabel = match.status === "on-plan" ? "On plan" : match.status === "short" ? "Short" : "Long";
+  const statusLabel = tx.t(match.status === "on-plan" ? "peek.statusOnPlan" : match.status === "short" ? "peek.statusShort" : "peek.statusLong");
   const delta = match.distanceDeltaKm === null || match.distanceDeltaKm === 0
     ? ""
     : ` ${formatDelta(match.distanceDeltaKm, "km")}`;
   const planned = [
-    sessionKindLabel(match.session.kind),
+    sessionKindLabel(match.session.kind, tx),
     match.session.distanceKm === null ? "" : `${match.session.distanceKm} km`,
     match.session.durationMin === null ? "" : formatMinutes(match.session.durationMin),
   ]
@@ -1042,22 +1067,23 @@ function buildActivityPeek(
   sessions: readonly TrainingSession[],
   prDistances: ReadonlySet<BestEffortDistance>,
   workout: ActivityWorkout | null = null,
+  tx: Translator = defaultTranslator,
 ): ActivityPeek {
   return {
     activityId: activity.activityId,
     title: activity.title,
     day: activity.day,
-    dayLabel: formatDayLabel(activity.day),
+    dayLabel: formatDayLabel(activity.day, tx.date),
     source: activity.source,
-    sourceLabel: activitySourceLabel(activity),
+    sourceLabel: activitySourceLabel(activity, tx),
     metrics: activityMetrics(activity),
-    extra: activityPeekMetrics(activity),
+    extra: activityPeekMetrics(activity, tx),
     efforts: fastestEffortItems(activity, prDistances).map((effort) => ({
       label: effort.label,
       value: formatSeconds(effort.seconds),
       pr: effort.pr,
     })),
-    plan: activityPeekPlan(matchActivity(activity, sessions)),
+    plan: activityPeekPlan(matchActivity(activity, sessions), tx),
     program: buildActivityPeekProgram(workout),
     coachPrompt: coachPromptForActivity(activity),
     coachIntent: { kind: "review-activity", activityId: activity.activityId, source: "run-peek" },
@@ -1070,48 +1096,54 @@ function buildActivityPeek(
 }
 
 /** Friendly names for the plan pill's kind chip; the calendar pill itself keeps the raw kind. */
-const SESSION_KIND_LABELS: Record<SessionKind, string> = {
-  easy: "Easy",
-  long: "Long run",
-  interval: "Intervals",
-  tempo: "Tempo",
-  rest: "Rest",
-  cross: "Cross-training",
-  race: "Race",
-  racewalk: "Race walk",
+const SESSION_KIND_KEYS: Record<SessionKind, MessageKey> = {
+  easy: "session.kind.easy",
+  long: "session.kind.long",
+  interval: "session.kind.interval",
+  tempo: "session.kind.tempo",
+  rest: "session.kind.rest",
+  cross: "session.kind.cross",
+  race: "session.kind.race",
+  racewalk: "session.kind.racewalk",
 };
 
-function sessionKindLabel(kind: SessionKind): string {
-  return SESSION_KIND_LABELS[kind];
+function sessionKindLabel(kind: SessionKind, tx: Translator = defaultTranslator): string {
+  return tx.t(SESSION_KIND_KEYS[kind]);
 }
 
+interface SessionIntentKeys {
+  readonly purpose: MessageKey;
+  readonly effort: MessageKey;
+}
+
+const SESSION_INTENT_KEYS: Record<SessionKind, SessionIntentKeys> = {
+  easy: { purpose: "session.intent.purpose.easy", effort: "session.intent.effort.easy" },
+  long: { purpose: "session.intent.purpose.long", effort: "session.intent.effort.long" },
+  tempo: { purpose: "session.intent.purpose.tempo", effort: "session.intent.effort.tempo" },
+  interval: { purpose: "session.intent.purpose.interval", effort: "session.intent.effort.interval" },
+  race: { purpose: "session.intent.purpose.race", effort: "session.intent.effort.race" },
+  rest: { purpose: "session.intent.purpose.rest", effort: "session.intent.effort.rest" },
+  cross: { purpose: "session.intent.purpose.cross", effort: "session.intent.effort.cross" },
+  racewalk: { purpose: "session.intent.purpose.racewalk", effort: "session.intent.effort.racewalk" },
+};
+
+const SESSION_INTENT_FALLBACK: SessionIntentKeys = {
+  purpose: "session.intent.purpose.fallback",
+  effort: "session.intent.effort.fallback",
+};
+
 /** What the session is for and how hard it should feel, in the runner's language rather than a pace table. */
-function sessionIntent(session: TrainingSession): { purpose: string; effort: string } {
-  switch (session.kind) {
-    case "easy":
-      return { purpose: "Aerobic base. The point is time on your feet, not speed.", effort: "Conversational: full sentences, RPE 3-4/10, about 60-70% of max HR." };
-    case "long":
-      return { purpose: "Endurance. Practice fueling, hydration and even effort over a longer time.", effort: "Steady and relaxed, RPE 4-5/10; finish feeling like you could do another 10 minutes." };
-    case "tempo":
-      return { purpose: "Threshold. Teach your body to hold a comfortably hard effort.", effort: "Comfortably hard, RPE 6-7/10, roughly an hour-race effort; even splits." };
-    case "interval":
-      return { purpose: "Speed and VO2max. Short hard repeats with full recoveries.", effort: "Hard repeats, RPE 8/10; the recoveries are part of the session, not a failure." };
-    case "race":
-      return { purpose: "Race effort. Execute the plan, not a personal best in the first kilometre.", effort: "Start controlled, settle into goal effort, and finish strong; use even or negative splits." };
-    case "rest":
-      return { purpose: "Recovery. The adaptation happens while you rest.", effort: "No run. A walk or gentle mobility is enough." };
-    case "cross":
-      return { purpose: "Cross-training. Keep the aerobic engine working without running impact.", effort: "Easy to moderate, RPE 3-5/10; stop if it becomes a hard session." };
-    case "racewalk":
-      return { purpose: "Technique and aerobic work at race-walk effort.", effort: "Quick, relaxed steps; RPE 5-6/10, not a shuffle and not a sprint." };
-    default:
-      return { purpose: "Training session.", effort: "Keep it controlled and finish with something left." };
-  }
+function sessionIntent(
+  session: TrainingSession,
+  tx: Translator = defaultTranslator,
+): { purpose: string; effort: string } {
+  const keys = SESSION_INTENT_KEYS[session.kind] ?? SESSION_INTENT_FALLBACK;
+  return { purpose: tx.t(keys.purpose), effort: tx.t(keys.effort) };
 }
 
 /** Server-rendered intent lines for the day page and the session peek. */
-function sessionIntentHtml(session: TrainingSession): string {
-  const intent = sessionIntent(session);
+function sessionIntentHtml(session: TrainingSession, tx: Translator = defaultTranslator): string {
+  const intent = sessionIntent(session, tx);
   return `<p class="session-intent">${escapeHtml(intent.purpose)}</p><p class="session-intent-effort muted small">${escapeHtml(intent.effort)}</p>`;
 }
 
@@ -1142,29 +1174,31 @@ function sessionPeekOutcome(
   sessions: readonly TrainingSession[],
   activities: readonly Activity[],
   today: string,
+  tx: Translator = defaultTranslator,
 ): SessionPeekOutcome {
   if (session.kind === "rest") {
     const recorded = activities[0];
     if (recorded === undefined) {
-      return { status: "rest", label: "Planned rest", detail: "No run is expected on this day.", activityId: null };
+      return { status: "rest", label: tx.t("peek.outcomeRest"), detail: tx.t("peek.restDetail"), activityId: null };
     }
     const metrics = activityMetrics(recorded);
+    const summary = `${recorded.title}${metrics.length === 0 ? "" : ` · ${metrics}`}`;
     return {
       status: "rest",
-      label: "Planned rest",
-      detail: `Recorded anyway: ${recorded.title}${metrics.length === 0 ? "" : ` · ${metrics}`}`,
+      label: tx.t("peek.outcomeRest"),
+      detail: tx.t("peek.restRecorded", { detail: summary }),
       activityId: recorded.activityId,
     };
   }
   const match = matchActivitiesToPlan(activities, sessions)
     .find((candidate) => candidate.session?.sessionId === session.sessionId);
   if (match !== undefined) {
-    const statusLabel = match.status === "on-plan" ? "On plan" : match.status === "short" ? "Short" : "Long";
+    const statusLabel = tx.t(match.status === "on-plan" ? "peek.statusOnPlan" : match.status === "short" ? "peek.statusShort" : "peek.statusLong");
     const delta = match.distanceDeltaKm === null || match.distanceDeltaKm === 0 ? "" : ` ${formatDelta(match.distanceDeltaKm, "km")}`;
     const metrics = activityMetrics(match.activity);
     return {
       status: "completed",
-      label: `Completed · ${statusLabel}${delta}`,
+      label: tx.t("peek.completed", { status: statusLabel, delta }),
       detail: metrics.length === 0 ? match.activity.title : `${match.activity.title} · ${metrics}`,
       activityId: match.activity.activityId,
     };
@@ -1172,22 +1206,23 @@ function sessionPeekOutcome(
   const recorded = activities[0];
   if (recorded !== undefined) {
     const metrics = activityMetrics(recorded);
+    const summary = `${recorded.title}${metrics.length === 0 ? "" : ` · ${metrics}`}`;
     return {
       status: "unmatched",
-      label: "Not matched",
+      label: tx.t("peek.notMatched"),
       detail: activities.length === 1
-        ? `Recorded: ${recorded.title}${metrics.length === 0 ? "" : ` · ${metrics}`}`
-        : "Runs were recorded that day, but none match this session.",
+        ? tx.t("peek.recorded", { detail: summary })
+        : tx.t("peek.notMatchedMany"),
       activityId: activities.length === 1 ? recorded.activityId : null,
     };
   }
   if (session.day < today) {
-    return { status: "missed", label: "Not done", detail: "No run was logged. The plan does not change and there is nothing to make up.", activityId: null };
+    return { status: "missed", label: tx.t("peek.notDone"), detail: tx.t("peek.missedDetail"), activityId: null };
   }
   if (session.day === today) {
-    return { status: "upcoming", label: "Today", detail: "No run recorded yet today.", activityId: null };
+    return { status: "upcoming", label: tx.t("peek.today"), detail: tx.t("peek.todayDetail"), activityId: null };
   }
-  return { status: "upcoming", label: "Upcoming", detail: null, activityId: null };
+  return { status: "upcoming", label: tx.t("peek.upcoming"), detail: null, activityId: null };
 }
 
 /** The visible question for one planned session; the hidden review-day directive keeps the turn read-only. */
@@ -1226,18 +1261,19 @@ function buildSessionPeek(
   sessions: readonly TrainingSession[],
   activities: readonly Activity[],
   today: string,
+  tx: Translator = defaultTranslator,
 ): SessionPeek {
-  const outcome = sessionPeekOutcome(session, sessions, activities, today);
+  const outcome = sessionPeekOutcome(session, sessions, activities, today, tx);
   return {
     sessionId: session.sessionId,
     title: session.title,
     day: session.day,
-    dayLabel: formatDayLabel(session.day),
+    dayLabel: formatDayLabel(session.day, tx.date),
     kind: session.kind,
-    kindLabel: sessionKindLabel(session.kind),
+    kindLabel: sessionKindLabel(session.kind, tx),
     metrics: sessionMetrics(session),
     note: session.note,
-    intent: sessionIntent(session),
+    intent: sessionIntent(session, tx),
     outcome,
     coachPrompt: coachPromptForSession(session, outcome),
     coachIntent: { kind: "review-day", day: session.day, source: "session-peek" },
@@ -1384,11 +1420,13 @@ function trendPoints(activities: readonly Activity[], metric: TrendMetric): Tren
  * One metric panel. Every metric gets a panel and the picker shows exactly one, so switching is instant and needs no
  * client script; a metric without two points keeps its honest empty note instead of an empty chart.
  */
-function trendChart(activities: readonly Activity[], metric: TrendMetric, periodLabel: string): string {
+function trendChart(activities: readonly Activity[], metric: TrendMetric, periodLabel: string, tx: Translator = defaultTranslator): string {
   const points = trendPoints(activities, metric);
-  const caption = `<figcaption>${escapeHtml(metric.title)} <span class="muted small">${points.length} ${points.length === 1 ? "run" : "runs"}</span></figcaption>`;
+  const metricTitle = tx.t(`history.trend.metricTitle.${metric.key}` as const);
+  const caption = `<figcaption>${escapeHtml(metricTitle)} <span class="muted small">${escapeHtml(tx.t("history.runCount", { count: points.length }))}</span></figcaption>`;
   if (points.length < 2) {
-    return `<figure class="trend-panel" data-metric="${metric.key}">${caption}<p class="muted small">Need at least two runs with ${escapeHtml(metric.label.toLowerCase())} data in ${escapeHtml(periodLabel)}.</p></figure>`;
+    const labelWord = tx.t(`history.trend.metric.${metric.key}` as const).toLowerCase();
+    return `<figure class="trend-panel" data-metric="${metric.key}">${caption}<p class="muted small">${escapeHtml(tx.t("history.trend.needTwo", { label: labelWord, period: periodLabel }))}</p></figure>`;
   }
 
   const values = points.map((point) => point.value);
@@ -1431,7 +1469,7 @@ function trendChart(activities: readonly Activity[], metric: TrendMetric, period
     middleLabel.length === 0
       ? ""
       : `<text x="${middleX.toFixed(1)}" y="${chartHeight - 6}" text-anchor="middle" class="trend-axis">${escapeHtml(middleLabel)}</text>`;
-  return `<figure class="trend-panel" data-metric="${metric.key}">${caption}<svg viewBox="0 0 ${chartWidth} ${chartHeight}" class="trend-chart" role="img" aria-label="${escapeHtml(`${metric.title} for ${periodLabel}`)}"><text x="2" y="${(padTop + 4).toFixed(1)}" class="trend-axis">${escapeHtml(topLabel)}</text><text x="2" y="${(padTop + plotHeight).toFixed(1)}" class="trend-axis">${escapeHtml(bottomLabel)}</text><polyline points="${line}" class="trend-line"></polyline>${dots}<text x="${padLeft}" y="${chartHeight - 6}" class="trend-axis">${escapeHtml(firstLabel)}</text>${middleText}<text x="${chartWidth - padRight}" y="${chartHeight - 6}" text-anchor="end" class="trend-axis">${escapeHtml(lastLabel)}</text></svg><p class="trend-note">${escapeHtml(periodLabel)} · ${escapeHtml(firstValue)} → ${escapeHtml(lastValue)}</p></figure>`;
+  return `<figure class="trend-panel" data-metric="${metric.key}">${caption}<svg viewBox="0 0 ${chartWidth} ${chartHeight}" class="trend-chart" role="img" aria-label="${escapeHtml(tx.t("history.trend.chartAria", { title: metricTitle, period: periodLabel }))}"><text x="2" y="${(padTop + 4).toFixed(1)}" class="trend-axis">${escapeHtml(topLabel)}</text><text x="2" y="${(padTop + plotHeight).toFixed(1)}" class="trend-axis">${escapeHtml(bottomLabel)}</text><polyline points="${line}" class="trend-line"></polyline>${dots}<text x="${padLeft}" y="${chartHeight - 6}" class="trend-axis">${escapeHtml(firstLabel)}</text>${middleText}<text x="${chartWidth - padRight}" y="${chartHeight - 6}" text-anchor="end" class="trend-axis">${escapeHtml(lastLabel)}</text></svg><p class="trend-note">${escapeHtml(periodLabel)} · ${escapeHtml(firstValue)} → ${escapeHtml(lastValue)}</p></figure>`;
 }
 
 /**
@@ -1439,15 +1477,15 @@ function trendChart(activities: readonly Activity[], metric: TrendMetric, period
  * so the switch is instant, keyboard accessible and works without a script; a browser without `:has()` keeps the
  * default panel visible instead of hiding every panel.
  */
-function trendPicker(activities: readonly Activity[], periodLabel: string): string {
+function trendPicker(activities: readonly Activity[], periodLabel: string, tx: Translator = defaultTranslator): string {
   const withData = TREND_METRICS.filter((metric) => trendPoints(activities, metric).length >= 2);
   const defaultMetric = withData[0] ?? TREND_METRICS[0];
   const chips = TREND_METRICS.map((metric) => {
     const checked = metric.key === defaultMetric?.key ? " checked" : "";
-    return `<input class="trend-radio" type="radio" name="trend-metric" id="trend-metric-${metric.key}" value="${metric.key}"${checked}><label class="trend-chip" for="trend-metric-${metric.key}">${escapeHtml(metric.label)}</label>`;
+    return `<input class="trend-radio" type="radio" name="trend-metric" id="trend-metric-${metric.key}" value="${metric.key}"${checked}><label class="trend-chip" for="trend-metric-${metric.key}">${escapeHtml(tx.t(`history.trend.metric.${metric.key}` as const))}</label>`;
   }).join("");
-  const panels = TREND_METRICS.map((metric) => trendChart(activities, metric, periodLabel)).join("");
-  return `<section class="trend-card trend-picker" data-default="${defaultMetric?.key ?? "pace"}" aria-labelledby="trend-picker-title"><div class="trend-picker-head"><h3 id="trend-picker-title">Metric trend</h3><p class="muted small">Pick the metric to plot</p></div><div class="trend-chips" role="radiogroup" aria-label="Trend metric">${chips}</div><div class="trend-panels">${panels}</div></section>`;
+  const panels = TREND_METRICS.map((metric) => trendChart(activities, metric, periodLabel, tx)).join("");
+  return `<section class="trend-card trend-picker" data-default="${defaultMetric?.key ?? "pace"}" aria-labelledby="trend-picker-title"><div class="trend-picker-head"><h3 id="trend-picker-title">${escapeHtml(tx.t("history.trend.pickerTitle"))}</h3><p class="muted small">${escapeHtml(tx.t("history.trend.pickerHint"))}</p></div><div class="trend-chips" role="radiogroup" aria-label="${escapeHtml(tx.t("history.trend.pickerAria"))}">${chips}</div><div class="trend-panels">${panels}</div></section>`;
 }
 
 function trendSection(
@@ -1458,6 +1496,7 @@ function trendSection(
   volumeTitle: string,
   volumeAria: string,
   consistencyUnit?: string,
+  tx: Translator = defaultTranslator,
 ): string {
   const paceActivities = activities.filter(
     (activity) => activity.paceSecPerKm !== null && activity.distanceKm !== null && activity.durationMin !== null && activity.distanceKm > 0,
@@ -1471,9 +1510,14 @@ function trendSection(
   const averageCadence = cadenceActivities.length === 0
     ? null
     : Math.round(cadenceActivities.reduce((sum, activity) => sum + (activity.cadenceSpm ?? 0), 0) / cadenceActivities.length);
+  const noData = escapeHtml(tx.t("history.trend.noData"));
   const summaryRow = (label: string, value: string): string => `<div><dt>${label}</dt><dd>${value}</dd></div>`;
-  const consistencyValue = consistencyUnit === undefined ? `${consistency}%` : `${consistency}% of ${consistencyUnit}`;
-  return `<section class="trends"><div class="trend-head"><h2>Trends</h2><p class="muted small">${escapeHtml(periodLabel)} · ${activities.length} runs</p>${activities.length > 12 ? `<p class="muted small trend-window">The trend plots the last 12 runs with the selected metric; the volume chart covers the whole period.</p>` : ""}</div><div class="trend-grid">${volumeChart(buckets, volumeTitle, `${sumDistance(activities)} km · ${periodLabel}`, volumeAria)}<figure class="trend-card trend-stats"><figcaption>Summary</figcaption><dl>${summaryRow("Average pace", averagePace === null ? "No data yet" : escapeHtml(formatPace(averagePace)))}${summaryRow("Average HR", averageHr === null ? "No data yet" : `${averageHr} bpm`)}${summaryRow("Average cadence", averageCadence === null ? "No data yet" : `${averageCadence} spm`)}${summaryRow("Consistency", consistencyValue)}</dl></figure></div>${trendPicker(activities, periodLabel)}</section>`;
+  const consistencyValue = consistencyUnit === undefined
+    ? `${consistency}%`
+    : escapeHtml(tx.t("history.trend.ofUnit", { pct: consistency, unit: consistencyUnit }));
+  const runCount = escapeHtml(tx.t("history.runCount", { count: activities.length }));
+  const windowNote = activities.length > 12 ? `<p class="muted small trend-window">${escapeHtml(tx.t("history.trend.window"))}</p>` : "";
+  return `<section class="trends"><div class="trend-head"><h2>${escapeHtml(tx.t("history.trend.title"))}</h2><p class="muted small">${escapeHtml(periodLabel)} · ${runCount}</p>${windowNote}</div><div class="trend-grid">${volumeChart(buckets, volumeTitle, `${sumDistance(activities)} km · ${periodLabel}`, volumeAria)}<figure class="trend-card trend-stats"><figcaption>${escapeHtml(tx.t("history.trend.summary"))}</figcaption><dl>${summaryRow(escapeHtml(tx.t("history.trend.avgPace")), averagePace === null ? noData : escapeHtml(formatPace(averagePace)))}${summaryRow(escapeHtml(tx.t("history.trend.avgHr")), averageHr === null ? noData : `${averageHr} bpm`)}${summaryRow(escapeHtml(tx.t("history.trend.avgCadence")), averageCadence === null ? noData : `${averageCadence} spm`)}${summaryRow(escapeHtml(tx.t("history.trend.consistency")), consistencyValue)}</dl></figure></div>${trendPicker(activities, periodLabel, tx)}</section>`;
 }
 
 /** SameSite=Lax covers most CSRF; this also rejects a browser POST whose Origin is another host. */
@@ -1490,26 +1534,26 @@ function isSameOriginPost(request: IncomingMessage): boolean {
 }
 
 /** Manual Garmin pull as an account-menu row; the notification script rewrites `next` to the current page. */
-function renderSyncItem(): string {
+function renderSyncItem(tx: Translator): string {
   return `<form method="post" action="/sync" class="sync-menu-form" data-sync-form>
     <input type="hidden" name="next" value="/calendar">
-    <button class="account-item sync-btn" type="submit" aria-label="Sync Garmin" title="Pull new activities now"><span aria-hidden="true">⟳</span>Sync Garmin now</button>
+    <button class="account-item sync-btn" type="submit" aria-label="${escapeHtml(tx.t("account.syncAria"))}" title="${escapeHtml(tx.t("account.syncTitle"))}"><span aria-hidden="true">⟳</span>${escapeHtml(tx.t("account.syncNow"))}</button>
   </form>`;
 }
 
 /** Everything about the signed-in runner, collapsed behind their name so the top bar stays short. */
-function renderAccountMenu(user: AuthUser): string {
+function renderAccountMenu(user: AuthUser, tx: Translator): string {
   return `<div class="account-wrap">
     <button class="account-btn" id="account-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="account-menu"><span class="account-name">${escapeHtml(user.displayName)}</span><span class="account-caret" aria-hidden="true">▾</span></button>
-    <nav class="account-menu" id="account-menu" aria-label="Account" hidden>
+    <nav class="account-menu" id="account-menu" aria-label="${escapeHtml(tx.t("account.menu.label"))}" hidden>
       <p class="account-id"><strong>${escapeHtml(user.displayName)}</strong><span>@${escapeHtml(user.username)}</span></p>
-      <a class="account-item" href="/profile">Profile</a>
-      <a class="account-item" href="/coach-states">Coaching states</a>
-      ${renderSyncItem()}
-      <a class="account-item" href="/calendar?garmin=setup">Garmin key</a>
-      <a class="account-item" href="/export.json">Export my data</a>
+      <a class="account-item" href="/profile">${escapeHtml(tx.t("account.profile"))}</a>
+      <a class="account-item" href="/coach-states">${escapeHtml(tx.t("account.coachStates"))}</a>
+      ${renderSyncItem(tx)}
+      <a class="account-item" href="/calendar?garmin=setup">${escapeHtml(tx.t("account.garminKey"))}</a>
+      <a class="account-item" href="/export.json">${escapeHtml(tx.t("account.export"))}</a>
       <hr class="account-sep">
-      <a class="account-item account-signout" href="/logout">Sign out</a>
+      <a class="account-item account-signout" href="/logout">${escapeHtml(tx.t("account.signout"))}</a>
     </nav>
   </div>`;
 }
@@ -1548,13 +1592,13 @@ function renderAccountMenuScript(): string {
   </script>`;
 }
 
-function renderNotificationBell(): string {
+function renderNotificationBell(tx: Translator): string {
   return `<div class="notif-wrap">
-    <button class="icon-btn notif-btn" id="notif-btn" type="button" aria-label="Notifications" aria-expanded="false" aria-controls="notif-panel"><span aria-hidden="true">🔔</span><span class="notif-badge" id="notif-badge" hidden>0</span></button>
-    <section class="notif-panel" id="notif-panel" hidden aria-label="Notifications">
-      <header><strong>Notifications</strong><button class="icon-btn" id="notif-close" type="button" aria-label="Close notifications">×</button></header>
+    <button class="icon-btn notif-btn" id="notif-btn" type="button" aria-label="${escapeHtml(tx.t("notif.aria"))}" aria-expanded="false" aria-controls="notif-panel"><span aria-hidden="true">🔔</span><span class="notif-badge" id="notif-badge" hidden>0</span></button>
+    <section class="notif-panel" id="notif-panel" hidden aria-label="${escapeHtml(tx.t("notif.title"))}">
+      <header><strong>${escapeHtml(tx.t("notif.title"))}</strong><button class="icon-btn" id="notif-close" type="button" aria-label="${escapeHtml(tx.t("notif.close"))}">×</button></header>
       <div class="notif-list" id="notif-list" role="log" aria-live="polite"></div>
-      <footer class="notif-footer"><a href="/calendar?garmin=setup">Garmin key</a></footer>
+      <footer class="notif-footer"><a href="/calendar?garmin=setup">${escapeHtml(tx.t("notif.garminKey"))}</a></footer>
     </section>
   </div>`;
 }
@@ -1569,6 +1613,9 @@ function renderNotificationScript(): string {
     const badge = document.getElementById('notif-badge');
     if (!button || !panel || !close || !list || !badge) return;
 
+    // Localized chrome strings injected by the server (see layout's window.__I18N__). English keeps working if absent.
+    const ui = window.__I18N__ || {};
+    const interp = (tpl, count) => (typeof tpl === 'string' ? tpl.replace('{count}', String(count)) : '');
     const siteName = document.body.dataset.siteName || 'AI Coach Calendar';
     const pageContext = document.body.dataset.pageContext || '';
     const timezone = document.body.dataset.timezone || 'UTC';
@@ -1576,7 +1623,9 @@ function renderNotificationScript(): string {
       const count = typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
       badge.hidden = count === 0;
       badge.textContent = count > 99 ? '99+' : String(count);
-      button.setAttribute('aria-label', count === 0 ? 'Notifications' : 'Notifications (' + count + ' unread)');
+      button.setAttribute('aria-label', count === 0
+        ? (ui.notifAria || 'Notifications')
+        : interp(ui.notifUnread, count) || ('Notifications (' + count + ' unread)'));
       const countSuffix = count === 0 ? '' : ' (' + (count > 99 ? '99+' : count) + ')';
       document.title = (pageContext.length === 0 ? '' : pageContext + ' · ') + siteName + countSuffix;
     };
@@ -1586,7 +1635,7 @@ function renderNotificationScript(): string {
       if (!Array.isArray(items) || items.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'muted small notif-empty';
-        empty.textContent = 'No notifications yet.';
+        empty.textContent = ui.notifEmpty || 'No notifications yet.';
         list.append(empty);
         return;
       }
@@ -1596,7 +1645,7 @@ function renderNotificationScript(): string {
         link.className = 'notif-item';
         link.href = typeof item.href === 'string' && item.href.startsWith('/') ? item.href : '/calendar';
         const title = document.createElement('strong');
-        title.textContent = typeof item.title === 'string' ? item.title : 'Garmin sync';
+        title.textContent = typeof item.title === 'string' ? item.title : (ui.notifDefault || 'Garmin sync');
         const body = document.createElement('span');
         body.textContent = typeof item.body === 'string' ? item.body : '';
         const time = document.createElement('time');
@@ -1688,6 +1737,7 @@ function renderMuscleBadgeScript(): string {
   (() => {
     const tab = document.querySelector('.view-tab[href="/muscle"]');
     if (tab === null) return;
+    const ui = window.__I18N__ || {};
     fetch('/muscle/attention.json', { headers: { accept: 'application/json' } })
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
@@ -1699,7 +1749,11 @@ function renderMuscleBadgeScript(): string {
         badge.textContent = count > 9 ? '9+' : String(count);
         badge.setAttribute('aria-hidden', 'true');
         tab.append(badge);
-        tab.setAttribute('aria-label', 'Muscles — ' + count + (count === 1 ? ' muscle in a special status' : ' muscles in a special status'));
+        const base = ui.muscleTabBase || 'Muscles';
+        const suffix = count === 1
+          ? (ui.muscleStatusOne || 'muscle in a special status')
+          : (ui.muscleStatusOther || 'muscles in a special status');
+        tab.setAttribute('aria-label', base + ' — ' + count + ' ' + suffix);
       })
       .catch(() => {
         // Without the count the tab is still a working link.
@@ -1708,31 +1762,31 @@ function renderMuscleBadgeScript(): string {
   </script>`;
 }
 
-function renderGarminModal(savedKey: GarminKey | undefined, next: string, keyError: string | null): string {
+function renderGarminModal(savedKey: GarminKey | undefined, next: string, keyError: string | null, tx: Translator): string {
   const replacing = savedKey !== undefined;
   return `<div class="modal" id="garmin-modal" hidden>
     <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="garmin-title">
-      <header class="modal-head"><h2 id="garmin-title">${replacing ? "Replace your Garmin key" : "Connect Garmin"}</h2><button class="icon-btn modal-close" type="button" data-close-garmin aria-label="Close">×</button></header>
-      <p class="muted">${replacing ? `Current key ${escapeHtml(maskKey(savedKey.apiKey))}. Paste a new key to replace it.` : "Sync your completed Garmin activities into this calendar. You need a Garmin Personal API key."}</p>
-      <p class="muted small">Use a key created while signed in to the same Garmin account you want to sync. Keys can expire; if Garmin rejects one, create a fresh key.</p>
+      <header class="modal-head"><h2 id="garmin-title">${escapeHtml(replacing ? tx.t("garmin.titleReplace") : tx.t("garmin.titleConnect"))}</h2><button class="icon-btn modal-close" type="button" data-close-garmin aria-label="${escapeHtml(tx.t("garmin.close"))}">×</button></header>
+      <p class="muted">${replacing ? tx.t("garmin.introReplace", { key: escapeHtml(maskKey(savedKey.apiKey)) }) : escapeHtml(tx.t("garmin.introConnect"))}</p>
+      <p class="muted small">${escapeHtml(tx.t("garmin.hint"))}</p>
       ${keyError === null ? "" : `<p class="error" role="alert">${escapeHtml(keyError)}</p>`}
       <ol class="key-steps">
-        <li>Sign in to <a href="https://connect.garmin.com" target="_blank" rel="noreferrer">Garmin Connect</a> in a web browser with the Garmin account you want to sync.</li>
-        <li>Open <a href="https://connect.garmin.com/app/settings/personalApiToken" target="_blank" rel="noreferrer">Profile &amp; Account → Settings → Personal API Key</a>.</li>
-        <li>Choose <strong>Create Key</strong>, accept the terms, and copy the full key.</li>
-        <li>Paste it below and use <strong>Show</strong> to verify the whole key before saving.</li>
+        <li>${tx.t("garmin.step1")}</li>
+        <li>${tx.t("garmin.step2")}</li>
+        <li>${tx.t("garmin.step3")}</li>
+        <li>${tx.t("garmin.step4")}</li>
       </ol>
       <form method="post" action="/garmin/key" class="stack">
         <input type="hidden" name="next" value="${escapeHtml(next)}">
-        <label for="garmin-key">Garmin Personal API key</label>
+        <label for="garmin-key">${escapeHtml(tx.t("garmin.keyLabel"))}</label>
         <div class="key-input-row">
-          <input id="garmin-key" name="key" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" required placeholder="GCDC_…" aria-describedby="garmin-key-help">
-          <button id="garmin-key-toggle" class="key-toggle" type="button" aria-pressed="false">Show</button>
+          <input id="garmin-key" name="key" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" required placeholder="${escapeHtml(tx.t("garmin.keyPlaceholder"))}" aria-describedby="garmin-key-help">
+          <button id="garmin-key-toggle" class="key-toggle" type="button" aria-pressed="false">${escapeHtml(tx.t("garmin.show"))}</button>
         </div>
-        <p id="garmin-key-help" class="muted small">Personal API keys are long and usually start with <code>GCDC_</code>. Use Show to check the whole key. The key stays on this server and is never shown again in full. <a href="https://support.garmin.com/en-US/?faq=HfTwLfw1Gn2A7WS1GdAMH8" target="_blank" rel="noreferrer">How to get a key</a></p>
-        <div class="modal-actions"><button type="button" class="btn ghost" data-close-garmin>Cancel</button><button type="submit" class="btn">Save &amp; sync</button></div>
+        <p id="garmin-key-help" class="muted small">${tx.t("garmin.keyHelp")}</p>
+        <div class="modal-actions"><button type="button" class="btn ghost" data-close-garmin>${escapeHtml(tx.t("garmin.cancel"))}</button><button type="submit" class="btn">${escapeHtml(tx.t("garmin.save"))}</button></div>
       </form>
-      ${replacing ? `<form method="post" action="/garmin/key/delete" class="stack key-delete-form"><input type="hidden" name="next" value="${escapeHtml(next)}"><button type="submit" class="btn ghost">Remove saved key</button></form>` : ""}
+      ${replacing ? `<form method="post" action="/garmin/key/delete" class="stack key-delete-form"><input type="hidden" name="next" value="${escapeHtml(next)}"><button type="submit" class="btn ghost">${escapeHtml(tx.t("garmin.remove"))}</button></form>` : ""}
     </div>
   </div>`;
 }
@@ -1742,6 +1796,7 @@ function renderGarminScript(): string {
   (() => {
     const modal = document.getElementById('garmin-modal');
     if (!modal) return;
+    const ui = window.__I18N__ || {};
     const keyInput = document.getElementById('garmin-key');
     const keyToggle = document.getElementById('garmin-key-toggle');
     const params = new URLSearchParams(location.search);
@@ -1750,7 +1805,7 @@ function renderGarminScript(): string {
     const setKeyVisible = (visible) => {
       if (keyInput) keyInput.type = visible ? 'text' : 'password';
       if (keyToggle) {
-        keyToggle.textContent = visible ? 'Hide' : 'Show';
+        keyToggle.textContent = visible ? (ui.garminHide || 'Hide') : (ui.garminShow || 'Show');
         keyToggle.setAttribute('aria-pressed', String(visible));
       }
     };
@@ -1795,8 +1850,8 @@ function renderGarminScript(): string {
   </script>`;
 }
 
-function renderGarminPanel(savedKey: GarminKey | undefined, next: string, keyError: string | null = null): string {
-  return `${renderGarminModal(savedKey, next, keyError)}
+function renderGarminPanel(savedKey: GarminKey | undefined, next: string, tx: Translator, keyError: string | null = null): string {
+  return `${renderGarminModal(savedKey, next, keyError, tx)}
   ${renderGarminScript()}`;
 }
 
@@ -1809,23 +1864,23 @@ function formatUnreadCount(unread: number): string {
   return count > MAX_UNREAD_DISPLAY ? " (99+)" : ` (${count})`;
 }
 
-function navLabel(user: AuthUser | undefined, activeView: ViewName): string {
+function navLabel(user: AuthUser | undefined, activeView: ViewName, tx: Translator): string {
   if (user === undefined) return "";
-  if (activeView === "calendar") return "Plan";
-  if (activeView === "history") return "Training log";
-  if (activeView === "muscle") return "Muscles";
+  if (activeView === "calendar") return tx.t("nav.plan");
+  if (activeView === "history") return tx.t("nav.log");
+  if (activeView === "muscle") return tx.t("nav.muscles");
   return "";
 }
 
-function pageContext(title: string, user: AuthUser | undefined, activeView: ViewName): string {
-  const nav = navLabel(user, activeView);
+function pageContext(title: string, user: AuthUser | undefined, activeView: ViewName, tx: Translator): string {
+  const nav = navLabel(user, activeView, tx);
   if (nav.length === 0) return title;
   return nav === title ? title : `${nav} · ${title}`;
 }
 
-function documentTitle(title: string, user: AuthUser | undefined, activeView: ViewName, unread: number): string {
-  const context = pageContext(title, user, activeView);
-  const suffix = `${SITE_NAME}${formatUnreadCount(unread)}`;
+function documentTitle(title: string, user: AuthUser | undefined, activeView: ViewName, unread: number, tx: Translator): string {
+  const context = pageContext(title, user, activeView, tx);
+  const suffix = `${tx.t("app.name")}${formatUnreadCount(unread)}`;
   return context.length === 0 ? suffix : `${context} · ${suffix}`;
 }
 
@@ -1834,12 +1889,54 @@ function documentTitle(title: string, user: AuthUser | undefined, activeView: Vi
  * lives inside the app bar. It renders only when the page names its view; profile, coaching-state, audit, sign-in
  * and error pages pass "none" and get a clean header instead of a tab strip with nothing selected.
  */
-function renderViewSwitch(activeView: ViewName): string {
+function renderViewSwitch(activeView: ViewName, tx: Translator): string {
   if (activeView === "none") return "";
   const planActive = activeView === "calendar";
   const logActive = activeView === "history";
   const muscleActive = activeView === "muscle";
-  return `<nav class="view-switch" data-active="${activeView}" aria-label="Plan, training log and muscles"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>Plan</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>Training log</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>Muscles</a></nav>`;
+  const label = escapeHtml(tx.t("nav.switch.label"));
+  const plan = escapeHtml(tx.t("nav.plan"));
+  const log = escapeHtml(tx.t("nav.log"));
+  const muscle = escapeHtml(tx.t("nav.muscles"));
+  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
+}
+
+/**
+ * Common footer shown on every rendered page: a localized tagline and the language switcher. Each control posts a
+ * plain GET to /language, so switching works without JavaScript; the server remembers the choice in a cookie and
+ * sends the runner back to the page they were on.
+ */
+function renderFooter(tx: Translator): string {
+  const options = LOCALES.map((meta) => {
+    const active = meta.code === tx.locale;
+    const label = escapeHtml(meta.nativeName);
+    const title = escapeHtml(meta.englishName);
+    const href = escapeHtml(`/language?locale=${encodeURIComponent(meta.code)}`);
+    return active
+      ? `<span class="lang-btn" role="button" aria-current="true" title="${title}">${label}</span>`
+      : `<a class="lang-btn" href="${href}" title="${title}">${label}</a>`;
+  }).join("");
+  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span><nav class="lang-switch" aria-label="${escapeHtml(tx.t("footer.language"))}"><span class="lang-switch-label" aria-hidden="true">${escapeHtml(tx.t("footer.language"))}</span>${options}</nav></div></footer>`;
+}
+
+/**
+ * Small map of localized strings the inline client scripts need at runtime (notification panel, muscle badge,
+ * Garmin show/hide). Serialized once; scripts fall back to English if it is ever missing.
+ */
+function clientI18nScript(tx: Translator): string {
+  const strings = {
+    ...clientStrings(tx.locale),
+    notifAria: tx.t("notif.aria"),
+    notifUnread: tx.t("notif.ariaUnread", { count: "{count}" }),
+    notifEmpty: tx.t("notif.empty"),
+    notifDefault: tx.t("notif.defaultItem"),
+    garminShow: tx.t("garmin.show"),
+    garminHide: tx.t("garmin.hide"),
+    muscleTabBase: tx.t("muscle.tabAria"),
+    muscleStatusOne: tx.t("muscle.statusOne"),
+    muscleStatusOther: tx.t("muscle.statusOther"),
+  };
+  return `<script>window.__I18N__=${jsonForScript(strings)};</script>`;
 }
 
 function layout(
@@ -1849,50 +1946,127 @@ function layout(
   activeView: ViewName = "none",
   unread = 0,
   flash = "",
+  tx: Translator = defaultTranslator,
 ): string {
   const topActions = user === undefined
-    ? `<div class="top-actions"><a class="top-link" href="/login">Sign in</a><a class="top-link ghost" href="/signup">Sign up</a></div>`
-    : `<div class="top-actions">${renderNotificationBell()}${renderAccountMenu(user)}</div>`;
-  const viewSwitch = user === undefined ? "" : renderViewSwitch(activeView);
-  const nav = `<nav class="top"><a class="brand" href="/calendar">⚡ AI COACH CALENDAR</a>${viewSwitch}${topActions}</nav>`;
-  const bubble = user === undefined ? "" : renderChatBubble();
+    ? `<div class="top-actions"><a class="top-link" href="/login">${escapeHtml(tx.t("header.signin"))}</a><a class="top-link ghost" href="/signup">${escapeHtml(tx.t("header.signup"))}</a></div>`
+    : `<div class="top-actions">${renderNotificationBell(tx)}${renderAccountMenu(user, tx)}</div>`;
+  const viewSwitch = user === undefined ? "" : renderViewSwitch(activeView, tx);
+  const nav = `<nav class="top"><a class="brand" href="/calendar">${escapeHtml(tx.t("app.brand"))}</a>${viewSwitch}${topActions}</nav>`;
+  const bubble = user === undefined ? "" : renderChatBubble(tx);
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   const accountScript = user === undefined ? "" : renderAccountMenuScript();
   // The badge script only matters where the tab strip renders; "none" pages have no Muscles tab to badge.
   const muscleBadgeScript = user === undefined || activeView === "none" ? "" : renderMuscleBadgeScript();
-  const context = pageContext(title, user, activeView);
+  const context = pageContext(title, user, activeView, tx);
   const timezone = escapeHtml(safeTimeZone(user?.timezone));
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread))}</title><link rel="stylesheet" href="/static/app.css?v=24"></head>
-  <body data-site-name="${escapeHtml(SITE_NAME)}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<main>${flash}${body}</main>${bubble}${notificationScript}${accountScript}${muscleBadgeScript}</body></html>`;
+  const localeTag = escapeHtml(tx.locale);
+  const dir = tx.dir;
+  const i18nScript = clientI18nScript(tx);
+  return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=26"></head>
+  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}</body></html>`;
 }
 
 /** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
-function renderChatBubble(): string {
-  return `<button id="coach-bubble" type="button" aria-label="Talk to the coach">💬 Coach</button>
-  <section id="coach-panel" hidden aria-label="Coach chat">
-    <header><strong>AI Coach</strong><span class="coach-horizon">Books up to ${HORIZON_DAYS} days ahead</span><div class="coach-head-actions"><button id="coach-minimize" type="button" aria-label="Minimize chat" title="Minimize">−</button></div></header>
-    <div id="coach-log" role="log" aria-live="polite"></div>
-    <div id="coach-suggestions" aria-label="Suggested next messages"></div>
-    <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="Tell the coach about your training…"></textarea><button class="btn" type="submit">Send</button></form>
+function renderChatBubble(tx: Translator): string {
+  const E = escapeHtml;
+  return `<aside class="coach-dock" aria-label="${E(tx.t("coach.title"))}">
+  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
+  <section id="coach-panel" hidden aria-label="${E(tx.t("coach.title"))}">
+    <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}">−</button></div></header>
+    <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
+    <div class="coach-tab-panel" id="coach-tabpanel-chat" role="tabpanel" aria-labelledby="coach-tab-chat" data-coach-panel="chat">
+      <div id="coach-log" role="log" aria-live="polite"></div>
+      <div id="coach-suggestions" aria-label="${E(tx.t("coach.suggestionsAria"))}"></div>
+      <form id="coach-form"><textarea id="coach-input" rows="2" maxlength="1000" required placeholder="${E(tx.t("coach.placeholder"))}"></textarea><button class="btn" type="submit">${E(tx.t("coach.send"))}</button></form>
+    </div>
+    <div class="coach-tab-panel" id="coach-tabpanel-states" role="tabpanel" aria-labelledby="coach-tab-states" data-coach-panel="states" hidden>
+      <div class="coach-tab-body" id="coach-states-list"></div>
+      <div class="coach-tab-foot"><a class="chip" href="/coach-states">${E(tx.t("coach.statesAll"))}</a></div>
+    </div>
+    <div class="coach-tab-panel" id="coach-tabpanel-changes" role="tabpanel" aria-labelledby="coach-tab-changes" data-coach-panel="changes" hidden>
+      <div class="coach-tab-body" id="coach-changes-list"></div>
+      <div class="coach-tab-foot"><a class="chip" href="/calendar#recent-changes">${E(tx.t("coach.changesCalendar"))}</a></div>
+    </div>
   </section>
   <script>
   (() => {
+    const ui = window.__I18N__ || {};
+    const tr = (key, fallback) => (typeof ui[key] === 'string' ? ui[key] : fallback);
+    const pageLocale = document.body.dataset.locale || 'en';
     const bubble = document.getElementById('coach-bubble');
     const panel = document.getElementById('coach-panel');
     const minimize = document.getElementById('coach-minimize');
+    const close = document.getElementById('coach-close');
     const form = document.getElementById('coach-form');
     const input = document.getElementById('coach-input');
     const log = document.getElementById('coach-log');
     const suggestions = document.getElementById('coach-suggestions');
-    if (!bubble || !panel || !minimize || !form || !input || !log || !suggestions) return;
-    const STARTERS = ${jsonForScript(STARTER_SUGGESTIONS)};
+    const statesList = document.getElementById('coach-states-list');
+    const changesList = document.getElementById('coach-changes-list');
+    const tabs = panel === null ? [] : Array.from(panel.querySelectorAll('[data-coach-tab]'));
+    const tabPanels = panel === null ? [] : Array.from(panel.querySelectorAll('[data-coach-panel]'));
+    if (!bubble || !panel || !minimize || !close || !form || !input || !log || !suggestions || !statesList || !changesList) return;
+    const STARTERS = ${jsonForScript(tx.starters())};
     let suggestionsSet = false;
     const sendButton = form.querySelector('button[type="submit"]');
     // One coach turn at a time: a second Enter during a pending turn would book two batches.
     let sendInFlight = false;
-    const show = () => { panel.hidden = false; bubble.hidden = true; input.focus(); showStarters(); void loadConversation(); };
-    const minimizePanel = () => { panel.hidden = true; bubble.hidden = false; bubble.focus(); };
+    // The panel is one coach surface in three groups: the conversation, the durable states it believes, and the
+    // calendar changes it made. The strip only switches which group is visible; the chat keeps running underneath.
+    const changesSeenKey = 'poc3.coachChangesSeen';
+    const readChangesSeen = () => {
+      try { return localStorage.getItem(changesSeenKey) || ''; } catch { return ''; }
+    };
+    const writeChangesSeen = (value) => {
+      try { if (typeof value === 'string' && value.length > 0) localStorage.setItem(changesSeenKey, value); } catch { /* private mode */ }
+    };
+    // Opening the Changes tab is the moment the runner has seen the newest batch; the badge is for unseen edits, not
+    // for every batch that still has an Undo.
+    const markChangesSeen = () => {
+      writeChangesSeen(changesList.dataset.newest || '');
+      setCount('changes', 0, tr('changesBadgeTitle', 'new coach changes'));
+    };
+    let activeTab = 'chat';
+    const setTab = (name, options) => {
+      const next = tabPanels.some((tabPanel) => tabPanel.dataset.coachPanel === name) ? name : 'chat';
+      activeTab = next;
+      if (next === 'changes') markChangesSeen();
+      for (const tabPanel of tabPanels) tabPanel.hidden = tabPanel.dataset.coachPanel !== next;
+      for (const tab of tabs) {
+        const selected = tab.dataset.coachTab === next;
+        tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+        tab.tabIndex = selected ? 0 : -1;
+        if (selected && options && options.focus === true) tab.focus();
+      }
+      if (next === 'chat' && options && options.focusInput === true) input.focus();
+    };
+    const setCount = (name, count, label) => {
+      const badge = panel.querySelector('[data-coach-count="' + name + '"]');
+      if (badge === null) return;
+      const value = Math.max(0, Math.floor(Number(count) || 0));
+      badge.textContent = value > 99 ? '99+' : String(value);
+      badge.hidden = value === 0;
+      badge.title = typeof label === 'string' ? label : '';
+    };
+    const show = (focusComposer) => {
+      document.body.classList.add('coach-open');
+      panel.hidden = false;
+      bubble.hidden = true;
+      // Focus the selected tab, not the textarea: an "Ask coach" turn sends itself and must not pop the phone keyboard
+      // over the answer. A deliberate launcher click may focus the composer.
+      setTab(activeTab, { focus: activeTab !== 'chat' });
+      if (activeTab === 'chat' && focusComposer === true) input.focus();
+      showStarters();
+      void loadConversation();
+    };
+    const minimizePanel = () => {
+      panel.hidden = true;
+      bubble.hidden = false;
+      document.body.classList.remove('coach-open');
+      bubble.focus();
+    };
     const scrollToLatest = () => {
       requestAnimationFrame(() => {
         log.scrollTop = log.scrollHeight;
@@ -1917,26 +2091,36 @@ function renderChatBubble(): string {
       return line;
     };
     let historyLoaded = false;
-    const loadConversation = async () => {
-      if (historyLoaded) return;
-      historyLoaded = true;
+    let historyInFlight = false;
+    const loadConversation = async (force) => {
+      if (historyInFlight) return;
+      if (historyLoaded && force !== true) return;
+      historyInFlight = true;
       try {
         const response = await fetch('/chat/history');
         if (!response.ok) return;
         const data = await response.json();
-        if (log.childElementCount > 0) return;
-        for (const message of data.messages || []) {
-          if (message.role === 'user' || message.role === 'assistant') {
-            add(message.role === 'user' ? 'user' : 'coach', String(message.text || ''));
+        if (log.childElementCount === 0) {
+          for (const message of data.messages || []) {
+            if (message.role === 'user' || message.role === 'assistant') {
+              add(message.role === 'user' ? 'user' : 'coach', String(message.text || ''));
+            }
+          }
+          // Pending sensitive proposals are durable rows, not DOM-only cards: after a refresh the runner must still be
+          // able to confirm or dismiss them here.
+          if (Array.isArray(data.states)) {
+            addStateCards(data.states.filter((state) => state && state.status === 'observing'));
           }
         }
-        // Pending sensitive proposals are durable rows, not DOM-only cards: after a refresh the runner must still be
-        // able to confirm or dismiss them here.
-        if (Array.isArray(data.states)) {
-          addStateCards(data.states.filter((state) => state && state.status === 'observing'));
-        }
+        // The context tabs read the same durable rows: states are what the coach currently believes, changes are
+        // what it actually wrote. Refreshing them after a turn keeps the three groups in step without a page load.
+        if (Array.isArray(data.states)) renderStatesTab(data.states);
+        if (Array.isArray(data.changes)) renderChangesTab(data.changes);
+        historyLoaded = true;
       } catch {
         // A failed history read leaves the bubble empty; the next turn still works.
+      } finally {
+        historyInFlight = false;
       }
     };
     const monthGrid = document.querySelector('.month[data-month]');
@@ -1976,16 +2160,16 @@ function renderChatBubble(): string {
       const removed = changes.filter((change) => change && typeof change === 'object' && change.action === 'remove');
       if (removed.length === 0) return;
       const names = removed
-        .map((change) => (typeof change.title === 'string' && change.title.trim().length > 0 ? change.title.trim() : 'the session'))
+        .map((change) => (typeof change.title === 'string' && change.title.trim().length > 0 ? change.title.trim() : tr('sessionWord', 'session')))
         .join(', ');
       const toast = document.createElement('div');
       toast.className = 'fx-toast';
       toast.setAttribute('role', 'status');
       const text = document.createElement('span');
-      text.textContent = 'Deleted ' + names + ' · ';
+      text.textContent = tr('deletedPrefix', 'Deleted') + ' ' + names + ' · ';
       const link = document.createElement('a');
       link.href = '/calendar#recent-changes';
-      link.textContent = 'Undo in Recent changes';
+      link.textContent = tr('undoLink', 'Undo in Recent changes');
       // The Recent changes card is server-rendered, so a same-page hash jump would show a stale card; reload instead.
       link.addEventListener('click', (event) => {
         if (location.pathname === '/calendar' || location.pathname === '/') {
@@ -1997,6 +2181,17 @@ function renderChatBubble(): string {
       toast.append(text, link);
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5200);
+    };
+    /** A short, non-blocking confirmation used by in-place actions (undo) that do not redirect the page. */
+    const showToast = (text) => {
+      const toast = document.createElement('div');
+      toast.className = 'fx-toast';
+      toast.setAttribute('role', 'status');
+      const span = document.createElement('span');
+      span.textContent = text;
+      toast.appendChild(span);
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 4200);
     };
     const animateChanges = async (changes) => {
       if (!Array.isArray(changes) || changes.length === 0) return;
@@ -2083,7 +2278,7 @@ function renderChatBubble(): string {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.className = 'suggestion';
-      chip.textContent = 'Try again';
+      chip.textContent = tr('retry', 'Try again');
       chip.addEventListener('click', () => { void send(value, intent); });
       suggestions.appendChild(chip);
     };
@@ -2091,96 +2286,293 @@ function renderChatBubble(): string {
       if (suggestionsSet || suggestions.childElementCount > 0) return;
       setSuggestions(STARTERS);
     };
+    /**
+     * One durable coaching state, rendered either as a chat card (proposal in the log) or as a card in the States
+     * tab. Actions drop every copy of the state across the dock and keep the tab count honest.
+     */
+    const dropState = (stateId, message) => {
+      for (const node of panel.querySelectorAll('[data-state-id]')) {
+        if (node.dataset.stateId === stateId) node.remove();
+      }
+      let proposed = 0;
+      for (const node of statesList.querySelectorAll('[data-state-id]')) {
+        if (node.querySelector('.state-status.state-observing') !== null) proposed += 1;
+      }
+      setCount('states', proposed, tr('statesBadgeTitle', 'proposed states'));
+      add('system', message);
+    };
+    const buildStateCard = (state, inLog) => {
+      const card = document.createElement('div');
+      card.className = inLog ? 'bubble state-card' : 'state-card coach-state-card';
+      card.dataset.stateId = state.stateId;
+      card.setAttribute('role', 'status');
+      const head = document.createElement('div');
+      head.className = 'state-bubble-head';
+      const title = document.createElement('strong');
+      title.textContent = state.label || tr('stateDefault', 'Coaching state');
+      const chip = document.createElement('span');
+      chip.className = 'chip state-status state-' + (state.status || 'active');
+      chip.textContent = state.status === 'observing' ? tr('statusProposed', 'Proposed') : tr('statusActive', 'Active');
+      head.append(title, chip);
+      const detail = document.createElement('p');
+      detail.className = 'muted small';
+      detail.textContent = state.status === 'observing'
+        ? tr('stateProposedDetail', 'The coach proposed a durable state. Confirm it or dismiss it; it is not a diagnosis.')
+        : tr('stateActiveDetail', 'Saved to your coaching states.');
+      card.append(head, detail);
+      if (Array.isArray(state.evidence) && state.evidence.length > 0) {
+        const evidence = document.createElement('ul');
+        evidence.className = 'state-bubble-evidence';
+        for (const line of state.evidence) {
+          const item = document.createElement('li');
+          item.textContent = String(line);
+          evidence.appendChild(item);
+        }
+        card.appendChild(evidence);
+      }
+      if (state.uiNote) {
+        const note = document.createElement('p');
+        note.className = 'state-note';
+        note.textContent = String(state.uiNote);
+        card.appendChild(note);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'state-bubble-actions';
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'btn ghost';
+      dismiss.textContent = state.status === 'observing' ? tr('dismiss', 'Dismiss') : tr('resolve', 'Resolve');
+      dismiss.addEventListener('click', async () => {
+        dismiss.disabled = true;
+        try {
+          const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/resolve', { method: 'POST' });
+          if (!result.ok) throw new Error('resolve failed');
+          dropState(state.stateId, tr('stateResolved', 'Coaching state resolved'));
+        } catch {
+          dismiss.disabled = false;
+        }
+      });
+      if (state.status === 'observing') {
+        const confirm = document.createElement('button');
+        confirm.type = 'button';
+        confirm.className = 'btn';
+        confirm.textContent = tr('confirm', 'Confirm');
+        confirm.addEventListener('click', async () => {
+          confirm.disabled = true;
+          try {
+            const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/confirm', { method: 'POST' });
+            if (!result.ok) throw new Error('confirm failed');
+            dropState(state.stateId, tr('stateConfirmed', 'Coaching state confirmed'));
+          } catch {
+            confirm.disabled = false;
+          }
+        });
+        actions.appendChild(confirm);
+      }
+      actions.appendChild(dismiss);
+      // Involve the coach in one tap: the same card that confirms or resolves a state can open the conversation
+      // about how it should shape the coming week.
+      const discuss = document.createElement('button');
+      discuss.type = 'button';
+      discuss.className = 'btn ghost';
+      discuss.textContent = tr('discuss', 'Discuss this state');
+      discuss.addEventListener('click', () => {
+        openCoach('How should the ' + (state.label || 'coaching state') + ' state shape my coming week?', true, { kind: 'discuss-state', stateId: state.stateId, source: 'state-card' });
+      });
+      actions.appendChild(discuss);
+      card.appendChild(actions);
+      return card;
+    };
     const addStateCards = (states) => {
       if (!Array.isArray(states) || states.length === 0) return;
       for (const state of states) {
         if (!state || typeof state.stateId !== 'string') continue;
         if (state.action === 'resolve') {
-          add('system', 'Coaching state resolved · 狀態已解除');
+          add('system', tr('stateResolved', 'Coaching state resolved'));
           continue;
         }
-        const card = document.createElement('div');
-        card.className = 'bubble state-card';
-        card.setAttribute('role', 'status');
-        const head = document.createElement('div');
-        head.className = 'state-bubble-head';
-        const title = document.createElement('strong');
-        title.textContent = state.label || 'Coaching state';
-        const chip = document.createElement('span');
-        chip.className = 'chip state-status state-' + (state.status || 'active');
-        chip.textContent = state.status === 'observing' ? 'Proposed' : 'Active';
-        head.append(title, chip);
-        const detail = document.createElement('p');
-        detail.className = 'muted small';
-        detail.textContent = state.status === 'observing'
-          ? 'The coach proposed a durable state. Confirm it or dismiss it; it is not a diagnosis.'
-          : 'Saved to your coaching states.';
-        card.append(head, detail);
-        if (Array.isArray(state.evidence) && state.evidence.length > 0) {
-          const evidence = document.createElement('ul');
-          evidence.className = 'state-bubble-evidence';
-          for (const line of state.evidence) {
-            const item = document.createElement('li');
-            item.textContent = String(line);
-            evidence.appendChild(item);
-          }
-          card.appendChild(evidence);
-        }
-        if (state.uiNote) {
-          const note = document.createElement('p');
-          note.className = 'state-note';
-          note.textContent = String(state.uiNote);
-          card.appendChild(note);
-        }
-        const actions = document.createElement('div');
-        actions.className = 'state-bubble-actions';
-        const dismiss = document.createElement('button');
-        dismiss.type = 'button';
-        dismiss.className = 'btn ghost';
-        dismiss.textContent = state.status === 'observing' ? 'Dismiss · 略過' : 'Resolve · 解除';
-        dismiss.addEventListener('click', async () => {
-          dismiss.disabled = true;
-          try {
-            const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/resolve', { method: 'POST' });
-            if (!result.ok) throw new Error('resolve failed');
-            card.remove();
-            add('system', 'Coaching state resolved · 狀態已解除');
-          } catch {
-            dismiss.disabled = false;
-          }
-        });
-        if (state.status === 'observing') {
-          const confirm = document.createElement('button');
-          confirm.type = 'button';
-          confirm.className = 'btn';
-          confirm.textContent = 'Confirm · 確認';
-          confirm.addEventListener('click', async () => {
-            confirm.disabled = true;
-            try {
-              const result = await fetch('/coach-states/' + encodeURIComponent(state.stateId) + '/confirm', { method: 'POST' });
-              if (!result.ok) throw new Error('confirm failed');
-              card.remove();
-              add('system', 'Coaching state confirmed · 狀態已確認');
-            } catch {
-              confirm.disabled = false;
-            }
-          });
-          actions.appendChild(confirm);
-        }
-        actions.appendChild(dismiss);
-        // Involve the coach in one tap: the same card that confirms or resolves a state can open the conversation
-        // about how it should shape the coming week.
-        const discuss = document.createElement('button');
-        discuss.type = 'button';
-        discuss.className = 'btn ghost';
-        discuss.textContent = 'Discuss this state · 討論';
-        discuss.addEventListener('click', () => {
-          openCoach('How should the ' + (state.label || 'coaching state') + ' state shape my coming week?', true, { kind: 'discuss-state', stateId: state.stateId, source: 'state-card' });
-        });
-        actions.appendChild(discuss);
-        card.appendChild(actions);
-        log.appendChild(card);
+        log.appendChild(buildStateCard(state, true));
         scrollToLatest();
+      }
+    };
+    // The States tab is the durable half of the conversation: active and proposed states stay put instead of
+    // scrolling away with the messages that produced them. Proposals that need a decision come first, and the badge
+    // counts only those — an active state is context, not an alert.
+    const renderStatesTab = (states) => {
+      const rows = Array.isArray(states)
+        ? states.filter((state) => state && typeof state.stateId === 'string' && state.status !== 'resolved')
+        : [];
+      const proposed = rows.filter((state) => state.status === 'observing');
+      const ordered = proposed.concat(rows.filter((state) => state.status !== 'observing'));
+      statesList.replaceChildren();
+      if (ordered.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'coach-tab-empty';
+        empty.textContent = tr('statesEmpty', 'No active coaching states. The coach proposes one when something durable matters — pain, travel, a race week or a load spike.');
+        statesList.appendChild(empty);
+      } else {
+        for (const state of ordered) statesList.appendChild(buildStateCard(state, false));
+      }
+      setCount('states', proposed.length, tr('statesBadgeTitle', 'proposed states'));
+    };
+    const formatChangeDate = (value) => {
+      const day = typeof value === 'string' ? value.slice(0, 10) : '';
+      if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return '';
+      try {
+        return new Date(day + 'T12:00:00Z').toLocaleDateString(pageLocale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+      } catch {
+        return day;
+      }
+    };
+    const changeEntryText = (entry) => {
+      const from = formatChangeDate(entry.fromDay);
+      const to = formatChangeDate(entry.toDay);
+      const moved = entry.action === 'update' && from.length > 0 && to.length > 0 && entry.fromDay !== entry.toDay;
+      const label = entry.action === 'remove'
+        ? tr('actionRemove', 'Delete')
+        : entry.action === 'add'
+          ? tr('actionAdd', 'Add')
+          : moved
+            ? tr('actionMoved', 'Moved')
+            : tr('actionUpdate', 'Update');
+      const title = typeof entry.title === 'string' && entry.title.trim().length > 0 ? entry.title.trim() : tr('sessionWord', 'session');
+      const when = moved ? ' (' + from + ' → ' + to + ')' : to.length > 0 ? ' (' + to + ')' : from.length > 0 ? ' (' + from + ')' : '';
+      return label + ' ' + title + when;
+    };
+    // The change set on the page is server-rendered; after an in-place undo its Undo form must disappear too, or the
+    // runner can press a button that is already spent.
+    const markRecentChangeUndone = (changeSetId) => {
+      for (const item of document.querySelectorAll('#recent-changes .change-item')) {
+        if (item.dataset.changeSet !== changeSetId) continue;
+        item.classList.add('undone');
+        const undo = item.querySelector('.change-undo');
+        if (undo !== null) undo.remove();
+        const meta = item.querySelector('.change-head .muted');
+        if (meta !== null) meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+      }
+    };
+    const buildChangeCard = (change) => {
+      const reverted = change.revertedAt !== null && change.revertedAt !== undefined;
+      const card = document.createElement('article');
+      card.className = 'coach-change' + (reverted ? ' undone' : '');
+      card.dataset.changeSet = change.changeSetId;
+      const head = document.createElement('div');
+      head.className = 'coach-change-head';
+      const title = document.createElement('strong');
+      title.textContent = typeof change.summary === 'string' && change.summary.trim().length > 0 ? change.summary : tr('changeDefault', 'Coach change');
+      const meta = document.createElement('span');
+      meta.className = 'coach-change-meta';
+      const entries = Array.isArray(change.entries) ? change.entries : [];
+      const count = entries.length;
+      meta.textContent = formatChangeDate(change.createdAt) + ' · ' + count + ' ' + (count === 1 ? tr('sessionWord', 'session') : tr('sessionsWord', 'sessions')) + (reverted ? ' · ' + tr('changeUndone', 'Undone') : '');
+      head.append(title, meta);
+      card.appendChild(head);
+      if (entries.length > 0) {
+        const list = document.createElement('ul');
+        list.className = 'coach-change-entries';
+        for (const entry of entries) {
+          const item = document.createElement('li');
+          item.textContent = changeEntryText(entry);
+          list.appendChild(item);
+        }
+        card.appendChild(list);
+      }
+      const actions = document.createElement('div');
+      actions.className = 'coach-change-actions';
+      if (!reverted) {
+        const undoForm = document.createElement('form');
+        undoForm.method = 'post';
+        undoForm.action = '/calendar/changes/' + encodeURIComponent(change.changeSetId) + '/revert';
+        undoForm.className = 'coach-change-undo';
+        const nextInput = document.createElement('input');
+        nextInput.type = 'hidden';
+        nextInput.name = 'next';
+        nextInput.value = location.pathname + location.search;
+        const undoButton = document.createElement('button');
+        undoButton.type = 'submit';
+        undoButton.className = 'btn ghost';
+        undoButton.textContent = tr('changeUndo', 'Undo this change');
+        undoForm.append(nextInput, undoButton);
+        // Undo in place: the audited revert runs, the grid refreshes, and the chat stays where it is. The plain form
+        // still works without script and lands on Recent changes.
+        undoForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          undoButton.disabled = true;
+          try {
+            const response = await fetch(undoForm.action, {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ next: nextInput.value }).toString(),
+              redirect: 'follow',
+            });
+            if (!response.ok) throw new Error('undo failed');
+            card.classList.add('undone');
+            undoForm.remove();
+            meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+            markRecentChangeUndone(change.changeSetId);
+            await refreshCalendar();
+            void loadConversation(true);
+            showToast(tr('changeUndoToast', 'Change undone'));
+          } catch {
+            undoButton.disabled = false;
+            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
+          }
+        });
+        actions.appendChild(undoForm);
+      }
+      const discuss = document.createElement('button');
+      discuss.type = 'button';
+      discuss.className = 'btn ghost';
+      discuss.textContent = tr('changeDiscuss', 'Discuss this change');
+      discuss.addEventListener('click', () => {
+        openCoach(tr('changeDiscussMessage', 'Can we talk through the change you just made?'), true, { kind: 'discuss-change', changeSetId: change.changeSetId, source: 'coach-dock' });
+      });
+      actions.appendChild(discuss);
+      // Jump to the month the batch touched, so "what changed" and "where" are one tap apart.
+      let month = '';
+      for (const entry of entries) {
+        const day = typeof entry.toDay === 'string' && entry.toDay.length >= 7 ? entry.toDay : typeof entry.fromDay === 'string' ? entry.fromDay : '';
+        if (day.length >= 7) { month = day.slice(0, 7); break; }
+      }
+      if (/^\\d{4}-\\d{2}$/.test(month)) {
+        const link = document.createElement('a');
+        link.className = 'chip';
+        link.href = '/calendar?month=' + month;
+        link.textContent = tr('changeShow', 'Show on calendar');
+        actions.appendChild(link);
+      }
+      card.appendChild(actions);
+      return card;
+    };
+    const renderChangesTab = (changes) => {
+      const rows = Array.isArray(changes)
+        ? changes.filter((change) => change && typeof change.changeSetId === 'string')
+        : [];
+      changesList.replaceChildren();
+      if (rows.length === 0) {
+        const empty = document.createElement('p');
+        empty.className = 'coach-tab-empty';
+        empty.textContent = tr('changesEmpty', 'No changes yet. Ask the coach to plan or move something and it will appear here with an Undo.');
+        changesList.appendChild(empty);
+      } else {
+        for (const change of rows) changesList.appendChild(buildChangeCard(change));
+      }
+      let newest = '';
+      for (const change of rows) {
+        if (typeof change.createdAt === 'string' && change.createdAt > newest) newest = change.createdAt;
+      }
+      changesList.dataset.newest = newest;
+      // The badge marks batches newer than the last look, not every batch that can still be undone. Opening the tab
+      // is the look; a first visit with no watermark shows no badge.
+      const seen = readChangesSeen();
+      const unseen = seen.length === 0
+        ? 0
+        : rows.filter((change) => (change.revertedAt === null || change.revertedAt === undefined) && typeof change.createdAt === 'string' && change.createdAt > seen).length;
+      if (activeTab === 'changes') {
+        writeChangesSeen(newest);
+        setCount('changes', 0, tr('changesBadgeTitle', 'new coach changes'));
+      } else {
+        setCount('changes', unseen, tr('changesBadgeTitle', 'new coach changes'));
       }
     };
     const send = async (raw, intent) => {
@@ -2217,10 +2609,10 @@ function renderChatBubble(): string {
         typing.remove();
         if (!response.ok) {
           const reason = response.status === 404
-            ? 'That run could not be found.'
+            ? tr('errNotFound', 'That run could not be found.')
             : response.status === 400
-              ? 'That message could not be sent.'
-              : 'The coach is unavailable right now. Try again.';
+              ? tr('errBadRequest', 'That message could not be sent.')
+              : tr('errUnavailable', 'The coach is unavailable right now. Try again.');
           add('error', reason);
           setRetry(text, intent);
           return;
@@ -2230,20 +2622,23 @@ function renderChatBubble(): string {
         scrollToLatest();
         if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
           await animateChanges(data.changes || []);
-          add('system', 'Calendar updated · 日曆已更新');
+          add('system', tr('calendarUpdated', 'Calendar updated'));
         }
         if (data.writesAllowed === false && data.blockedWrites > 0) {
-          addGuardrail('Calendar unchanged · 日曆未有更改');
+          addGuardrail(tr('calendarUnchanged', 'Calendar unchanged'));
         }
         addStateCards(data.states);
         if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
-          const labels = data.blockedByStates.map((state) => state && state.label ? String(state.label) : 'a coaching state');
-          addGuardrail('Calendar unchanged — ' + labels.join(', ') + ' is protecting the plan · want to talk through what would work instead? · 日曆未有更改');
+          const labels = data.blockedByStates.map((s) => (s && s.label ? String(s.label) : tr('blockedByDefault', 'a coaching state')));
+          addGuardrail(tr('guardrailProtected', 'Calendar unchanged — {labels} is protecting the plan · want to talk through what would work instead?').replace('{labels}', labels.join(', ')));
         }
         addFailureCard(data.failures, text, intent);
+        // The States and Changes tabs read the same durable rows the reply just touched; one refresh keeps them in
+        // step with the calendar and the log without a page load.
+        void loadConversation(true);
       } catch {
         typing.remove();
-        add('error', 'Network error. Try again.');
+        add('error', tr('errNetwork', 'Network error. Try again.'));
         setRetry(text, intent);
       } finally {
         sendInFlight = false;
@@ -2254,32 +2649,32 @@ function renderChatBubble(): string {
     dayMenu.id = 'day-menu';
     dayMenu.hidden = true;
     dayMenu.setAttribute('role', 'menu');
-    dayMenu.setAttribute('aria-label', 'Day actions');
+    dayMenu.setAttribute('aria-label', tr('dayMenuAria', 'Day actions'));
     document.body.appendChild(dayMenu);
     let menuDay = '';
     const closeDayMenu = () => { dayMenu.hidden = true; };
-    const formatDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    const formatDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString(pageLocale, {
       weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
     });
-    const formatShortDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString('en-GB', {
+    const formatShortDay = (day) => new Date(day + 'T00:00:00Z').toLocaleDateString(pageLocale, {
       day: 'numeric', month: 'short', timeZone: 'UTC',
     });
-    const failureLabel = (action) => action === 'remove' ? 'Delete' : action === 'update' ? 'Update' : 'Add';
-    const failureReason = (reason) => reason === 'missing-session-id' ? 'no session was specified' : 'that session no longer exists';
+    const failureLabel = (action) => action === 'remove' ? tr('actionRemove', 'Delete') : action === 'update' ? tr('actionUpdate', 'Update') : tr('actionAdd', 'Add');
+    const failureReason = (reason) => reason === 'missing-session-id' ? tr('reasonMissing', 'no session was specified') : tr('reasonGone', 'that session no longer exists');
     const addFailureCard = (failures, retryText, retryIntent) => {
       if (!Array.isArray(failures) || failures.length === 0) return;
       const card = document.createElement('div');
       card.className = 'bubble failure';
       card.setAttribute('role', 'status');
       const head = document.createElement('strong');
-      head.textContent = 'Could not apply · 未套用';
+      head.textContent = tr('failHead', 'Could not apply');
       card.appendChild(head);
       const list = document.createElement('ul');
       const days = [];
       for (const raw of failures) {
         if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue;
         const action = typeof raw.action === 'string' ? raw.action : 'update';
-        const title = typeof raw.title === 'string' && raw.title.trim().length > 0 ? raw.title.trim() : 'session';
+        const title = typeof raw.title === 'string' && raw.title.trim().length > 0 ? raw.title.trim() : tr('sessionWord', 'session');
         const day = typeof raw.day === 'string' ? raw.day : '';
         const reason = typeof raw.reason === 'string' ? raw.reason : 'session-not-found';
         if (day.length > 0 && !days.includes(day)) days.push(day);
@@ -2294,7 +2689,7 @@ function renderChatBubble(): string {
       for (const day of days) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = 'Show ' + formatShortDay(day);
+        button.textContent = tr('showDay', 'Show') + ' ' + formatShortDay(day);
         button.addEventListener('click', () => { void send('What is planned on ' + day + '?', { kind: 'review-day', day, source: 'day-menu' }); });
         actions.appendChild(button);
       }
@@ -2302,7 +2697,7 @@ function renderChatBubble(): string {
       if (retry.length > 0) {
         const button = document.createElement('button');
         button.type = 'button';
-        button.textContent = 'Try again';
+        button.textContent = tr('retry', 'Try again');
         button.addEventListener('click', () => { void send(retry, retryIntent); });
         actions.appendChild(button);
       }
@@ -2322,6 +2717,7 @@ function renderChatBubble(): string {
       }
     };
     const openCoach = (text, sendNow, intent) => {
+      setTab('chat');
       show();
       if (sendNow) {
         pendingIntent = undefined;
@@ -2344,17 +2740,17 @@ function renderChatBubble(): string {
       const closeButton = document.createElement('button');
       closeButton.type = 'button';
       closeButton.textContent = '×';
-      closeButton.setAttribute('aria-label', 'Close day actions');
+      closeButton.setAttribute('aria-label', tr('dayCloseAria', 'Close day actions'));
       closeButton.addEventListener('click', closeDayMenu);
       header.append(title, closeButton);
       dayMenu.appendChild(header);
       const hasSessions = cell.querySelectorAll('.cal-pill.plan').length > 0;
       const choices = [
-        ['add', 'Add a session here', false],
-        ['move', 'Move a session here', false],
-        ['delete', 'Delete a session here', true, !hasSessions],
-        ['ask', 'Ask coach about this day', true],
-        ['view', 'View day details', true],
+        ['add', tr('dayAdd', 'Add a session here'), false],
+        ['move', tr('dayMove', 'Move a session here'), false],
+        ['delete', tr('dayDelete', 'Delete a session here'), true, !hasSessions],
+        ['ask', tr('dayAsk', 'Ask coach about this day'), true],
+        ['view', tr('dayView', 'View day details'), true],
       ];
       for (const [action, label, sendNow, disabled] of choices) {
         const button = document.createElement('button');
@@ -2363,7 +2759,7 @@ function renderChatBubble(): string {
         button.dataset.action = action;
         button.textContent = label;
         button.disabled = disabled === true;
-        if (disabled === true) button.title = 'No session on this day';
+        if (disabled === true) button.title = tr('dayNoSession', 'No session on this day');
         dayMenu.appendChild(button);
       }
       dayMenu.hidden = false;
@@ -2433,8 +2829,11 @@ function renderChatBubble(): string {
     monthPicker.id = 'month-picker';
     monthPicker.hidden = true;
     monthPicker.setAttribute('role', 'dialog');
-    monthPicker.setAttribute('aria-label', 'Choose month and year');
-    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    monthPicker.setAttribute('aria-label', tr('monthPickerAria', 'Choose month and year'));
+    // Month names come from the page locale via Intl, so the picker localizes for free with the language switch.
+    const monthDate = (index) => new Date(Date.UTC(2024, index, 1));
+    const monthShort = (index) => monthDate(index).toLocaleDateString(pageLocale, { month: 'short', timeZone: 'UTC' });
+    const monthLong = (index) => monthDate(index).toLocaleDateString(pageLocale, { month: 'long', timeZone: 'UTC' });
     const closeMonthPicker = () => { monthPicker.hidden = true; };
     const openMonthPicker = (anchor) => {
       if (anchor === null || anchor === undefined) return;
@@ -2445,18 +2844,18 @@ function renderChatBubble(): string {
       const head = document.createElement('div');
       head.className = 'month-picker-head';
       const title = document.createElement('strong');
-      title.textContent = 'Choose month';
+      title.textContent = tr('monthChoose', 'Choose month');
       const closeButton = document.createElement('button');
       closeButton.type = 'button';
       closeButton.textContent = '×';
-      closeButton.setAttribute('aria-label', 'Close month picker');
+      closeButton.setAttribute('aria-label', tr('monthCloseAria', 'Close month picker'));
       closeButton.addEventListener('click', closeMonthPicker);
       head.append(title, closeButton);
       monthPicker.appendChild(head);
       const yearRow = document.createElement('label');
       yearRow.className = 'month-picker-year';
       const yearLabel = document.createElement('span');
-      yearLabel.textContent = 'Year';
+      yearLabel.textContent = tr('year', 'Year');
       const yearSelect = document.createElement('select');
       yearSelect.id = 'month-year-select';
       for (let year = 2000; year <= 2100; year += 1) {
@@ -2470,12 +2869,12 @@ function renderChatBubble(): string {
       monthPicker.appendChild(yearRow);
       const grid = document.createElement('div');
       grid.className = 'month-picker-grid';
-      for (let index = 0; index < monthNames.length; index += 1) {
+      for (let index = 0; index < 12; index += 1) {
         const button = document.createElement('button');
         button.type = 'button';
         button.dataset.month = String(index + 1).padStart(2, '0');
-        button.textContent = monthNames[index].slice(0, 3);
-        button.setAttribute('aria-label', monthNames[index]);
+        button.textContent = monthShort(index);
+        button.setAttribute('aria-label', monthLong(index));
         button.addEventListener('click', () => {
           const year = yearSelect.value || String(new Date().getUTCFullYear());
           location.href = '/calendar?month=' + year + '-' + button.dataset.month;
@@ -2487,7 +2886,7 @@ function renderChatBubble(): string {
       footer.className = 'month-picker-foot';
       const thisButton = document.createElement('button');
       thisButton.type = 'button';
-      thisButton.textContent = 'This month';
+      thisButton.textContent = tr('thisMonth', 'This month');
       thisButton.addEventListener('click', () => {
         location.href = '/calendar?month=' + (anchor.dataset.currentMonth || '');
       });
@@ -2535,7 +2934,7 @@ function renderChatBubble(): string {
     const peekClose = document.createElement('button');
     peekClose.type = 'button';
     peekClose.className = 'peek-close';
-    peekClose.setAttribute('aria-label', 'Close details');
+    peekClose.setAttribute('aria-label', tr('peekClose', 'Close details'));
     peekClose.textContent = '×';
     peekHead.append(peekHeadText, peekClose);
     const peekBody = document.createElement('div');
@@ -2598,22 +2997,22 @@ function renderChatBubble(): string {
       return link;
     };
     const renderPeekLoading = (title, day, kind) => {
-      const fallback = kind === 'session' ? 'Planned session' : 'Recorded run';
+      const fallback = kind === 'session' ? tr('peekPlannedSession', 'Planned session') : tr('recordedRun', 'Recorded run');
       peekTitle.textContent = title.length > 0 ? title : fallback;
       peekDay.textContent = day.length > 0 ? formatDay(day) : '';
-      peekBody.replaceChildren(peekNote(kind === 'session' ? 'Loading session details…' : 'Loading run details…'));
+      peekBody.replaceChildren(peekNote(kind === 'session' ? tr('loadingSession', 'Loading session details…') : tr('loadingRun', 'Loading run details…')));
       peekActions.replaceChildren();
     };
     const renderPeekError = (kind, id, day) => {
       if (kind === 'session') {
-        peekBody.replaceChildren(peekNote('Could not load this session just now. Open the day or tap the pill again.'));
-        peekActions.replaceChildren(peekLink('btn peek-primary', '/day/' + day, 'View day →'));
+        peekBody.replaceChildren(peekNote(tr('peekErrSession', 'Could not load this session just now. Open the day or tap the pill again.')));
+        peekActions.replaceChildren(peekLink('btn peek-primary', '/day/' + day, tr('peekViewDay', 'View day') + ' →'));
         return;
       }
-      peekBody.replaceChildren(peekNote('Could not load this run just now. Open the full detail or tap the pill again.'));
+      peekBody.replaceChildren(peekNote(tr('peekErrRun', 'Could not load this run just now. Open the full detail or tap the pill again.')));
       peekActions.replaceChildren(
-        peekLink('btn peek-primary', '/activity/' + encodeURIComponent(id), 'Open full detail →'),
-        peekLink('chip', '/day/' + day, 'View day'),
+        peekLink('btn peek-primary', '/activity/' + encodeURIComponent(id), tr('peekOpenDetail', 'Open full detail →')),
+        peekLink('chip', '/day/' + day, tr('peekViewDay', 'View day')),
       );
     };
     const renderPeekSteps = (container, steps, stepCount) => {
@@ -2624,9 +3023,9 @@ function renderChatBubble(): string {
       head.className = 'peek-step peek-step-head';
       for (const [className, text] of [
         ['peek-step-index', '#'],
-        ['peek-step-intensity', 'Step'],
-        ['peek-step-duration', 'Duration'],
-        ['peek-step-target', 'Target'],
+        ['peek-step-intensity', tr('stepColStep', 'Step')],
+        ['peek-step-duration', tr('stepColDuration', 'Duration')],
+        ['peek-step-target', tr('stepColTarget', 'Target')],
       ]) {
         const cell = document.createElement('span');
         cell.className = className;
@@ -2655,7 +3054,7 @@ function renderChatBubble(): string {
       }
       container.append(list);
       const total = typeof stepCount === 'number' ? stepCount : steps.length;
-      if (total > steps.length) container.append(peekNote('+' + (total - steps.length) + ' more steps in the activity detail.'));
+      if (total > steps.length) container.append(peekNote('+' + (total - steps.length) + ' ' + tr('moreStepsSuffix', 'more steps in the activity detail.')));
     };
     const renderPeek = (data) => {
       peekTitle.textContent = typeof data.title === 'string' ? data.title : 'Recorded run';
@@ -2678,13 +3077,13 @@ function renderChatBubble(): string {
         const planRow = document.createElement('div');
         planRow.className = 'peek-plan';
         const status = typeof plan.status === 'string' ? plan.status : 'unplanned';
-        planRow.append(peekChip('chip match-' + status, typeof plan.label === 'string' ? plan.label : 'Unplanned'));
+        planRow.append(peekChip('chip match-' + status, typeof plan.label === 'string' ? plan.label : tr('unplanned', 'Unplanned')));
         const planText = document.createElement('span');
         const hasPlan = typeof plan.title === 'string' && plan.title.length > 0;
         planText.className = hasPlan ? 'peek-plan-text' : 'peek-plan-text muted';
         planText.textContent = hasPlan
           ? plan.title + (typeof plan.planned === 'string' && plan.planned.length > 0 ? ' · ' + plan.planned : '')
-          : 'No planned session matched this run.';
+          : tr('noPlanMatch', 'No planned session matched this run.');
         planRow.append(planText);
         peekBody.append(planRow);
       }
@@ -2694,7 +3093,7 @@ function renderChatBubble(): string {
         box.className = 'peek-program';
         const head = document.createElement('div');
         head.className = 'peek-program-head';
-        head.append(peekChip('chip peek-program-chip', 'Training program · Garmin'));
+        head.append(peekChip('chip peek-program-chip', tr('eyebrowProgram', 'Training program · Garmin')));
         const programName = typeof program.name === 'string' ? program.name : '';
         const programLabel = typeof program.label === 'string' ? program.label : '';
         const programTitle = programName.length > 0 ? programName : programLabel;
@@ -2747,7 +3146,7 @@ function renderChatBubble(): string {
           const chip = document.createElement('span');
           chip.className = 'peek-effort' + (effort.pr === true ? ' pr' : '');
           const label = document.createElement('span');
-          label.textContent = 'Fastest ' + (typeof effort.label === 'string' ? effort.label : '');
+          label.textContent = tr('fastestPrefix', 'Fastest') + ' ' + (typeof effort.label === 'string' ? effort.label : '');
           const value = document.createElement('strong');
           value.textContent = typeof effort.value === 'string' ? effort.value : '';
           chip.append(label, value);
@@ -2760,21 +3159,21 @@ function renderChatBubble(): string {
       const ask = document.createElement('button');
       ask.type = 'button';
       ask.className = 'coach-ask';
-      ask.textContent = 'Ask coach';
+      ask.textContent = tr('askCoach', 'Ask coach');
       if (typeof data.coachPrompt === 'string' && data.coachPrompt.length > 0) ask.setAttribute('data-coach-message', data.coachPrompt);
       else ask.disabled = true;
       if (data.coachIntent !== null && typeof data.coachIntent === 'object' && !Array.isArray(data.coachIntent)) {
         ask.setAttribute('data-coach-intent', JSON.stringify(data.coachIntent));
       }
       peekActions.append(
-        peekLink('btn peek-primary', links.detail, 'Open full detail →'),
+        peekLink('btn peek-primary', links.detail, tr('peekOpenDetail', 'Open full detail →')),
         ask,
-        peekLink('chip', links.day, 'View day'),
-        peekLink('chip', links.week, 'Training log week'),
+        peekLink('chip', links.day, tr('peekViewDay', 'View day')),
+        peekLink('chip', links.week, tr('peekTrainingWeek', 'Training log week')),
       );
     };
     const renderSessionPeek = (data) => {
-      peekTitle.textContent = typeof data.title === 'string' ? data.title : 'Planned session';
+      peekTitle.textContent = typeof data.title === 'string' ? data.title : tr('peekPlannedSession', 'Planned session');
       peekDay.textContent = typeof data.dayLabel === 'string' ? data.dayLabel : '';
       peekBody.replaceChildren();
       peekActions.replaceChildren();
@@ -2815,11 +3214,11 @@ function renderChatBubble(): string {
         const row = document.createElement('div');
         row.className = 'peek-plan';
         const status = typeof outcome.status === 'string' ? outcome.status : 'upcoming';
-        row.append(peekChip('chip peek-status-' + status, typeof outcome.label === 'string' ? outcome.label : 'Planned'));
+        row.append(peekChip('chip peek-status-' + status, typeof outcome.label === 'string' ? outcome.label : tr('peekPlanned', 'Planned')));
         const detail = document.createElement('span');
         const detailText = typeof outcome.detail === 'string' ? outcome.detail : '';
         detail.className = detailText.length > 0 ? 'peek-plan-text' : 'peek-plan-text muted';
-        detail.textContent = detailText.length > 0 ? detailText : 'No run recorded for this session yet.';
+        detail.textContent = detailText.length > 0 ? detailText : tr('peekNoRun', 'No run recorded for this session yet.');
         row.append(detail);
         peekBody.append(row);
       }
@@ -2827,26 +3226,26 @@ function renderChatBubble(): string {
       const ask = document.createElement('button');
       ask.type = 'button';
       ask.className = 'coach-ask';
-      ask.textContent = 'Ask coach';
+      ask.textContent = tr('askCoach', 'Ask coach');
       if (typeof data.coachPrompt === 'string' && data.coachPrompt.length > 0) ask.setAttribute('data-coach-message', data.coachPrompt);
       else ask.disabled = true;
       if (data.coachIntent !== null && typeof data.coachIntent === 'object' && !Array.isArray(data.coachIntent)) {
         ask.setAttribute('data-coach-intent', JSON.stringify(data.coachIntent));
       }
       const actions = [
-        peekLink('btn peek-primary', links.day, 'View day →'),
+        peekLink('btn peek-primary', links.day, tr('peekViewDay', 'View day') + ' →'),
         ask,
       ];
       const move = document.createElement('button');
       move.type = 'button';
       move.className = 'chip';
-      move.textContent = 'Move';
+      move.textContent = tr('move', 'Move');
       move.setAttribute('data-coach-send', 'false');
       move.setAttribute('data-coach-message', 'Move my ' + (typeof data.title === 'string' ? data.title : 'session') + ' on ' + (typeof data.dayLabel === 'string' ? data.dayLabel : '') + ' to ');
       move.setAttribute('data-coach-intent', JSON.stringify({ kind: 'plan', day: data.day, source: 'session-peek' }));
       actions.push(move);
-      if (typeof links.activity === 'string' && links.activity.length > 0) actions.push(peekLink('chip', links.activity, 'Open run'));
-      actions.push(peekLink('chip', links.week, 'Training log week'));
+      if (typeof links.activity === 'string' && links.activity.length > 0) actions.push(peekLink('chip', links.activity, tr('peekOpenRun', 'Open run')));
+      actions.push(peekLink('chip', links.week, tr('peekTrainingWeek', 'Training log week')));
       peekActions.append(...actions);
     };
     const openPeek = async (pill, cell, kind) => {
@@ -2864,7 +3263,7 @@ function renderChatBubble(): string {
       closeDayMenu();
       peekTrigger = pill;
       peek.dataset.kind = kind === 'session' ? 'session-peek' : 'run-peek';
-      peekClose.setAttribute('aria-label', kind === 'session' ? 'Close session details' : 'Close run details');
+      peekClose.setAttribute('aria-label', kind === 'session' ? tr('peekCloseSession', 'Close session details') : tr('peekCloseRun', 'Close run details'));
       peekFailed = false;
       peekRequest += 1;
       const request = peekRequest;
@@ -2912,8 +3311,33 @@ function renderChatBubble(): string {
     });
     window.addEventListener('scroll', () => closeActivityPeek(false), { passive: true });
 
-    bubble.addEventListener('click', show);
+    bubble.addEventListener('click', () => show(true));
     minimize.addEventListener('click', minimizePanel);
+    close.addEventListener('click', minimizePanel);
+    // The tab strip is a real tablist: click or Left/Right/Home/End, one panel visible at a time.
+    for (const tab of tabs) {
+      tab.addEventListener('click', () => setTab(tab.dataset.coachTab || 'chat'));
+    }
+    const tabStrip = panel.querySelector('.coach-tabs');
+    if (tabStrip !== null) {
+      tabStrip.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight' && event.key !== 'Home' && event.key !== 'End') return;
+        const current = tabs.indexOf(document.activeElement);
+        if (current < 0) return;
+        event.preventDefault();
+        const last = tabs.length - 1;
+        const nextIndex = event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? last
+            : event.key === 'ArrowRight'
+              ? (current === last ? 0 : current + 1)
+              : (current === 0 ? last : current - 1);
+        const next = tabs[nextIndex];
+        if (next === undefined) return;
+        setTab(next.dataset.coachTab || 'chat', { focus: true });
+      });
+    }
     document.addEventListener('click', (event) => {
       const trigger = event.target instanceof Element ? event.target.closest('[data-coach-message]') : null;
       if (trigger === null) return;
@@ -2941,74 +3365,103 @@ function renderChatBubble(): string {
   </script>`;
 }
 
-function renderLogin(error?: string): string {
+/**
+ * Turns an auth error code (carried through a redirect query) into a localized message. Unknown or legacy values
+ * fall back to the page's generic error text, so a stray value never leaks a developer-facing English string.
+ */
+function authErrorText(code: string | undefined, fallbackKey: MessageKey, tx: Translator): string | undefined {
+  if (code === undefined) return undefined;
+  switch (code) {
+    case "invalid-credentials":
+      return tx.t("authErr.invalidCredentials");
+    case "username-taken":
+      return tx.t("authErr.usernameTaken");
+    case "invalid-input":
+      return tx.t("authErr.invalidInput");
+    case "not-found":
+      return tx.t("authErr.notFound");
+    default:
+      return tx.t(fallbackKey);
+  }
+}
+
+function renderLogin(error: string | undefined, tx: Translator): string {
   return layout(
-    "Sign in",
-    `<section class="card narrow"><h1>Sign in</h1>
-      <p class="muted">Your private training calendar, booked by your AI coach.</p>
-      ${errorBanner(error)}
+    tx.t("login.title"),
+    `<section class="card narrow"><h1>${escapeHtml(tx.t("login.heading"))}</h1>
+      <p class="muted">${escapeHtml(tx.t("login.subtitle"))}</p>
+      ${errorBanner(authErrorText(error, "error.couldNotSignIn", tx))}
       <form method="post" action="/login" class="stack">
-        <label for="username">Username</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24">
-        <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="current-password" minlength="8">
-        <button class="btn" type="submit">Sign in</button>
+        <label for="username">${escapeHtml(tx.t("login.username"))}</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24">
+        <label for="password">${escapeHtml(tx.t("login.password"))}</label><input id="password" name="password" type="password" required autocomplete="current-password" minlength="8">
+        <button class="btn" type="submit">${escapeHtml(tx.t("login.submit"))}</button>
       </form>
-      <p class="muted small">New here? <a href="/signup">Create an account</a></p>
+      <p class="muted small">${escapeHtml(tx.t("login.newHere"))} <a href="/signup">${escapeHtml(tx.t("login.createAccount"))}</a></p>
     </section>`,
     undefined,
+    "none",
+    0,
+    "",
+    tx,
   );
 }
 
-function renderSignup(error?: string): string {
+function renderSignup(error: string | undefined, tx: Translator): string {
   return layout(
-    "Create an account",
-    `<section class="card narrow"><h1>Create an account</h1>
-      <p class="muted">A private calendar for your training, kept by your AI coach.</p>
-      ${errorBanner(error)}
+    tx.t("signup.title"),
+    `<section class="card narrow"><h1>${escapeHtml(tx.t("signup.heading"))}</h1>
+      <p class="muted">${escapeHtml(tx.t("signup.subtitle"))}</p>
+      ${errorBanner(authErrorText(error, "error.couldNotCreateAccount", tx))}
       <form method="post" action="/signup" class="stack">
-        <label for="username">Username</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9_]{3,24}">
-        <label for="displayName">Display name</label><input id="displayName" name="displayName" required autocomplete="name" maxlength="60">
-        <label for="password">Password</label><input id="password" name="password" type="password" required autocomplete="new-password" minlength="8">
-        <label for="timezone">Timezone</label><input id="timezone" name="timezone" value="Asia/Hong_Kong" required autocomplete="off">
-        <label for="goal">Training goal <span class="muted small">(optional)</span></label><input id="goal" name="goal" maxlength="120" autocomplete="off">
-        <button class="btn" type="submit">Create account</button>
+        <label for="username">${escapeHtml(tx.t("signup.username"))}</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9_]{3,24}">
+        <label for="displayName">${escapeHtml(tx.t("signup.displayName"))}</label><input id="displayName" name="displayName" required autocomplete="name" maxlength="60">
+        <label for="password">${escapeHtml(tx.t("signup.password"))}</label><input id="password" name="password" type="password" required autocomplete="new-password" minlength="8">
+        <label for="timezone">${escapeHtml(tx.t("signup.timezone"))}</label><input id="timezone" name="timezone" value="Asia/Hong_Kong" required autocomplete="off">
+        <label for="goal">${escapeHtml(tx.t("signup.goal"))} <span class="muted small">${escapeHtml(tx.t("signup.goalOptional"))}</span></label><input id="goal" name="goal" maxlength="120" autocomplete="off">
+        <button class="btn" type="submit">${escapeHtml(tx.t("signup.submit"))}</button>
       </form>
-      <p class="muted small">Already have an account? <a href="/login">Sign in</a></p>
+      <p class="muted small">${escapeHtml(tx.t("signup.haveAccount"))} <a href="/login">${escapeHtml(tx.t("signup.signin"))}</a></p>
     </section>`,
     undefined,
+    "none",
+    0,
+    "",
+    tx,
   );
 }
 
-function renderProfile(user: AuthUser, saved: boolean, error?: string, unread = 0, flash = "", goalChanged = false): string {
+function renderProfile(user: AuthUser, saved: boolean, error: string | undefined, unread: number, flash: string, goalChanged: boolean, tx: Translator): string {
   const goal = user.goal ?? "";
   // The goal already reaches the coach's facts; this closes the loop right away - one tap opens the chat with a
   // message the runner can edit, no hidden directive needed for a plain chat turn.
   const goalOffer = goalChanged && goal.length > 0
-    ? `<div class="goal-offer"><p class="ok" role="status">New goal saved · 新目標已儲存</p><p class="muted small">Want the coach to work from the new goal? One tap opens the chat with a message you can edit.</p><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`My new goal is ${goal}. Can you help me plan toward it?`)}">Tell the coach about your new goal</button></div>`
+    ? `<div class="goal-offer"><p class="ok" role="status">${escapeHtml(tx.t("profile.goalOfferSaved"))}</p><p class="muted small">${escapeHtml(tx.t("profile.goalOfferPrompt"))}</p><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(tx.t("profile.goalOfferMessage", { goal }))}">${escapeHtml(tx.t("profile.goalOfferButton"))}</button></div>`
     : "";
   return layout(
-    "Profile",
-    `<section class="card narrow"><h1>Your profile</h1>
-      <p class="muted">Signed in as <strong>${escapeHtml(user.username)}</strong>.</p>
-      ${saved ? `<p class="ok" role="status">Profile saved.</p>` : ""}
+    tx.t("profile.title"),
+    `<section class="card narrow"><h1>${escapeHtml(tx.t("profile.heading"))}</h1>
+      <p class="muted">${escapeHtml(tx.t("profile.signedInAs"))} <strong>${escapeHtml(user.username)}</strong>.</p>
+      ${saved ? `<p class="ok" role="status">${escapeHtml(tx.t("profile.saved"))}</p>` : ""}
       ${goalOffer}
-      ${errorBanner(error)}
+      ${errorBanner(authErrorText(error, "error.couldNotSaveProfile", tx))}
       <form method="post" action="/profile" class="stack">
-        <label for="username">Username</label><input id="username" value="${escapeHtml(user.username)}" readonly>
-        <label for="displayName">Display name</label><input id="displayName" name="displayName" value="${escapeHtml(user.displayName)}" required maxlength="60" autocomplete="name">
-        <label for="timezone">Timezone</label><input id="timezone" name="timezone" value="${escapeHtml(user.timezone)}" required autocomplete="off">
-        <label for="goal">Training goal <span class="muted small">(optional)</span></label><input id="goal" name="goal" value="${escapeHtml(user.goal ?? "")}" maxlength="120" autocomplete="off">
-        <label for="password">New password <span class="muted small">(leave blank to keep it)</span></label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password">
-        <button class="btn" type="submit">Save profile</button>
+        <label for="username">${escapeHtml(tx.t("profile.username"))}</label><input id="username" value="${escapeHtml(user.username)}" readonly>
+        <label for="displayName">${escapeHtml(tx.t("profile.displayName"))}</label><input id="displayName" name="displayName" value="${escapeHtml(user.displayName)}" required maxlength="60" autocomplete="name">
+        <label for="timezone">${escapeHtml(tx.t("profile.timezone"))}</label><input id="timezone" name="timezone" value="${escapeHtml(user.timezone)}" required autocomplete="off">
+        <label for="goal">${escapeHtml(tx.t("profile.goal"))} <span class="muted small">${escapeHtml(tx.t("profile.optional"))}</span></label><input id="goal" name="goal" value="${escapeHtml(user.goal ?? "")}" maxlength="120" autocomplete="off">
+        <label for="password">${escapeHtml(tx.t("profile.changePassword"))} <span class="muted small">${escapeHtml(tx.t("profile.passwordHint"))}</span></label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password">
+        <button class="btn" type="submit">${escapeHtml(tx.t("profile.submit"))}</button>
       </form>
-      <p class="muted small">Member since ${escapeHtml(user.createdAt.slice(0, 10))}.</p>
-      <p class="muted small"><a href="/muscle">Muscle check-ins</a> — how your muscles feel, and what the coach reads</p>
-      <p class="muted small"><a href="/coach-states">Coaching states</a> — travel, heat, pain or a focus block</p>
-      <p class="muted small"><a href="/calendar?garmin=setup">Garmin connection</a> · <a href="/export.json">Export my data (JSON)</a> · <a href="/export.ics">Calendar export (ICS)</a></p>
+      <p class="muted small">${escapeHtml(tx.t("profile.memberSince", { date: user.createdAt.slice(0, 10) }))}</p>
+      <p class="muted small"><a href="/muscle">${escapeHtml(tx.t("profile.muscleLink"))}</a> — ${escapeHtml(tx.t("profile.muscleHint"))}</p>
+      <p class="muted small"><a href="/coach-states">${escapeHtml(tx.t("profile.coachStatesLink"))}</a> — ${escapeHtml(tx.t("profile.coachStatesHint"))}</p>
+      <p class="muted small"><a href="/calendar?garmin=setup">${escapeHtml(tx.t("profile.garminLink"))}</a> · <a href="/export.json">${escapeHtml(tx.t("profile.exportJson"))}</a> · <a href="/export.ics">${escapeHtml(tx.t("profile.exportIcs"))}</a></p>
     </section>`,
     user,
     "none",
     unread,
     flash,
+    tx,
   );
 }
 
@@ -3087,13 +3540,6 @@ export function createWeb(options: WebOptions): WebApp {
       return 0;
     }
   };
-  const pageLayout = (
-    title: string,
-    body: string,
-    user: AuthUser | undefined,
-    activeView: ViewName = "none",
-    flash = "",
-  ): string => layout(title, body, user, activeView, unreadFor(user), flash);
 
   interface BrowserSession {
     userId: string;
@@ -3149,8 +3595,33 @@ export function createWeb(options: WebOptions): WebApp {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method ?? "GET";
 
+      // Per-request translator: cookie wins, then Accept-Language, then default. Everything rendered
+      // below (chrome, satellites, errors, flash) flows through this pageLayout, so one switch covers all pages.
+      const requestCookies = parseCookies(request);
+      const tx = createTranslator(resolveLocale(requestCookies[LOCALE_COOKIE], request.headers["accept-language"]));
+      const pageLayout = (
+        title: string,
+        body: string,
+        user: AuthUser | undefined,
+        activeView: ViewName = "none",
+        flash = "",
+      ): string => layout(title, body, user, activeView, unreadFor(user), flash, tx);
+
       if (method === "POST" && !isSameOriginPost(request)) {
-        sendHtml(response, 403, pageLayout("Forbidden", `<p>Cross-origin form submission is not allowed.</p>`, undefined, "none"));
+        sendHtml(response, 403, pageLayout(tx.t("error.forbidden"), `<p>${tx.t("error.crossOrigin")}</p>`, undefined, "none"));
+        return;
+      }
+
+      if (url.pathname === "/language") {
+        // Public, GET-only: sets the language cookie then returns to the page you were on.
+        // `next` is optional and validated to a same-origin path; otherwise fall back to the Referer or the calendar.
+        const code = url.searchParams.get("locale");
+        const fallback = safeLanguageNext(url.searchParams.get("next")) ?? safeLanguageNext(request.headers.referer ? new URL(request.headers.referer, "http://localhost").pathname + new URL(request.headers.referer, "http://localhost").search : null) ?? "/calendar";
+        if (isLocale(code)) {
+          redirect(response, fallback, { "set-cookie": languageCookie(code) });
+        } else {
+          redirect(response, fallback);
+        }
         return;
       }
 
@@ -3209,7 +3680,7 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/calendar");
             return;
           }
-          sendHtml(response, 200, renderLogin(url.searchParams.get("error") ?? undefined));
+          sendHtml(response, 200, renderLogin(url.searchParams.get("error") ?? undefined, tx));
           return;
         }
         if (method === "POST") {
@@ -3223,12 +3694,12 @@ export function createWeb(options: WebOptions): WebApp {
             const session = startSession(result.user.userId, loginToday, true);
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
-            const message = error instanceof AuthError ? error.message : "Could not sign in";
-            redirect(response, "/login?error=" + encodeURIComponent(message));
+            const code = error instanceof AuthError ? error.code : "generic";
+            redirect(response, "/login?error=" + encodeURIComponent(code));
           }
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, requestUser, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -3238,7 +3709,7 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/calendar");
             return;
           }
-          sendHtml(response, 200, renderSignup(url.searchParams.get("error") ?? undefined));
+          sendHtml(response, 200, renderSignup(url.searchParams.get("error") ?? undefined, tx));
           return;
         }
         if (method === "POST") {
@@ -3255,12 +3726,12 @@ export function createWeb(options: WebOptions): WebApp {
             const session = startSession(result.user.userId, signupToday, true);
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
-            const message = error instanceof AuthError ? error.message : "Could not create the account";
-            redirect(response, "/signup?error=" + encodeURIComponent(message));
+            const code = error instanceof AuthError ? error.code : "generic";
+            redirect(response, "/signup?error=" + encodeURIComponent(code));
           }
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, requestUser, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -3271,7 +3742,7 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie()] });
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, requestUser, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -3281,7 +3752,7 @@ export function createWeb(options: WebOptions): WebApp {
       }
       const user = requestUser;
       const today = localDay(now(), safeTimeZone(user.timezone));
-      const flash = syncFlash(url.searchParams);
+      const flash = syncFlash(url.searchParams, tx);
 
       if (url.pathname === "/notifications" && method === "GET") {
         sendJson(response, 200, {
@@ -3308,6 +3779,7 @@ export function createWeb(options: WebOptions): WebApp {
               unreadFor(user),
               flash,
               url.searchParams.get("goal") === "1",
+              tx,
             ),
           );
           return;
@@ -3327,12 +3799,12 @@ export function createWeb(options: WebOptions): WebApp {
               form.has("goal") && (patch.goal ?? "").trim().length > 0 && (patch.goal ?? "").trim() !== (user.goal ?? "");
             redirect(response, goalChanged ? "/profile?saved=1&goal=1" : "/profile?saved=1");
           } catch (error) {
-            const message = error instanceof AuthError ? error.message : "Could not save the profile";
-            redirect(response, "/profile?error=" + encodeURIComponent(message));
+            const code = error instanceof AuthError ? error.code : "generic";
+            redirect(response, "/profile?error=" + encodeURIComponent(code));
           }
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -3345,16 +3817,16 @@ export function createWeb(options: WebOptions): WebApp {
             .listMemories(user.userId, 100)
             .filter((memory) => memory.text.trim().toLowerCase().startsWith("mode:"));
           const stateEvents = options.store.listCoachStateEvents(user.userId, 20);
-          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout: pageLayout }));
+          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout: pageLayout }, tx));
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
       if (url.pathname === "/coach-states/refresh") {
         if (method !== "POST") {
-          sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
           return;
         }
         refreshCoachStates(options.store, user.userId, now(), today, {
@@ -3372,7 +3844,7 @@ export function createWeb(options: WebOptions): WebApp {
           sendHtml(
             response,
             200,
-            renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout: pageLayout }),
+            renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout: pageLayout }, tx),
           );
           return;
         }
@@ -3397,14 +3869,14 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/coach-states");
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
       const stateAction = /^\/coach-states\/([^/]+)\/(confirm|resolve)$/.exec(url.pathname);
       if (stateAction !== null) {
         if (method !== "POST") {
-          sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
           return;
         }
         let stateId = "";
@@ -3530,11 +4002,12 @@ export function createWeb(options: WebOptions): WebApp {
                 prefillMuscleIds,
               },
               { layout: pageLayout },
+              tx,
             ),
           );
           return;
         }
-        sendHtml(response, 405, pageLayout("Method not allowed", `<p>Method not allowed</p>`, user, "none"));
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -3891,8 +4364,23 @@ export function createWeb(options: WebOptions): WebApp {
               uiNote: definition.uiNote,
             };
           });
+        // The coach dock's Changes tab reads the same durable journal the Recent changes card renders. Keeping it on
+        // this endpoint means the panel needs one request, not one per tab.
+        const changes = options.store.listChangeSets(user.userId, 5).map((set) => ({
+          changeSetId: set.changeSetId,
+          summary: set.summary,
+          createdAt: set.createdAt,
+          revertedAt: set.revertedAt,
+          entries: set.entries.map((entry) => ({
+            action: entry.action,
+            title: entry.title,
+            kind: entry.kind,
+            fromDay: entry.fromDay,
+            toDay: entry.toDay,
+          })),
+        }));
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(JSON.stringify({ messages, states }));
+        response.end(JSON.stringify({ messages, states, changes }));
         return;
       }
 
@@ -3937,16 +4425,20 @@ export function createWeb(options: WebOptions): WebApp {
         const currentWeek = weekStartOf(today);
         const currentMonth = today.slice(0, 7);
         const currentYear = today.slice(0, 4);
+        const date = tx.date;
+        // The run summary line: "N runs · X km · D" with an optional planned-distance tail, kept as one shape.
+        const summaryLine = (count: number, distance: string, duration: string, plannedKm: number): string =>
+          `${tx.t("history.runCount", { count })} · ${distance} km · ${duration}${plannedKm > 0 ? tx.t("history.plannedSuffix", { distance: plannedKm }) : ""}`;
 
         let periodStart = currentWeek;
         let periodEnd = addDays(currentWeek, 6);
-        let periodLabel = formatWeekRange(currentWeek);
+        let periodLabel = formatWeekRange(currentWeek, date);
         let periodValue = currentWeek;
         let prevPeriod = addDays(currentWeek, -7);
         let nextPeriod = addDays(currentWeek, 7);
         let currentPeriod = currentWeek;
-        let currentLabel = "This week";
-        let picker = `<input type="date" name="period" value="${escapeHtml(currentWeek)}" aria-label="Pick a day in the week">`;
+        let currentLabel = tx.t("history.thisWeek");
+        let picker = `<input type="date" name="period" value="${escapeHtml(currentWeek)}" aria-label="${escapeHtml(tx.t("history.pickDay"))}">`;
 
         if (view === "month") {
           const month = /^\d{4}-\d{2}$/.test(periodParam) && Number(periodParam.slice(5, 7)) >= 1 && Number(periodParam.slice(5, 7)) <= 12
@@ -3954,13 +4446,13 @@ export function createWeb(options: WebOptions): WebApp {
             : currentMonth;
           periodStart = monthStart(month);
           periodEnd = addDays(periodStart, daysInMonth(month) - 1);
-          periodLabel = formatMonthLabel(month);
+          periodLabel = formatMonthLabel(month, date);
           periodValue = month;
           prevPeriod = addMonths(month, -1);
           nextPeriod = addMonths(month, 1);
           currentPeriod = currentMonth;
-          currentLabel = "This month";
-          picker = `<input type="month" name="period" value="${escapeHtml(month)}" aria-label="Pick a month">`;
+          currentLabel = tx.t("history.thisMonth");
+          picker = `<input type="month" name="period" value="${escapeHtml(month)}" aria-label="${escapeHtml(tx.t("history.pickMonth"))}">`;
         } else if (view === "year") {
           const year = /^\d{4}$/.test(periodParam) && Number(periodParam) >= 2000 && Number(periodParam) <= 2100
             ? periodParam
@@ -3972,19 +4464,19 @@ export function createWeb(options: WebOptions): WebApp {
           prevPeriod = String(Number(year) - 1);
           nextPeriod = String(Number(year) + 1);
           currentPeriod = currentYear;
-          currentLabel = "This year";
-          picker = `<select name="period" aria-label="Pick a year">${Array.from({ length: 101 }, (_, index) => 2000 + index).map((value) => `<option value="${value}"${String(value) === year ? " selected" : ""}>${value}</option>`).join("")}</select>`;
+          currentLabel = tx.t("history.thisYear");
+          picker = `<select name="period" aria-label="${escapeHtml(tx.t("history.pickYear"))}">${Array.from({ length: 101 }, (_, index) => 2000 + index).map((value) => `<option value="${value}"${String(value) === year ? " selected" : ""}>${value}</option>`).join("")}</select>`;
         } else {
           const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(periodParam) ? weekStartOf(periodParam) : currentWeek;
           periodStart = weekStart;
           periodEnd = addDays(weekStart, 6);
-          periodLabel = formatWeekRange(weekStart);
+          periodLabel = formatWeekRange(weekStart, date);
           periodValue = weekStart;
           prevPeriod = addDays(weekStart, -7);
           nextPeriod = addDays(weekStart, 7);
           currentPeriod = currentWeek;
-          currentLabel = "This week";
-          picker = `<input type="date" name="period" value="${escapeHtml(weekStart)}" aria-label="Pick a day in the week">`;
+          currentLabel = tx.t("history.thisWeek");
+          picker = `<input type="date" name="period" value="${escapeHtml(weekStart)}" aria-label="${escapeHtml(tx.t("history.pickDay"))}">`;
         }
 
         const auto = await autoSync(user.userId, today);
@@ -4013,7 +4505,8 @@ export function createWeb(options: WebOptions): WebApp {
         // Week / Month / Year are links between pages, not same-page tab panels: the active mode carries aria-current.
         const modeLink = (target: HistoryView, label: string): string =>
           `<a class="period-mode${view === target ? " active" : ""}" href="${historyHref(target, modePeriod(target))}"${view === target ? ' aria-current="page"' : ""}>${label}</a>`;
-        const periodBar = `<section class="period-bar" aria-label="Training log period"><div class="period-top"><div class="period-modes">${modeLink("week", "Week")}${modeLink("month", "Month")}${modeLink("year", "Year")}</div><div class="period-nav"><a href="${historyHref(view, prevPeriod)}" aria-label="Previous ${view}">←</a><span class="period-label">${escapeHtml(periodLabel)}</span><a href="${historyHref(view, nextPeriod)}" aria-label="Next ${view}">→</a><a class="chip" href="${historyHref(view, currentPeriod)}">${currentLabel}</a></div></div><form method="get" action="/history" class="period-picker"><input type="hidden" name="view" value="${view}">${picker}<button class="btn" type="submit">Go</button></form></section>`;
+        const periodWord = tx.t(view === "week" ? "history.wordWeek" : view === "month" ? "history.wordMonth" : "history.wordYear");
+        const periodBar = `<section class="period-bar" aria-label="${escapeHtml(tx.t("history.periodAria"))}"><div class="period-top"><div class="period-modes">${modeLink("week", tx.t("history.viewWeek"))}${modeLink("month", tx.t("history.viewMonth"))}${modeLink("year", tx.t("history.viewYear"))}</div><div class="period-nav"><a href="${historyHref(view, prevPeriod)}" aria-label="${escapeHtml(tx.t("history.previous", { period: periodWord }))}">←</a><span class="period-label">${escapeHtml(periodLabel)}</span><a href="${historyHref(view, nextPeriod)}" aria-label="${escapeHtml(tx.t("history.next", { period: periodWord }))}">→</a><a class="chip" href="${historyHref(view, currentPeriod)}">${currentLabel}</a></div></div><form method="get" action="/history" class="period-picker"><input type="hidden" name="view" value="${view}">${picker}<button class="btn" type="submit">${escapeHtml(tx.t("history.go"))}</button></form></section>`;
 
         const longest = activities.reduce((best, activity) => Math.max(best, activity.distanceKm ?? 0), 0);
         const savedKey = options.store.getGarminKey(user.userId);
@@ -4021,7 +4514,7 @@ export function createWeb(options: WebOptions): WebApp {
         const lastSync = options.store.getLastSync(user.userId);
         const lastSyncDay = lastSync === null ? null : localDay(lastSync, safeTimeZone(user.timezone));
         const awaitingGarmin = (day: string): boolean => savedKey !== undefined && lastSyncDay !== null && day > lastSyncDay;
-        const garminPanel = renderGarminPanel(savedKey, cleanNext(url), url.searchParams.get("keyError"));
+        const garminPanel = renderGarminPanel(savedKey, cleanNext(url), tx, url.searchParams.get("keyError"));
 
         const renderDay = (day: string, daySessions: TrainingSession[], dayActivities: Activity[], dayWorkouts: ActivityWorkout[]): string => {
           const dayMatches = matchActivitiesToPlan(dayActivities, daySessions);
@@ -4041,7 +4534,7 @@ export function createWeb(options: WebOptions): WebApp {
             const message = coachPromptForActivity(activity);
             return `<article class="history-activity">
               <div class="history-activity-main">
-                <div class="history-activity-head"><strong>${escapeHtml(activity.title)}</strong><span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity))}</span>${matchLabel(matchByActivity.get(activity.activityId))}</div>
+                <div class="history-activity-head"><strong>${escapeHtml(activity.title)}</strong><span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity, tx))}</span>${matchLabel(matchByActivity.get(activity.activityId), tx)}</div>
                 <p class="history-metrics">${escapeHtml(activityMetrics(activity))}</p>
               </div>
               <div class="history-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "history" }))}">Ask coach</button><a class="chip" href="/activity/${encodeURIComponent(activity.activityId)}">Detail</a><a class="chip" href="/calendar?month=${escapeHtml(day.slice(0, 7))}">View plan</a></div>
@@ -4049,9 +4542,9 @@ export function createWeb(options: WebOptions): WebApp {
           }).join("");
           const missed = dayActivities.length > 0
             ? ""
-            : dayEmptyStateHtml(day, daySessions, today, awaitingGarmin(day));
+            : dayEmptyStateHtml(day, daySessions, today, awaitingGarmin(day), tx);
           return `<section class="history-day">
-            <header class="history-day-head"><a href="/day/${escapeHtml(day)}">${escapeHtml(formatDayLabel(day))}</a></header>
+            <header class="history-day-head"><a href="/day/${escapeHtml(day)}">${escapeHtml(formatDayLabel(day, date))}</a></header>
             ${plannedLine}
             ${unmatchedLine}
             ${programLine}
@@ -4064,25 +4557,25 @@ export function createWeb(options: WebOptions): WebApp {
         let load: LoadSummary | null = null;
         let volumeBuckets: VolumeBucket[] = [];
         let consistency = 0;
-        let volumeTitle = "Daily volume";
-        let volumeAria = `Daily volume for ${periodLabel}`;
+        let volumeTitle = tx.t("history.volume.daily");
+        let volumeAria = tx.t("history.volume.dailyAria", { period: periodLabel });
         // What the consistency percentage counts, so the summary row never reads as a mystery grade.
-        let consistencyUnit: "days" | "weeks" | "months" = "days";
+        let consistencyUnit = tx.t("history.trend.unitDays");
 
         if (view === "week") {
           const weekDays = Array.from({ length: 7 }, (_, index) => addDays(periodStart, index));
           const plannedKm = Math.round(sessions.reduce((total, session) => total + (session.distanceKm ?? 0), 0) * 10) / 10;
           const dayHtml = weekDays.map((day) => renderDay(day, sessions.filter((session) => session.day === day), activities.filter((activity) => activity.day === day), workouts.filter((workout) => workout.day === day))).join("");
-          content = `<section class="history-week"><header class="history-week-head"><h2>Week ${escapeHtml(periodLabel)}</h2><p class="muted small">${activities.length} run${activities.length === 1 ? "" : "s"} · ${sumDistance(activities)} km · ${formatMinutes(sumDuration(activities))}${plannedKm > 0 ? ` · planned ${plannedKm} km` : ""}</p></header>${dayHtml}</section>`;
+          content = `<section class="history-week"><header class="history-week-head"><h2>${tx.t("history.weekTitle", { period: escapeHtml(periodLabel) })}</h2><p class="muted small">${summaryLine(activities.length, String(sumDistance(activities)), formatMinutes(sumDuration(activities)), plannedKm)}</p></header>${dayHtml}</section>`;
           load = loadSummaryForWeek(allActivities, periodStart);
           volumeBuckets = weekDays.map((day, index) => ({
-            label: DOW[index] ?? formatShortDate(day),
+            label: date.weekdays()[index] ?? formatShortDate(day, date),
             total: sumDistance(activities.filter((activity) => activity.day === day)),
           }));
           const activeDays = weekDays.filter((day) => activities.some((activity) => activity.day === day)).length;
           consistency = Math.round((activeDays / 7) * 100);
-          volumeTitle = "Daily volume";
-          volumeAria = `Daily volume for ${periodLabel}`;
+          volumeTitle = tx.t("history.volume.daily");
+          volumeAria = tx.t("history.volume.dailyAria", { period: periodLabel });
         } else if (view === "month") {
           const firstWeek = weekStartOf(periodStart);
           const lastWeek = weekStartOf(periodEnd);
@@ -4093,101 +4586,107 @@ export function createWeb(options: WebOptions): WebApp {
             const weekActivities = activities.filter((activity) => activity.day >= start && activity.day <= end);
             const weekSessions = sessions.filter((session) => session.day >= start && session.day <= end);
             const plannedKm = Math.round(weekSessions.reduce((total, session) => total + (session.distanceKm ?? 0), 0) * 10) / 10;
-            return `<a class="period-row" href="${historyHref("week", start)}"><div><h2>Week ${escapeHtml(weekLabel(start))}</h2><p class="muted small">${weekActivities.length} run${weekActivities.length === 1 ? "" : "s"} · ${sumDistance(weekActivities)} km · ${formatMinutes(sumDuration(weekActivities))}${plannedKm > 0 ? ` · planned ${plannedKm} km` : ""}</p></div><span class="chip">View week</span></a>`;
+            return `<a class="period-row" href="${historyHref("week", start)}"><div><h2>${tx.t("history.weekTitle", { period: escapeHtml(weekLabel(start, date)) })}</h2><p class="muted small">${summaryLine(weekActivities.length, String(sumDistance(weekActivities)), formatMinutes(sumDuration(weekActivities)), plannedKm)}</p></div><span class="chip">${escapeHtml(tx.t("history.viewWeekLink"))}</span></a>`;
           }).join("");
           content = `<div class="period-rows">${rows}</div>`;
           volumeBuckets = weekStarts.map((start) => ({
-            label: formatShortDate(start),
+            label: formatShortDate(start, date),
             total: sumDistance(activities.filter((activity) => activity.day >= start && activity.day <= addDays(start, 6))),
           }));
           const activeWeeks = weekStarts.filter((start) => activities.some((activity) => activity.day >= start && activity.day <= addDays(start, 6))).length;
           consistency = Math.round((activeWeeks / Math.max(weekStarts.length, 1)) * 100);
-          consistencyUnit = "weeks";
-          volumeTitle = "Weekly volume";
-          volumeAria = `Weekly volume for ${periodLabel}`;
+          consistencyUnit = tx.t("history.trend.unitWeeks");
+          volumeTitle = tx.t("history.volume.weekly");
+          volumeAria = tx.t("history.volume.weeklyAria", { period: periodLabel });
         } else {
-          const rows = MONTHS.map((monthName, index) => {
+          const monthNames = date.monthNames();
+          const rows = monthNames.map((monthName, index) => {
             const monthKey = `${periodValue}-${String(index + 1).padStart(2, "0")}`;
             const monthActivities = activities.filter((activity) => activity.day.slice(0, 7) === monthKey);
             const monthSessions = sessions.filter((session) => session.day.slice(0, 7) === monthKey);
             const plannedKm = Math.round(monthSessions.reduce((total, session) => total + (session.distanceKm ?? 0), 0) * 10) / 10;
-            return `<a class="period-row" href="${historyHref("month", monthKey)}"><div><h2>${escapeHtml(monthName)} ${escapeHtml(periodValue)}</h2><p class="muted small">${monthActivities.length} run${monthActivities.length === 1 ? "" : "s"} · ${sumDistance(monthActivities)} km · ${formatMinutes(sumDuration(monthActivities))}${plannedKm > 0 ? ` · planned ${plannedKm} km` : ""}</p></div><span class="chip">View month</span></a>`;
+            return `<a class="period-row" href="${historyHref("month", monthKey)}"><div><h2>${tx.t("history.monthTitle", { month: escapeHtml(monthName), year: escapeHtml(periodValue) })}</h2><p class="muted small">${summaryLine(monthActivities.length, String(sumDistance(monthActivities)), formatMinutes(sumDuration(monthActivities)), plannedKm)}</p></div><span class="chip">${escapeHtml(tx.t("history.viewMonthLink"))}</span></a>`;
           }).join("");
           content = `<div class="period-rows">${rows}</div>`;
-          volumeBuckets = MONTHS.map((monthName, index) => ({
+          volumeBuckets = monthNames.map((monthName, index) => ({
             label: monthName.slice(0, 3),
             total: sumDistance(activities.filter((activity) => activity.day.slice(0, 7) === `${periodValue}-${String(index + 1).padStart(2, "0")}`)),
           }));
-          const activeMonths = MONTHS.filter((_, index) => activities.some((activity) => activity.day.slice(0, 7) === `${periodValue}-${String(index + 1).padStart(2, "0")}`)).length;
+          const activeMonths = monthNames.filter((_, index) => activities.some((activity) => activity.day.slice(0, 7) === `${periodValue}-${String(index + 1).padStart(2, "0")}`)).length;
           consistency = Math.round((activeMonths / 12) * 100);
-          consistencyUnit = "months";
-          volumeTitle = "Monthly volume";
-          volumeAria = `Monthly volume for ${periodValue}`;
+          consistencyUnit = tx.t("history.trend.unitMonths");
+          volumeTitle = tx.t("history.volume.monthly");
+          volumeAria = tx.t("history.volume.monthlyAria", { period: periodValue });
         }
 
         let loadCard = "";
         if (load !== null) {
           const prompt = coachPromptForWeek(periodLabel, load, activities, sessions);
           const loadStats = [
-            load.hasLoad ? `<div class="load-stat" title="Load: Garmin's training load, or duration x reported effort for runs logged by hand."><strong>${load.weekLoad}</strong><span>load</span></div>` : "",
-            load.acwr === null ? "" : `<div class="load-stat" title="ACWR: this week's load compared with your 28-day average."><strong>${load.acwr.toFixed(2)}</strong><span>ACWR</span></div>`,
-            load.weekChangePct === null ? "" : `<div class="load-stat" title="Week-over-week change in total load."><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>vs last week</span></div>`,
-            load.hasIntensity ? `<div class="load-stat" title="Hard vs easy kilometres; a reported effort of 7 or above counts as hard."><strong>Hard ${load.hardDistanceKm} km · Easy ${load.easyDistanceKm} km</strong><span>split</span></div>` : "",
+            load.hasLoad ? `<div class="load-stat" title="${tx.t("history.load.titleLoad")}"><strong>${load.weekLoad}</strong><span>${escapeHtml(tx.t("history.load.statLoad"))}</span></div>` : "",
+            load.acwr === null ? "" : `<div class="load-stat" title="${tx.t("history.load.titleAcwr")}"><strong>${load.acwr.toFixed(2)}</strong><span>${escapeHtml(tx.t("history.load.statAcwr"))}</span></div>`,
+            load.weekChangePct === null ? "" : `<div class="load-stat" title="${tx.t("history.load.titleVs")}"><strong>${load.weekChangePct > 0 ? "+" : ""}${load.weekChangePct}%</strong><span>${escapeHtml(tx.t("history.load.statVsLast"))}</span></div>`,
+            load.hasIntensity ? `<div class="load-stat" title="${tx.t("history.load.titleSplit")}"><strong>${escapeHtml(tx.t("history.load.hard"))} ${load.hardDistanceKm} km · ${escapeHtml(tx.t("history.load.easy"))} ${load.easyDistanceKm} km</strong><span>${escapeHtml(tx.t("history.load.statSplit"))}</span></div>` : "",
           ].filter((part) => part.length > 0).join("");
           const intensityLine = load.hasIntensity
-            ? `<p class="muted small">Hard ${load.hardRuns} run${load.hardRuns === 1 ? "" : "s"} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · Easy ${load.easyRuns} run${load.easyRuns === 1 ? "" : "s"} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>`
+            ? `<p class="muted small">${escapeHtml(tx.t("history.load.hard"))} ${escapeHtml(tx.t("history.runCount", { count: load.hardRuns }))} · ${load.hardDistanceKm} km · ${load.hardMinutes} min · ${escapeHtml(tx.t("history.load.easy"))} ${escapeHtml(tx.t("history.runCount", { count: load.easyRuns }))} · ${load.easyDistanceKm} km · ${load.easyMinutes} min</p>`
             : "";
           // The split is Garmin's intensity when present and the runner's reported effort otherwise; say which rule.
           const hardEasyNote = load.hasIntensity
-            ? `<p class="muted small">A reported effort of 7 or above counts as hard.</p>`
+            ? `<p class="muted small">${escapeHtml(tx.t("history.load.hardEasyNote"))}</p>`
             : "";
           const rising = load.signal === "watch" || load.signal === "high";
-          const warningLine = rising ? `<p class="load-warning">${escapeHtml(loadWarningText(load))}</p>` : "";
+          const warningLine = rising ? `<p class="load-warning">${escapeHtml(loadWarningText(load, tx))}</p>` : "";
           const rampIntent = { kind: "review-week", weekStart: periodStart, source: "load-card" };
           const rampChip = rising
-            ? `<button type="button" class="coach-ask" data-coach-message="The last week or two ramped up - can we talk it through?" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">Talk through this ramp</button>`
+            ? `<button type="button" class="coach-ask" data-coach-message="The last week or two ramped up - can we talk it through?" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">${escapeHtml(tx.t("history.load.rampChip"))}</button>`
             : "";
           const acwrNote = load.hasLoad
-            ? `<p class="muted small">ACWR compares this week's load with the 28-day average · Load is Garmin's training load, or duration x reported effort for runs logged by hand · a soft signal, not medical advice.</p>`
+            ? `<p class="muted small">${tx.t("history.load.acwrNote")}</p>`
             : "";
-          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">Training load · 訓練負荷</p><h2>Week load</h2></div><span class="load-chip ${load.signal}">${escapeHtml(load.label)}</span></div>${warningLine}${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}${hardEasyNote}<p class="muted small">${escapeHtml(load.note)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">Review my week with the coach</button>${rampChip}</div></section>`;
+          const loadSignalLabel = tx.t(`history.load.signal.${load.signal}` as const);
+          const loadNote = `${tx.t(`history.load.note.${load.signal}` as const)}${load.reportEffort ? ` ${tx.t("history.load.reportedEffort")}` : ""}`;
+          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">${escapeHtml(tx.t("history.loadEyebrow"))}</p><h2>${escapeHtml(tx.t("history.loadTitle"))}</h2></div><span class="load-chip ${load.signal}">${escapeHtml(loadSignalLabel)}</span></div>${warningLine}${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}${hardEasyNote}<p class="muted small">${escapeHtml(loadNote)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">${escapeHtml(tx.t("history.load.reviewWeek"))}</button>${rampChip}</div></section>`;
         }
 
         let bestEffortsCard = "";
         if (view !== "week") {
-          bestEffortsCard = periodBestsCard(periodLabel, personalBestsForPeriod(allActivities, periodStart, periodEnd));
+          bestEffortsCard = periodBestsCard(periodLabel, personalBestsForPeriod(allActivities, periodStart, periodEnd), tx);
         }
 
         const latestForReview = auto.newest ?? newestActivity ?? null;
         const reviewSessions = latestForReview === null ? [] : options.store.listSessions(user.userId, latestForReview.day, latestForReview.day);
         // The sync card and the manual-log card share one renderer, so both paths produce the identical one-tap review.
-        const reviewCard = latestForReview === null ? "" : runReviewCard(latestForReview, "New run synced");
-        const manualReviewCard = manualReviewCardFor(options.store, user.userId, url.searchParams);
+        const reviewCard = latestForReview === null ? "" : runReviewCard(latestForReview, tx.t("review.eyebrowSynced"), tx);
+        const manualReviewCard = manualReviewCardFor(options.store, user.userId, url.searchParams, tx);
+        const logRunLink = `<a href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("empty.logRun"))}</a>`;
+        const connectLink = `<a href="/calendar?garmin=setup">${escapeHtml(tx.t("history.connectGarmin"))}</a>`;
+        const periodEmptyKey = view === "week" ? "history.periodEmptyWeek" : view === "month" ? "history.periodEmptyMonth" : "history.periodEmptyYear";
         const noActivities = activities.length === 0
-          ? `<p class="muted small period-empty">No recorded activities in this ${view} yet. <a href="/day/${escapeHtml(today)}#log-run">Log a run</a> or <a href="/calendar?garmin=setup">connect Garmin</a>.</p>`
+          ? `<p class="muted small period-empty">${tx.t(periodEmptyKey, { logRun: logRunLink, connect: connectLink })}</p>`
           : "";
         const lastImportText = lastImport.length === 0
-          ? "No Garmin import yet."
-          : `Last import: ${localDateTime(lastImport, user.timezone)}`;
+          ? tx.t("history.noImport")
+          : tx.t("history.lastImport", { time: localDateTime(lastImport, user.timezone) });
 
-        const body = `<header class="page-head"><p class="eyebrow">Training log · 訓練紀錄</p><h1>Past training</h1><p class="muted">What actually happened, from Garmin and reported runs. Pick a week, month or year; the plan stays on the calendar.</p></header>
+        const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("history.eyebrow"))}</p><h1>${escapeHtml(tx.t("history.heading"))}</h1><p class="muted">${escapeHtml(tx.t("history.intro"))}</p></header>
           ${periodBar}
           ${garminPanel}
           <section class="history-summary">
-            <div class="stat"><strong>${activities.length}</strong><span>runs</span></div>
-            <div class="stat"><strong>${sumDistance(activities)} km</strong><span>distance</span></div>
-            <div class="stat"><strong>${formatMinutes(sumDuration(activities))}</strong><span>time</span></div>
-            <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>longest</span></div>
+            <div class="stat"><strong>${activities.length}</strong><span>${escapeHtml(tx.t("history.statRuns"))}</span></div>
+            <div class="stat"><strong>${sumDistance(activities)} km</strong><span>${escapeHtml(tx.t("history.statDistance"))}</span></div>
+            <div class="stat"><strong>${formatMinutes(sumDuration(activities))}</strong><span>${escapeHtml(tx.t("history.statTime"))}</span></div>
+            <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>${escapeHtml(tx.t("history.statLongest"))}</span></div>
           </section>
           <p class="muted small">${escapeHtml(lastImportText)}</p>
           ${manualReviewCard}
           ${reviewCard}
           ${loadCard}
-          ${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit)}
+          ${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}
           ${bestEffortsCard}
           ${noActivities}
           ${content}`;
-        sendHtml(response, 200, pageLayout("Training log", body, user, "history", flash));
+        sendHtml(response, 200, pageLayout(tx.t("history.eyebrow"), body, user, "history", flash));
         return;
       }
 
@@ -4208,7 +4707,7 @@ export function createWeb(options: WebOptions): WebApp {
           controls: options.store.listMuscleStatusControls(user.userId),
           today,
         });
-        const muscleChip = muscleCalendarChip(muscleStatuses) ?? "";
+        const muscleChip = muscleCalendarChip(muscleStatuses, tx) ?? "";
         const stateChips =
           activeStates.length === 0 && muscleChip.length === 0
             ? ""
@@ -4235,20 +4734,21 @@ export function createWeb(options: WebOptions): WebApp {
         const prev = addDays(start, -1).slice(0, 7);
         const next = addDays(end, 1).slice(0, 7);
         const currentMonth = today.slice(0, 7);
-        const monthLabel = `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
+        const date = tx.date;
+        const monthLabel = date.monthLabel(month);
         const savedKey = options.store.getGarminKey(user.userId);
-        const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, url.searchParams.get("keyError"));
+        const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, tx, url.searchParams.get("keyError"));
         // Freshness beside the data: the same timestamp the bell shows, formatted in the runner's own timezone.
         const lastSync = options.store.getLastSync(user.userId);
         const syncChip = savedKey !== undefined && lastSync !== null
-          ? `<span class="chip garmin-sync-chip" title="The last Garmin pull, shown in your timezone">Garmin synced ${escapeHtml(localDateTime(lastSync, safeTimeZone(user.timezone)))}</span>`
+          ? `<span class="chip garmin-sync-chip" title="${escapeHtml(tx.t("calendar.syncedChipTitle"))}">${escapeHtml(tx.t("calendar.syncedChip", { time: localDateTime(lastSync, safeTimeZone(user.timezone)) }))}</span>`
           : "";
-        const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams);
+        const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams, tx);
         const emptyCard = sessions.length > 0 || activities.length > 0
           ? ""
-          : `<section class="card empty-card"><h2>Your calendar is empty</h2><p class="muted">Ask the coach for a plan, connect Garmin, or log a run by hand. The coach books, moves and deletes sessions; you can undo a batch from the recent changes below.</p><p class="empty-actions"><a class="btn" href="/calendar?garmin=setup">Connect Garmin</a> <a class="btn ghost" href="/day/${escapeHtml(today)}#log-run">Log a run</a> <button class="btn ghost coach-ask" type="button" data-coach-message="Help me plan the next two weeks." data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "composer" }))}">Ask the coach</button></p></section>`;
+          : `<section class="card empty-card"><h2>${escapeHtml(tx.t("calendar.emptyTitle"))}</h2><p class="muted">${escapeHtml(tx.t("calendar.emptyBody"))}</p><p class="empty-actions"><a class="btn" href="/calendar?garmin=setup">${escapeHtml(tx.t("calendar.connectGarmin"))}</a> <a class="btn ghost" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a> <button class="btn ghost coach-ask" type="button" data-coach-message="Help me plan the next two weeks." data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "composer" }))}">${escapeHtml(tx.t("calendar.askCoachFull"))}</button></p></section>`;
         const connectCard = savedKey === undefined
-          ? `<section class="card connect-card"><h2>Garmin is not connected</h2><p class="muted small">Connect a Personal API key to pull completed runs and pair them with the workout they followed. <a class="btn" href="/calendar?garmin=setup">Connect Garmin</a> <a class="chip" href="/day/${escapeHtml(today)}#log-run">Log a run by hand</a></p></section>`
+          ? `<section class="card connect-card"><h2>${escapeHtml(tx.t("calendar.connectTitle"))}</h2><p class="muted small">${escapeHtml(tx.t("calendar.connectBody"))} <a class="btn" href="/calendar?garmin=setup">${escapeHtml(tx.t("calendar.connectGarmin"))}</a> <a class="chip" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRunHand"))}</a></p></section>`
           : "";
         // The 6am answer: what is booked today, above the grid, only in the month that contains today.
         const todaySessions = month === currentMonth ? sessions.filter((session) => session.day === today) : [];
@@ -4257,35 +4757,35 @@ export function createWeb(options: WebOptions): WebApp {
         const todayRun = todayActivities[0];
         const todayStrip = month !== currentMonth
           ? ""
-          : `<section class="today-strip" aria-label="Today">
-            <div class="today-strip-head"><span class="today-strip-label">Today</span><span class="today-strip-date">${escapeHtml(formatDayLabel(today))}</span></div>${
+          : `<section class="today-strip" aria-label="${escapeHtml(tx.t("calendar.today"))}">
+            <div class="today-strip-head"><span class="today-strip-label">${escapeHtml(tx.t("calendar.today"))}</span><span class="today-strip-date">${escapeHtml(formatDayLabel(today, date))}</span></div>${
               todaySession !== undefined
-                ? `<div class="today-strip-main"><span class="chip kind-${escapeHtml(todaySession.kind)}">${escapeHtml(sessionKindLabel(todaySession.kind))}</span><strong class="today-strip-title">${escapeHtml(todaySession.title)}</strong>${[
+                ? `<div class="today-strip-main"><span class="chip kind-${escapeHtml(todaySession.kind)}">${escapeHtml(sessionKindLabel(todaySession.kind, tx))}</span><strong class="today-strip-title">${escapeHtml(todaySession.title)}</strong>${[
                     todaySession.distanceKm === null ? "" : `${todaySession.distanceKm} km`,
                     todaySession.durationMin === null ? "" : formatMinutes(todaySession.durationMin),
-                  ].filter((part) => part.length > 0).map((part) => `<span class="today-strip-meta">${escapeHtml(part)}</span>`).join("")}${todaySessions.length > 1 ? `<a class="chip" href="/day/${escapeHtml(today)}">+${todaySessions.length - 1} more</a>` : ""}${todayRun !== undefined ? `<span class="today-strip-meta"><span class="tick">✓</span> ${escapeHtml(todayRun.title)} — ${escapeHtml(activityMetrics(todayRun))}</span>` : ""}<p class="today-strip-intent">${escapeHtml(sessionIntent(todaySession).purpose)} <span class="muted">${escapeHtml(sessionIntent(todaySession).effort)}</span></p></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(`What is planned on ${today}?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day: today, source: "today-strip" }))}">Ask coach</button><a class="chip" href="/day/${escapeHtml(today)}">View day</a></div>`
+                  ].filter((part) => part.length > 0).map((part) => `<span class="today-strip-meta">${escapeHtml(part)}</span>`).join("")}${todaySessions.length > 1 ? `<a class="chip" href="/day/${escapeHtml(today)}">+${todaySessions.length - 1}${escapeHtml(tx.t("calendar.moreSuffix"))}</a>` : ""}${todayRun !== undefined ? `<span class="today-strip-meta"><span class="tick">✓</span> ${escapeHtml(todayRun.title)} — ${escapeHtml(activityMetrics(todayRun))}</span>` : ""}<p class="today-strip-intent">${escapeHtml(sessionIntent(todaySession, tx).purpose)} <span class="muted">${escapeHtml(sessionIntent(todaySession, tx).effort)}</span></p></div>
+              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(`What is planned on ${today}?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(today)}">${escapeHtml(tx.t("calendar.viewDay"))}</a></div>`
                 : todayRun !== undefined
                   ? `<div class="today-strip-main"><strong class="today-strip-title"><span class="tick">✓</span> ${escapeHtml(todayRun.title)}</strong><span class="today-strip-meta">${escapeHtml(activityMetrics(todayRun))}</span><span class="chip source-${escapeHtml(todayRun.source)}">${escapeHtml(activitySourceLabel(todayRun))}</span></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(todayRun))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: todayRun.activityId, source: "today-strip" }))}">Ask coach</button><a class="chip" href="/activity/${encodeURIComponent(todayRun.activityId)}">Detail</a><a class="chip" href="/day/${escapeHtml(today)}">View day</a></div>`
-                  : `<div class="today-strip-main"><p class="today-strip-empty">Nothing booked today — ask the coach to fill it, or log a run by hand.</p></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Add a session on ${today}: `)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", day: today, source: "today-strip" }))}">Ask the coach</button><a class="chip" href="/day/${escapeHtml(today)}#log-run">Log a run</a></div>`
+              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(todayRun))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: todayRun.activityId, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button><a class="chip" href="/activity/${encodeURIComponent(todayRun.activityId)}">${escapeHtml(tx.t("calendar.detail"))}</a><a class="chip" href="/day/${escapeHtml(today)}">${escapeHtml(tx.t("calendar.viewDay"))}</a></div>`
+                  : `<div class="today-strip-main"><p class="today-strip-empty">${escapeHtml(tx.t("calendar.nothingToday"))}</p></div>
+              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Add a session on ${today}: `)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoachFull"))}</button><a class="chip" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a></div>`
             }</section>`;
-        const body = `<header class="page-head"><p class="eyebrow">Your training calendar</p>
-          <h1>Your plan</h1>
-          <p class="muted">Welcome back, ${escapeHtml(user.displayName)}.</p>
-          <p class="cal-legend">Colored row: planned session · green ✓ row: recorded run · green+purple ◈ row: recorded run + the Garmin workout it followed.</p>
-          <p class="head-actions"><a class="chip action" href="/day/${escapeHtml(today)}#log-run">Log a run</a> <a class="chip action" href="#recent-changes">Recent changes</a>${syncChip}</p>${stateChips}</header>
+        const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("calendar.eyebrow"))}</p>
+          <h1>${escapeHtml(tx.t("calendar.heading"))}</h1>
+          <p class="muted">${escapeHtml(tx.t("calendar.welcome", { name: user.displayName }))}</p>
+          <p class="cal-legend">${escapeHtml(tx.t("calendar.legend"))}</p>
+          <p class="head-actions"><a class="chip action" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a> <a class="chip action" href="#recent-changes">${escapeHtml(tx.t("changes.title"))}</a>${syncChip}</p>${stateChips}</header>
           ${todayStrip}
           ${reviewCard}
           ${emptyCard}
           <section class="card">
-            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">← Previous</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="Choose month">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">Next →</a></div>
-            <div class="dow">${DOW.map((day) => `<span>${day}</span>`).join("")}</div>
+            <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">${escapeHtml(tx.t("calendar.prev"))}</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="${escapeHtml(tx.t("calendar.chooseMonth"))}">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">${escapeHtml(tx.t("calendar.next"))}</a></div>
+            <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
           ${connectCard}
-          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`)}
+          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx)}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;
@@ -4315,7 +4815,7 @@ export function createWeb(options: WebOptions): WebApp {
           peekActivity.activityId,
         );
         const peekWorkout = options.store.getActivityWorkout(user.userId, peekActivity.activityId) ?? null;
-        sendJson(response, 200, { peek: buildActivityPeek(peekActivity, peekSessions, peekPrDistances, peekWorkout) });
+        sendJson(response, 200, { peek: buildActivityPeek(peekActivity, peekSessions, peekPrDistances, peekWorkout, tx) });
         return;
       }
 
@@ -4341,7 +4841,7 @@ export function createWeb(options: WebOptions): WebApp {
         const peekActivities = options.store
           .listActivities(user.userId, 500)
           .filter((activity) => activity.day === peekSession.day);
-        sendJson(response, 200, { peek: buildSessionPeek(peekSession, peekSessions, peekActivities, today) });
+        sendJson(response, 200, { peek: buildSessionPeek(peekSession, peekSessions, peekActivities, today, tx) });
         return;
       }
 
@@ -4350,12 +4850,12 @@ export function createWeb(options: WebOptions): WebApp {
         try {
           activityId = decodeURIComponent(url.pathname.slice("/activity/".length));
         } catch {
-          sendHtml(response, 404, pageLayout("Not found", `<p>Not found</p>`, user, "none"));
+          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const activity = options.store.getActivity(user.userId, activityId);
         if (activity === undefined) {
-          sendHtml(response, 404, pageLayout("Not found", `<p>Not found</p>`, user, "none"));
+          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const sessions = options.store.listSessions(user.userId, activity.day, activity.day);
@@ -4376,14 +4876,14 @@ export function createWeb(options: WebOptions): WebApp {
             try {
               splits = mapGarminSplits(await garmin.getActivityDetails(garminId));
             } catch {
-              splitError = "Garmin per-kilometre splits are not available for this run.";
+              splitError = tx.t("activity.splitError");
             }
           }
           if (garmin.getActivitySummary !== undefined) {
             try {
               laps = mapGarminLaps(await garmin.getActivitySummary(garminId));
             } catch {
-              lapError = "Garmin lap/interval summaries are not available for this run.";
+              lapError = tx.t("activity.lapError");
             }
           }
         }
@@ -4394,11 +4894,11 @@ export function createWeb(options: WebOptions): WebApp {
           workoutError = ensured.error;
         }
         const prDistances = prDistancesFor(options.store.listActivities(user.userId, 1000), activity.activityId);
-        const extraMetrics = activityExtraMetrics(activity);
+        const extraMetrics = activityExtraMetrics(activity, tx);
         const efforts = fastestEfforts(activity, prDistances);
         const metricsCard = extraMetrics.length === 0 && efforts.length === 0
           ? ""
-          : `<section class="card metric-extra-card"><h2>Run metrics</h2>${extraMetrics}${efforts}</section>`;
+          : `<section class="card metric-extra-card"><h2>${escapeHtml(tx.t("activity.runMetrics"))}</h2>${extraMetrics}${efforts}</section>`;
         const worked = musclesForRun({
           title: activity.title,
           kind: match.session?.kind,
@@ -4415,41 +4915,42 @@ export function createWeb(options: WebOptions): WebApp {
             today,
           }),
           activityCheckIns.find((checkIn) => checkIn.activityId === activity.activityId) ?? null,
+          tx,
         );
-        const splitsHtml = activity.source === "garmin" ? splitsSection(splits, splitError) : "";
+        const splitsHtml = activity.source === "garmin" ? splitsSection(splits, splitError, tx) : "";
         const showLaps = laps.length > 1 || laps.some((lap) => lap.type !== "Run");
         const lapsHtml = lapError !== null
-          ? lapsSection([], lapError)
-          : showLaps ? lapsSection(laps, null) : "";
-        const zonesHtml = hrZonesSection(activity);
-        const workoutHtml = workoutSection(workout, workoutError);
+          ? lapsSection([], lapError, tx)
+          : showLaps ? lapsSection(laps, null, tx) : "";
+        const zonesHtml = hrZonesSection(activity, tx);
+        const workoutHtml = workoutSection(workout, workoutError, tx);
         const otherSessions = unmatched.length === 0
           ? ""
-          : `<section class="card"><h2>Other planned sessions that day</h2><p class="muted small">No matching run was recorded for these.</p><p class="history-plan">${unmatched.map(sessionChip).join(" ")}</p></section>`;
-        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← Training log</a> · Activity</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity))}</span></p></header>
+          : `<section class="card"><h2>${escapeHtml(tx.t("activity.otherPlanned"))}</h2><p class="muted small">${escapeHtml(tx.t("activity.otherPlannedNote"))}</p><p class="history-plan">${unmatched.map(sessionChip).join(" ")}</p></section>`;
+        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← ${escapeHtml(tx.t("nav.log"))}</a> · ${escapeHtml(tx.t("activity.title"))}</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day, tx.date))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity, tx))}</span></p></header>
           <section class="history-summary detail-summary">
-            <div class="stat"><strong>${activity.distanceKm === null ? "—" : `${activity.distanceKm} km`}</strong><span>distance</span></div>
-            <div class="stat"><strong>${activity.durationMin === null ? "—" : formatMinutes(activity.durationMin)}</strong><span>time</span></div>
-            <div class="stat"><strong>${activity.paceSecPerKm === null ? "—" : formatPace(activity.paceSecPerKm)}</strong><span>pace</span></div>
-            <div class="stat"><strong>${activity.avgHr === null ? "—" : `${activity.avgHr} bpm`}</strong><span>avg HR</span></div>
+            <div class="stat"><strong>${activity.distanceKm === null ? "—" : `${activity.distanceKm} km`}</strong><span>${escapeHtml(tx.t("history.statDistance"))}</span></div>
+            <div class="stat"><strong>${activity.durationMin === null ? "—" : formatMinutes(activity.durationMin)}</strong><span>${escapeHtml(tx.t("history.statTime"))}</span></div>
+            <div class="stat"><strong>${activity.paceSecPerKm === null ? "—" : formatPace(activity.paceSecPerKm)}</strong><span>${escapeHtml(tx.t("activity.pace"))}</span></div>
+            <div class="stat"><strong>${activity.avgHr === null ? "—" : `${activity.avgHr} bpm`}</strong><span>${escapeHtml(tx.t("activity.avgHr"))}</span></div>
           </section>
-          ${planComparison(match)}
+          ${planComparison(match, tx)}
           ${workoutHtml}
           ${workedCard}
           ${metricsCard}
           ${splitsHtml}
           ${lapsHtml}
           ${zonesHtml}
-          <section class="card"><h2>Ask the coach about this run</h2><p class="muted">The coach will compare this run with your plan for the day and comment on effort, pace and what to keep in mind. Your calendar will not change.</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">Ask coach</button><a class="chip" href="/day/${escapeHtml(activity.day)}">View day</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">View plan</a></div></section>
+          <section class="card"><h2>${escapeHtml(tx.t("activity.askCoachTitle"))}</h2><p class="muted">${escapeHtml(tx.t("activity.askCoachProse"))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a></div></section>
           ${otherSessions}`;
-        sendHtml(response, 200, pageLayout("Activity", body, user, "history", flash));
+        sendHtml(response, 200, pageLayout(tx.t("activity.title"), body, user, "history", flash));
         return;
       }
 
       if (url.pathname.startsWith("/day/")) {
         const day = url.pathname.slice("/day/".length);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-          sendHtml(response, 404, pageLayout("Not found", `<p>Not found</p>`, user, "none"));
+          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const sessions = options.store.listSessions(user.userId, day, day);
@@ -4459,26 +4960,26 @@ export function createWeb(options: WebOptions): WebApp {
           .filter((workout) => workout.status === "ok");
         const workoutCard = dayWorkouts.length === 0
           ? ""
-          : `<section class="card"><h2>Garmin workouts</h2><p class="muted small">The planned workout a recorded run followed. Garmin supplies this per activity; it is not a future plan.</p>${dayWorkouts.map((workout) => `<p class="history-program"><span class="chip">Garmin workout</span><span>${escapeHtml(workout.label)}${workout.summary.length === 0 ? "" : ` · ${escapeHtml(workout.summary)}`}</span></p>`).join("")}</section>`;
-        const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams);
-        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← Calendar</a></p><h1>${escapeHtml(formatDayLabel(day))}</h1>
-          <p class="muted">${escapeHtml(day)} · ${escapeHtml(user.displayName)} · <a href="/profile">Profile</a></p></header>
+          : `<section class="card"><h2>${escapeHtml(tx.t("day.garminWorkouts"))}</h2><p class="muted small">${escapeHtml(tx.t("day.garminWorkoutsProse"))}</p>${dayWorkouts.map((workout) => `<p class="history-program"><span class="chip">${escapeHtml(tx.t("day.garminWorkoutChip"))}</span><span>${escapeHtml(workout.label)}${workout.summary.length === 0 ? "" : ` · ${escapeHtml(workout.summary)}`}</span></p>`).join("")}</section>`;
+        const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams, tx);
+        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← ${escapeHtml(tx.t("day.backCalendar"))}</a></p><h1>${escapeHtml(formatDayLabel(day, tx.date))}</h1>
+          <p class="muted">${escapeHtml(day)} · ${escapeHtml(user.displayName)} · <a href="/profile">${escapeHtml(tx.t("account.profile"))}</a></p></header>
           ${reviewCard}
-          <section class="card"><h2>Booked by the coach</h2>${sessions.length === 0 ? `<p class="muted">No session booked.</p>` : `<ul class="sessions">${sessions.map((session) => `<li><strong>${escapeHtml(session.title)}</strong> <span class="chip kind-${escapeHtml(session.kind)}">${escapeHtml(sessionKindLabel(session.kind))}</span>${session.distanceKm === null ? "" : ` · ${session.distanceKm} km`}${session.durationMin === null ? "" : ` · ${formatMinutes(session.durationMin)}`}${session.note === null ? "" : `<p class="note">${escapeHtml(session.note)}</p>`}${sessionIntentHtml(session)}</li>`).join("")}</ul>`}</section>
-          <section class="card"><h2>Recorded activities</h2>${activities.length === 0 ? `<p class="muted">Nothing recorded yet. Log a run below if it is not on Garmin.</p>` : `<ul class="sessions">${activities.map(activityLine).join("")}</ul>`}</section>
-          <section class="card" id="log-run"><h2>Log a run</h2><p class="muted small">Treadmill, commute or a run from a watch that is not Garmin. It is matched to the plan with the same same-day rules as a synced run, and a later Garmin sync will not overwrite it.</p>
+          <section class="card"><h2>${escapeHtml(tx.t("day.bookedByCoach"))}</h2>${sessions.length === 0 ? `<p class="muted">${escapeHtml(tx.t("day.noSession"))}</p>` : `<ul class="sessions">${sessions.map((session) => `<li><strong>${escapeHtml(session.title)}</strong> <span class="chip kind-${escapeHtml(session.kind)}">${escapeHtml(sessionKindLabel(session.kind, tx))}</span>${session.distanceKm === null ? "" : ` · ${session.distanceKm} km`}${session.durationMin === null ? "" : ` · ${formatMinutes(session.durationMin)}`}${session.note === null ? "" : `<p class="note">${escapeHtml(session.note)}</p>`}${sessionIntentHtml(session, tx)}</li>`).join("")}</ul>`}</section>
+          <section class="card"><h2>${escapeHtml(tx.t("day.recorded"))}</h2>${activities.length === 0 ? `<p class="muted">${escapeHtml(tx.t("day.recordedEmpty"))}</p>` : `<ul class="sessions">${activities.map((activity) => activityLine(activity, tx)).join("")}</ul>`}</section>
+          <section class="card" id="log-run"><h2>${escapeHtml(tx.t("day.logRun"))}</h2><p class="muted small">${escapeHtml(tx.t("day.logRunProse"))}</p>
             <form method="post" action="/activities" class="stack log-form">
               <input type="hidden" name="next" value="/day/${escapeHtml(day)}">
               <input type="hidden" name="requestId" value="${escapeHtml(randomUUID())}">
-              <label for="log-day">Day</label><input id="log-day" name="day" type="date" value="${escapeHtml(day)}" max="${escapeHtml(today)}" required>
-              <label for="log-title">Title <span class="muted small">(optional)</span></label><input id="log-title" name="title" maxlength="80" placeholder="Morning run" autocomplete="off">
-              <div class="log-row"><div><label for="log-distance">Distance (km)</label><input id="log-distance" name="distanceKm" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="5"></div><div><label for="log-duration">Duration (min)</label><input id="log-duration" name="durationMin" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="30"></div></div>
-              <label for="log-rpe">How did it feel? (0-10, optional)</label><input id="log-rpe" name="rpe" type="number" min="0" max="10" step="0.5" inputmode="decimal" placeholder="7">
-              <button class="btn" type="submit">Log run</button>
+              <label for="log-day">${escapeHtml(tx.t("day.fieldDay"))}</label><input id="log-day" name="day" type="date" value="${escapeHtml(day)}" max="${escapeHtml(today)}" required>
+              <label for="log-title">${escapeHtml(tx.t("day.fieldTitle"))} <span class="muted small">${escapeHtml(tx.t("day.fieldTitleOptional"))}</span></label><input id="log-title" name="title" maxlength="80" placeholder="${escapeHtml(tx.t("day.titlePlaceholder"))}" autocomplete="off">
+              <div class="log-row"><div><label for="log-distance">${escapeHtml(tx.t("day.fieldDistance"))}</label><input id="log-distance" name="distanceKm" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="5"></div><div><label for="log-duration">${escapeHtml(tx.t("day.fieldDuration"))}</label><input id="log-duration" name="durationMin" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="30"></div></div>
+              <label for="log-rpe">${escapeHtml(tx.t("day.fieldRpe"))}</label><input id="log-rpe" name="rpe" type="number" min="0" max="10" step="0.5" inputmode="decimal" placeholder="7">
+              <button class="btn" type="submit">${escapeHtml(tx.t("day.submit"))}</button>
             </form>
           </section>
           ${workoutCard}`;
-        sendHtml(response, 200, pageLayout(formatDayLabel(day), body, user, "calendar", flash));
+        sendHtml(response, 200, pageLayout(formatDayLabel(day, tx.date), body, user, "calendar", flash));
         return;
       }
 
@@ -4636,9 +5137,10 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
-      sendHtml(response, 404, pageLayout("Not found", `<p>Not found</p>`, user, "none"));
+      sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
     })().catch((error: unknown) => {
-      if (!response.headersSent) sendHtml(response, 500, pageLayout("Error", `<p class="error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`, requestUser, "none"));
+      // Fallback path runs outside the async handler, so there is no per-request translator here; use the default.
+      if (!response.headersSent) sendHtml(response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`, requestUser, "none", unreadFor(requestUser)));
       else response.end();
     });
   });

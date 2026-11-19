@@ -869,7 +869,7 @@ describe("calendar run peek", () => {
     expect(html).toContain("Training log week");
     expect(html).toContain("View day");
     expect(html).toContain("Open full detail");
-    expect(html).toContain("app.css?v=24");
+    expect(html).toContain("app.css?v=");
 
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain("#activity-peek");
@@ -1109,8 +1109,8 @@ describe("calendar session peek", () => {
     expect(html).toContain("session-peek");
     expect(html).toContain("Loading session details");
     expect(html).toContain("peek-status-");
-    expect(html).toContain("View day →");
-    expect(html).toContain("app.css?v=24");
+    expect(html).toContain("tr('peekViewDay', 'View day') + ' →'");
+    expect(html).toContain("app.css?v=");
 
     const data = (await (
       await fetch(`${base}/calendar/data?month=2026-11`, { headers: { cookie } })
@@ -1565,6 +1565,41 @@ describe("training log", () => {
     expect(year).toContain("4:40");
   });
 
+  it("localizes the history cards and footer when the language cookie is zh-HK", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          distanceKm: 5,
+          durationMin: 30,
+          paceSecPerKm: 360,
+          avgHr: 145,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+        };
+        store.appendActivity({ ...baseActivity, activityId: "garmin:nov", day: "2026-11-02", title: "November fast", fastest1kSec: 290 });
+      },
+    });
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/history?view=month&period=2026-11`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    expect(html).toContain("最佳表現");
+    expect(html).not.toContain("Best efforts");
+    expect(html).toContain("November fast");
+    expect(html).toContain("繁體中文（香港）");
+    expect(html).toContain('class="lang-btn" role="button" aria-current="true"');
+    // Trend + load chrome localize too; English labels must not leak through.
+    expect(html).toContain("趨勢");
+    expect(html).toContain("平均配速");
+    expect(html).toContain("摘要");
+    expect(html).toContain("1 次跑步");
+    expect(html).toContain("指標趨勢");
+    expect(html).toContain("趨勢指標");
+    expect(html).not.toContain("Average pace");
+    expect(html).not.toContain("Metric trend");
+    expect(html).not.toContain("Trend metric");
+  });
+
   it("shows the weekly load card and a weekly coach review prompt", async () => {
     const { base, cookie } = await start({
       seed: (store, runner) => {
@@ -1603,6 +1638,44 @@ describe("training log", () => {
     expect(html).toContain("Review my week with the coach");
     expect(html).toContain("Review my training week 2–8 Nov 2026");
     expect(html).toContain("Garmin load 200");
+  });
+
+  it("localizes the weekly load card when the language cookie is zh-HK", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        const baseActivity = {
+          userId: runner.userId,
+          distanceKm: 5,
+          durationMin: 30,
+          paceSecPerKm: 360,
+          avgHr: 145,
+          source: "garmin" as const,
+          createdAt: `${TODAY}T08:00:00.000Z`,
+        };
+        store.appendActivity({ ...baseActivity, activityId: "garmin:load-1", day: "2026-11-02", title: "Easy run", trainingLoad: 100, trainingEffectLabel: "AEROBIC_BASE" });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:load-2", day: "2026-11-04", title: "Tempo run", distanceKm: 6, trainingLoad: 100, trainingEffectLabel: "TEMPO" });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:load-3", day: "2026-10-27", title: "Previous run", trainingLoad: 200, trainingEffectLabel: "AEROBIC_BASE" });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:load-4", day: "2026-10-20", title: "Earlier run", trainingLoad: 200, trainingEffectLabel: "AEROBIC_BASE" });
+        store.appendActivity({ ...baseActivity, activityId: "garmin:load-5", day: "2026-10-13", title: "Earlier run 2", trainingLoad: 200, trainingEffectLabel: "AEROBIC_BASE" });
+      },
+    });
+
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/history`, { headers: { cookie: zh } })).text();
+    // Load chrome localizes: stat labels, hard/easy split, split label, and the coach review button.
+    expect(html).toContain("與教練檢視本週");
+    expect(html).not.toContain("Review my week with the coach");
+    expect(html).toContain("高強度");
+    expect(html).toContain("低強度");
+    expect(html).toContain("1 次跑步");
+    expect(html).not.toContain("Hard 1 run");
+    // ACWR is a universal label and stays; the coach button label is localized while its bound prompt keeps English words.
+    expect(html).toContain("ACWR");
+    // The signal chip and its note localize too (steady signal from this fixture).
+    // The English "Steady" survives only inside the LLM-bound coach prompt (by design), so assert the chip itself.
+    expect(html).toContain('class="load-chip steady">平穩</span>');
+    expect(html).toContain("負荷喺近期範圍之內");
+    expect(html).not.toContain("Load is within the recent range");
   });
 
   it("omits empty load stats when Garmin did not provide load data", async () => {
@@ -2515,6 +2588,29 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-label="Minimize chat"');
     expect(html).toContain(">−</button>");
     expect(html).not.toContain('aria-label="Close chat"');
+    // The dock: one coach surface grouped into Chat / States / Changes, with a close control for the floating sheet.
+    expect(html).toContain('<div class="app-shell"><main>');
+    expect(html).toContain('</main><aside class="coach-dock"');
+    expect(html).toContain('role="tablist"');
+    expect(html).toContain('aria-label="Coach sections"');
+    expect(html).toContain('data-coach-tab="chat"');
+    expect(html).toContain('data-coach-tab="states"');
+    expect(html).toContain('data-coach-tab="changes"');
+    expect(html).toContain('id="coach-tabpanel-chat"');
+    expect(html).toContain('id="coach-tabpanel-states"');
+    expect(html).toContain('id="coach-tabpanel-changes"');
+    expect(html).toContain('id="coach-states-list"');
+    expect(html).toContain('id="coach-changes-list"');
+    expect(html).toContain('id="coach-close"');
+    expect(html).toContain('aria-label="Close coach panel"');
+    expect(html).toContain("All coaching states");
+    expect(html).toContain("Open Recent changes");
+    expect(html).toContain("setTab");
+    expect(html).toContain("renderStatesTab");
+    expect(html).toContain("renderChangesTab");
+    expect(html).toContain("coach-open");
+    expect(html).toContain("statesBadgeTitle");
+    expect(html).toContain("changesBadgeTitle");
     expect(html).toContain("minimizePanel");
     expect(html).not.toContain("Bookings up to 180 days ahead");
     expect(html).not.toContain('href="/coach-audit"');
@@ -2530,7 +2626,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("showStarters");
     expect(html).toContain("setRetry");
     expect(html).toContain("addFailureCard");
-    expect(html).toContain("Could not apply · 未套用");
+    expect(html).toContain("Could not apply");
     expect(html).toContain("failure-actions");
     expect(html).toContain("fetch('/chat'");
     expect(html).toContain("fetch('/chat/history'");
@@ -2539,7 +2635,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("parseIntent");
     expect(html).toContain("pendingIntent");
     expect(html).toContain("blockedWrites");
-    expect(html).toContain("Calendar unchanged · 日曆未有更改");
+    expect(html).toContain("Calendar unchanged");
     expect(html).toContain("That run could not be found.");
     expect(html).toContain("The coach is unavailable right now. Try again.");
     expect(html).not.toContain("data.error.detail");
@@ -2567,7 +2663,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('aria-haspopup="dialog"');
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
-    expect(html).toContain("app.css?v=24");
+    expect(html).toContain("app.css?v=");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -2592,6 +2688,15 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain(".audit-item");
     expect(css).toContain(".audit-background");
     expect(css).toContain(".coach-head-actions");
+    // The dock reflows the page into two columns on wide screens and becomes a sheet below 1200px.
+    expect(css).toContain(".app-shell");
+    expect(css).toContain("body.coach-open .app-shell");
+    expect(css).toContain("grid-template-columns: minmax(0, 1fr) 340px");
+    expect(css).toContain(".coach-tabs");
+    expect(css).toContain(".coach-tab-panel");
+    expect(css).toContain(".coach-tab-body");
+    expect(css).toContain(".coach-change");
+    expect(css).toContain("#coach-close");
     expect(css).not.toContain(".coach-limit");
     expect(css).not.toContain(".coach-audit-link");
     expect(css).toContain(".period-bar");
@@ -2614,7 +2719,7 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("#day-menu");
     expect(css).toContain("#month-picker");
     expect(css).not.toContain("#coach-undo");
-    expect(html).toContain("Calendar updated · 日曆已更新");
+    expect(html).toContain("Calendar updated");
     // A guardrail line is a block, not a success: warning styling plus consultative copy.
     expect(html).toContain("addGuardrail");
     expect(html).toContain("bubble system warn");
@@ -2622,19 +2727,31 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain(".bubble.system.warn");
     // The delete animation ends by pointing at the Recent changes card, where the Undo form lives.
     expect(html).toContain("showDeleteToast");
-    expect(html).toContain("Deleted ");
+    expect(html).toContain("Deleted");
     expect(html).toContain("Undo in Recent changes");
     expect(css).toContain(".fx-toast");
     // The bubble's state card can open the discussion about how the state shapes the week.
-    expect(html).toContain("Discuss this state · 討論");
+    expect(html).toContain("Discuss this state");
     expect(html).toContain("discuss-state");
     expect(html).toContain("state-card");
     expect(html).toContain('data-month="2026-11"');
     expect(html).toContain('data-day="2026-11-06"');
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    // The coach bubble, notifications, the account menu, the calendar wiring and the muscle attention badge.
-    expect(scripts).toHaveLength(5);
+    // The i18n bootstrap, the coach bubble, notifications, the account menu, the calendar wiring and the muscle attention badge.
+    expect(scripts).toHaveLength(6);
     for (const script of scripts) expect(() => new Function(script[1] ?? "")).not.toThrow();
+  });
+
+  it("localizes the dock tabs, footers and close control in Chinese", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: `${cookie}; poc3_lang=zh-HK` } })).text();
+    expect(html).toContain(">對話</button>");
+    expect(html).toContain(">狀態<");
+    expect(html).toContain(">變更<");
+    expect(html).toContain('aria-label="關閉教練面板"');
+    expect(html).toContain("所有教練狀態");
+    expect(html).toContain("在近期變更中開啟");
+    expect(html).not.toContain(">Chat</button>");
   });
 
   it("tags action buttons with typed intents instead of hidden prose", async () => {
@@ -2984,6 +3101,45 @@ describe("conversation history after refresh", () => {
     expect(body.messages.some((message) => message.text === "foreign")).toBe(false);
   });
 
+  it("returns the change journal for the dock's Changes tab in one request", async () => {
+    const { base, cookie, handle, user } = await start();
+    const before = {
+      sessionId: "session:history-move",
+      userId: user.userId,
+      day: "2026-11-06",
+      title: "Easy 5 km",
+      kind: "easy" as const,
+      distanceKm: 5,
+      durationMin: 35,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const after = { ...before, day: "2026-11-08" };
+    const changeSet: ChangeSet = {
+      changeSetId: "change:history",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: "Moved Easy 5 km to Sunday",
+      entries: [{ action: "update", sessionId: before.sessionId, before, after, fromDay: before.day, toDay: after.day, title: before.title, kind: before.kind }],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+
+    const response = await fetch(`${base}/chat/history`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      changes: Array<{
+        changeSetId: string;
+        summary: string;
+        revertedAt: string | null;
+        entries: Array<{ action: string; title: string; fromDay: string | null; toDay: string | null }>;
+      }>;
+    };
+    expect(body.changes).toHaveLength(1);
+    expect(body.changes[0]).toMatchObject({ changeSetId: "change:history", summary: "Moved Easy 5 km to Sunday", revertedAt: null });
+    expect(body.changes[0]?.entries[0]).toMatchObject({ action: "update", title: "Easy 5 km", fromDay: "2026-11-06", toDay: "2026-11-08" });
+  });
+
   it("greets a fresh runner on first open instead of an empty log, reflecting their goal", async () => {
     const { base } = await start();
     const noGoal = await fetch(`${base}/signup`, {
@@ -3093,7 +3249,8 @@ describe("coach states page", () => {
     expect(html).toContain("state%3Apain");
     expect(html).toContain("Temporary situations");
     // Each state can reach the coach in one tap, with the stateId referenced by a typed discuss-state intent.
-    expect(html).toContain("Ask coach about this state · 問問教練");
+    expect(html).toContain("Ask coach about this state");
+    expect(html).not.toContain("問問教練");
     expect(html).toContain("How should the Heat state shape my coming week?");
     expect(html).toContain("How should the Pain / injury state shape my coming week?");
     expect(html).toContain("discuss-state");
@@ -3104,6 +3261,19 @@ describe("coach states page", () => {
     expect(html).not.toContain('href="/coach-audit"');
     expect(html).not.toContain("Other secret");
     expect(user.userId).not.toBe(other.userId);
+  });
+
+  it("localizes the coaching states page chrome when the language cookie is zh-HK", async () => {
+    const { base, cookie } = await start();
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/coach-states`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    expect(html).toContain("教練狀態");
+    expect(html).toContain("生效狀態");
+    expect(html).toContain("設定狀態");
+    // English chrome must not leak through into the zh-HK render.
+    expect(html).not.toContain("Active states");
+    expect(html).not.toContain("Set a state");
   });
 
   it("sets a state from the form and reports validation errors", async () => {
@@ -3158,7 +3328,8 @@ describe("coach states page", () => {
       },
     });
     const before = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
-    expect(before).toContain("Refresh · 更新");
+    expect(before).toContain("Refresh");
+    expect(before).not.toContain("更新");
     expect(before).not.toContain("2026-11-08");
 
     const refreshed = await fetch(`${base}/coach-states/refresh`, {
@@ -3172,7 +3343,8 @@ describe("coach states page", () => {
     const after = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
     expect(after).toContain("2026-11-08");
     expect(after).toContain("Race week");
-    expect(after).toContain("Setup · 設定");
+    expect(after).toContain("Setup");
+    expect(after).not.toContain("設定");
     expect(after).toContain("Connect Garmin");
   });
 
@@ -3334,7 +3506,7 @@ describe("coach states page", () => {
     expect(page).toContain("state-bubble-head");
     expect(page).toContain("Calendar unchanged — ");
     // The guardrail line keeps its meaning but speaks as a consultant: what is protected, then the offer to discuss.
-    expect(page).toContain("is protecting the plan · want to talk through what would work instead? · 日曆未有更改");
+    expect(page).toContain("is protecting the plan · want to talk through what would work instead?");
     const css = await (await fetch(`${base}/static/app.css`)).text();
     expect(css).toContain(".state-card");
     expect(css).toContain(".state-form");
@@ -3419,7 +3591,7 @@ describe("involve the coach actions", () => {
     expect(update.status).toBe(303);
     expect(update.headers.get("location")).toBe("/profile?saved=1&goal=1");
     const page = await (await fetch(`${base}/profile?saved=1&goal=1`, { headers: { cookie } })).text();
-    expect(page).toContain("New goal saved · 新目標已儲存");
+    expect(page).toContain("New goal saved");
     expect(page).toContain("Tell the coach about your new goal");
     // The prefilled message carries the new goal text and waits for the runner's edit before sending.
     expect(page).toContain("My new goal is Marathon in spring. Can you help me plan toward it?");
@@ -3753,6 +3925,8 @@ describe("honest demo slice", () => {
     expect(calendar).toContain("Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)");
     expect(calendar).toContain("discuss-change");
     expect(calendar).toContain("recent-changes");
+    // The card carries the change-set id so the dock can mark it undone in place without a reload.
+    expect(calendar).toContain('data-change-set="change:move"');
     expect(calendar).toContain(`title="Chat with the coach about what this change did. Your calendar will not change."`);
 
     const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });

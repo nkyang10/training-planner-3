@@ -199,6 +199,8 @@ export interface LoadSummary {
   signal: LoadSignal;
   label: string;
   note: string;
+  /** True when the week's load mixes reported effort (sRPE) with Garmin load; lets a renderer rebuild the note per locale. */
+  reportEffort: boolean;
 }
 
 function round1(value: number): number {
@@ -338,5 +340,6 @@ export function loadSummaryForWeek(activities: readonly Activity[], weekStart: s
     signal,
     label: labels[signal],
     note,
+    reportEffort: includesReportedEffort,
   };
 }

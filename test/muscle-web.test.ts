@@ -140,7 +140,7 @@ describe("the muscle tab page", () => {
     expect(html).toContain("No check-ins yet");
     expect(html).toContain("not a diagnosis");
     expect(html).toContain('action="/muscle/checkin"');
-    expect(html).toContain("app.css?v=24");
+    expect(html).toContain("app.css?v=");
   });
 
   it("ships the 3D viewer with an import map, controls and the list as the no-script path", async () => {
@@ -390,6 +390,9 @@ describe("the muscle tab page", () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/activity/${encodeURIComponent("garmin:today-1")}`, { headers: { cookie } })).text();
     expect(html).toContain("Muscles worked");
+    // English pages must not leak the Chinese half of the old bilingual stopgap.
+    expect(html).not.toContain("訓練到的肌肉");
+    expect(html).not.toContain("回報感覺");
     // The same reusable 3D plugin, in link mode: click a muscle to report it, list tab for the text.
     expect(html).toContain('id="worked-plugin"');
     expect(html).toContain('id="worked-viewer"');
@@ -400,6 +403,16 @@ describe("the muscle tab page", () => {
     expect(html).toContain("Worked list");
     expect(html).toContain(`href="/muscle?activity=${encodeURIComponent("garmin:today-1")}"`);
     expect(html).toContain("Glutes");
+  });
+
+  it("renders the worked card in Chinese when the language cookie is zh-HK", async () => {
+    const { base, cookie } = await start();
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/activity/${encodeURIComponent("garmin:today-1")}`, { headers: { cookie: zh } })).text();
+    expect(html).toContain("訓練到的肌肉");
+    expect(html).toContain("回報感覺");
+    expect(html).toContain("受力清單");
+    expect(html).not.toContain("Muscles worked");
   });
 
   it("lists recent runs with their worked muscles for one-tap tagging", async () => {
@@ -474,7 +487,8 @@ describe("the muscle status layer", () => {
     await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
     const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie } })).text();
     expect(html).toContain("Check-in saved");
-    expect(html).toContain("Muscle status · 肌肉狀態");
+    expect(html).toContain("Muscle status");
+    expect(html).not.toContain("肌肉狀態");
     expect(html).toContain('class="attention-badge"');
     expect(html).toContain("1 muscle");
     expect(html).toContain("fades on its own from here, expected clear by");
@@ -485,6 +499,20 @@ describe("the muscle status layer", () => {
     expect(html).toContain("All better");
     expect(html).toContain('href="/muscle?focus=calves#check-in"');
     expect(html).toContain("Ask coach about this status");
+  });
+
+  it("renders the muscle tab in Chinese when the language cookie is zh-HK", async () => {
+    const { base, cookie } = await start();
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie: zh } })).text();
+    expect(html).toContain("肌肉回報");
+    expect(html).toContain("肌肉狀態");
+    expect(html).toContain("最新回報");
+    expect(html).toContain("儲存回報");
+    expect(html).not.toContain("Muscle check-in");
+    expect(html).not.toContain("Muscle status");
+    expect(html).not.toContain("Latest check-in");
+    expect(html).not.toContain("Save check-in");
   });
 
   it("claims all better and returns the muscle to perfect condition", async () => {

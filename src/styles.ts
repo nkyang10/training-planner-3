@@ -6,7 +6,7 @@ export const CSS = `
   --font: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 * { box-sizing: border-box; }
-body { margin: 0; font-family: var(--font); color: var(--ink); background: radial-gradient(1200px 600px at 10% -10%, #ffe6cf 0%, var(--paper) 45%, #fff 100%); min-height: 100vh; }
+body { margin: 0; font-family: var(--font); color: var(--ink); background: radial-gradient(1200px 600px at 10% -10%, #ffe6cf 0%, var(--paper) 45%, #fff 100%); min-height: 100vh; display: flex; flex-direction: column; }
 a { color: var(--ink); }
 .top { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.8); backdrop-filter: blur(8px); position: sticky; top: 0; z-index: 5; }
 .brand { font-weight: 800; letter-spacing: .08em; text-decoration: none; color: var(--ember-text); }
@@ -14,7 +14,10 @@ a { color: var(--ink); }
 .sync-menu-form { margin: 0; }
 .top .top-link { text-decoration: none; font-weight: 700; color: var(--ember-text); }
 .top .top-link.ghost { color: var(--muted); font-weight: 600; }
-main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; }
+main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; width: 100%; flex: 1 0 auto; }
+/* The page column and, on wide screens, the coach column. Closed, the coach dock has no box (display:contents), so the
+   page keeps its full width and only the floating launcher is visible. */
+.app-shell { display: flex; flex-direction: column; width: 100%; flex: 1 0 auto; }
 .page-head h1 { font-size: clamp(28px, 6vw, 44px); margin: 6px 0; letter-spacing: -.02em; }
 .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; color: var(--muted); margin: 0; }
 .muted { color: var(--muted); }
@@ -344,6 +347,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 /* Ink label on the kept ember-to-solar gradient: 5.92-10.09:1, where white fell to 1.83:1 at the solar end. */
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--ink); background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
+.coach-dock { display: contents; }
 #month-picker { position: fixed; z-index: 55; display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
 #month-picker[hidden] { display: none; }
 .month-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -416,6 +420,36 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 #coach-panel header button { border: 0; background: transparent; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border-radius: 8px; font-size: 22px; line-height: 1; cursor: pointer; color: var(--muted); }
 #coach-panel header button:hover { background: rgba(27, 18, 12, .06); color: var(--ink); }
 .coach-head-actions { display: flex; align-items: center; gap: 6px; }
+/* A close affordance belongs to the floating sheet; the docked column uses the same "−" minimize it always had. */
+#coach-panel header #coach-close { display: none; }
+.coach-head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.coach-head-text strong { font-size: 14px; }
+.coach-head-text .coach-horizon { margin-left: 0; }
+/* The coach surface is grouped, not one long stream: conversation, durable states, calendar changes. */
+.coach-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.coach-tab { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); padding: 7px 6px; font: inherit; font-size: 12.5px; font-weight: 800; line-height: 1.2; cursor: pointer; }
+.coach-tab:hover { color: var(--ink); background: var(--wash); }
+.coach-tab[aria-selected="true"] { background: var(--wash); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.coach-tab:focus-visible { outline: 2px solid var(--ember); outline-offset: 1px; }
+.coach-tab-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ember); color: #fff; font-size: 10.5px; font-weight: 800; line-height: 1; }
+.coach-tab-count[hidden] { display: none; }
+.coach-tab-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.coach-tab-panel[hidden] { display: none; }
+.coach-tab-panel[data-coach-panel="chat"] { overflow: hidden; }
+.coach-tab-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.coach-tab-foot { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--wash); }
+.coach-tab-foot .chip { text-decoration: none; background: #fff; }
+.coach-tab-empty { margin: 4px 2px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.coach-state-card { margin-top: 0; }
+.coach-change { padding: 10px 12px; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+.coach-change.undone { opacity: .62; }
+.coach-change-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
+.coach-change-head strong { font-size: 13px; overflow-wrap: anywhere; }
+.coach-change-meta { font-size: 11.5px; color: var(--muted); }
+.coach-change-entries { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink-2); display: grid; gap: 2px; }
+.coach-change-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.coach-change-actions .btn { padding: 6px 10px; font-size: 12px; }
+.coach-change-undo { display: contents; }
 #coach-log { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
 .bubble.user { align-self: flex-end; background: var(--ember-deep); color: #fff; border-bottom-right-radius: 4px; }
@@ -440,8 +474,25 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 #coach-suggestions:empty { display: none; }
 .suggestion { border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 999px; padding: 6px 10px; font-size: 12px; line-height: 1.2; cursor: pointer; text-align: left; }
 .suggestion:hover { border-color: var(--ember); color: var(--ember-text); }
-@media (max-width: 640px) {
-  #coach-panel { right: 6px; bottom: 6px; width: calc(100vw - 12px); height: calc(100dvh - 12px); border-radius: 18px; }
+/* Wide screens: the coach is a real column beside the page, not a sheet over it. The grid only exists while the panel
+   is open, so a closed dock costs no layout shift; the page reflows instead of hiding the cells the coach edits. */
+@media (min-width: 1200px) {
+  body.coach-open .app-shell { display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 18px; padding-right: 18px; align-items: start; }
+  body.coach-open main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 80px; width: 100%; }
+  body.coach-open .coach-dock { display: block; position: sticky; top: 84px; height: calc(100dvh - 100px); }
+  body.coach-open #coach-panel { position: static; width: 100%; height: 100%; max-height: none; border-radius: 18px; }
+  body.coach-open #coach-bubble { display: none; }
+}
+/* Below the dock breakpoint the panel floats: a right drawer on tablets, a full sheet on phones. */
+@media (max-width: 1199px) {
+  #coach-panel { top: 76px; right: 12px; bottom: 12px; left: auto; width: min(380px, calc(100vw - 24px)); height: auto; max-height: none; border-radius: 20px; }
+  /* The floating panel gets a real close button; the docked column keeps its quiet minimize. */
+  #coach-panel header #coach-close { display: grid; }
+  #coach-panel header #coach-minimize { display: none; }
+  body.coach-open { overflow: hidden; }
+}
+@media (max-width: 720px) {
+  #coach-panel { top: 6px; right: 6px; bottom: 6px; left: 6px; width: auto; border-radius: 18px; }
   #coach-bubble { right: 12px; bottom: 12px; padding: 12px 16px; }
 }
 
@@ -797,5 +848,18 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
   .muscle-ed-soreness { grid-template-columns: auto minmax(0, 1fr); }
   .muscle-ed-readout { grid-column: 1 / -1; }
   .training-row-actions { margin-left: 0; }
+}
+/* Common footer: sits at the bottom of every page (main is flex:1) and holds the language switcher. */
+.site-footer { border-top: 1px solid var(--line); background: rgba(255,255,255,.7); padding: 14px 20px; margin-top: auto; }
+.site-footer-inner { max-width: 1080px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.footer-tagline { font-size: 12px; color: var(--muted); }
+.lang-switch { display: flex; align-items: center; gap: 8px; }
+.lang-switch-label { font-size: 12px; color: var(--muted); }
+.lang-switch-label::before { content: "\\1F310 "; margin-right: 4px; }
+.lang-btn { display: inline-block; text-decoration: none; font-size: 12px; font-weight: 600; color: var(--ink); background: var(--wash); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; transition: background .15s ease, border-color .15s ease; }
+.lang-btn:hover { border-color: var(--ember); }
+.lang-btn[aria-current="true"] { background: var(--ember); border-color: var(--ember); color: #fff; cursor: default; }
+@media (max-width: 640px) {
+  .site-footer-inner { justify-content: center; }
 }
 `;

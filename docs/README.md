@@ -11,6 +11,7 @@ and training-log behavior. The [training-log plan](TRAINING-LOG-PLAN.md) goes de
 | [TRAINING-LOG-PLAN.md](TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented training-log slices: load/ramp, hard/easy, rich run metrics, per-kilometre splits, Garmin laps/intervals, HR zones, period best efforts/PRs, the metric-selectable trend graph, the Garmin activity-workout overlay (paired row, integrated run+program peek, calendar fill) and weekly coach review |
 | [GARMIN-TRAINING-PROGRAMS.md](GARMIN-TRAINING-PROGRAMS.md) | What the Garmin Personal API exposes (per-activity executed workout), what it does not (future scheduled workouts, Coach/adaptive plans), and what a full-plan import would require |
 | [FEATURES-FOR-REVIEW.md](FEATURES-FOR-REVIEW.md) | Remaining candidate features from PoC1/PoC2, prioritised for owner review; the implemented slice is marked done |
+| [analysis/13-layout-review.md](analysis/13-layout-review.md) | Page-by-page 排版 review (calendar, day, training log, activity, muscle, states, profile, auth) and the coach dock: before/after measurements, tabs-vs-side-by-side options, the Chat/States/Changes IA, interaction details and verification |
 | [adr/0001-server-validated-coach.md](adr/0001-server-validated-coach.md) | LLM proposes, server validates before writing |
 | [adr/0002-calendar-first-bubble.md](adr/0002-calendar-first-bubble.md) | Calendar is the product; the bubble is self-implemented, not an iframe |
 | [adr/0003-validation-feedback-loop.md](adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back to the model for one repair/clarification; turns are idempotent |
@@ -36,3 +37,6 @@ All screenshots use a fake demo runner (`Demo Runner`) and synthetic training da
 | [Training log cadence](design/training-log-cadence-demo.png) | The same week with the Cadence chip selected: the CSS-only metric switch shows the cadence panel without a reload |
 | [Training log year](design/training-log-year-demo.png) | Monthly volume, best efforts, the metric trend card and month rows |
 | [Activity detail](design/activity-detail-demo.png) | Rich metrics, fastest efforts, per-kilometre splits, laps, HR zones and the Garmin workout step card |
+| [Coach dock, before/after](design/layout-review/before-after-coach-dock.png) | The 380 px floating panel covering 26 % of the month card, beside the shipped 340 px dock that reflows the page |
+| [Coach dock tabs](design/layout-review/coach-dock-tabs.png) | Chat / States / Changes side by side: the conversation and composer, active + proposed states with Confirm/Resolve, and change sets with Undo, Discuss and Show on calendar |
+| [Coach sheet, before/after](design/layout-review/before-after-coach-mobile.png) | The old phone takeover with one 32 px “−”, beside the shipped sheet with the tab strip, a visible × and locked background scroll |

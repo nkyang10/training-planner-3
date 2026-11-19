@@ -34,6 +34,7 @@ are the evidence behind them.
 | [10-implementation-record.md](10-implementation-record.md) | What was actually built for the consultant-friend coach and the honest load signal, in which files, with what verification? | the three workstream reports + this session's integration log | 224 |
 | [11-user-side-review.md](11-user-side-review.md) | What does a first-time runner actually experience on the live product - does the consultant-friend coach behave as promised, and what still confuses a new user? | live journey probe with verbatim coach turns + five vision-model first-impression critiques of the deployed screens (PR-16..PR-20, US-1..US-8) | 99 |
 | [12-improvement-record.md](12-improvement-record.md) | What was built from the user-side findings - the coach that finally sees reported effort, the plan_stale gate, the copy pass - and how did the unspecced muscle feature end up shipped? | the improvement slice's workstream reports + the owner's ship decision + the 22/22 live verification | 81 |
+| [13-layout-review.md](13-layout-review.md) | What does each page's 排版 look like today, and how should the coach bubble regroup - tabs, side-by-side, or both? | headless-Chrome captures at 1280/1024/390 before and after + DOM probes (overlap, panel geometry, tab state, focus) + the shipped dock verification (511/511) | 248 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -42,7 +43,7 @@ assigned I-18 to slice 1, added the G-08/G-18 mapping note, reworded the infrast
 `??` defects in 03, deleted stale root-level copies of 01-03 and POC3-CALENDAR.md, and recorded the disposition of every
 finding in 06 section 8.
 
-**Character encoding.** 00, 02, 04, 05, 06, 07, 10 and this index are pure ASCII. 01, 03, 08, 09 and 11 are valid
+**Character encoding.** 00, 02, 04, 05, 06, 07, 10 and this index are pure ASCII. 01, 03, 08, 09, 11 and 13 are valid
 UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive matrix's
 yes/partial/no glyphs (audited byte-by-byte in 06: the earlier "lone surrogate" alarm was a UTF-16 reporting
 artefact, not file corruption); 08 and 11 quote the calendar's own UI glyphs (the run checkmark and the workout
