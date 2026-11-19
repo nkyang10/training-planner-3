@@ -655,7 +655,8 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .muscle-body { fill: #f0e0cb; stroke: #e6d2b8; stroke-width: 1; }
 .muscle-region { cursor: pointer; }
 .muscle-region path { transition: filter .12s ease; }
-.muscle-region:hover path { filter: brightness(.94); }
+/* Hover mirrors the 3D viewer: the region visibly warms and takes an ember edge while the tooltip names it. */
+.muscle-region:hover path { filter: brightness(1.18); stroke: var(--ember); stroke-width: 2.4; }
 .muscle-region.selected path { stroke: var(--ember); stroke-width: 2.6; }
 .muscle-region:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 .muscle-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; }

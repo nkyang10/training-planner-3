@@ -5,10 +5,25 @@ Copyright 2010-2024 Three.js Authors)
   https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js
 - OrbitControls.js     — three r170 OrbitControls addon, from
   https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/controls/OrbitControls.js
+- GLTFLoader.js        — three r170 GLTFLoader addon, from
+  https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/loaders/GLTFLoader.js
+  (one local edit: its '../utils/BufferGeometryUtils.js' import was rewritten to
+  './utils/BufferGeometryUtils.js' so it resolves under /static/)
+- BufferGeometryUtils.js — three r170 addon, from
+  https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/utils/BufferGeometryUtils.js
 
 Served by the web app as static scripts:
 - /static/three.module.js
 - /static/orbit-controls.js
+- /static/gltf-loader.js
+- /static/utils/BufferGeometryUtils.js
 
 The app keeps its zero-runtime-npm-dependency rule: the pinned builds are committed here instead of
 installed, and the license headers are preserved in the files themselves.
+
+anatomy-muscles.glb — the 3D muscle figure on the Muscle tab, derived from BodyParts3D release 4.0
+(https://dbarchive.biosciencedbc.jp/en/bodyparts3d/desc.html). Required attribution:
+"BodyParts3D, (c) The Database Center for Life Science licensed under CC Attribution 4.0 International".
+Built from the per-part OBJ meshes (skin excluded: muscles over bones) with Blender 5.2; the build
+scripts and the curated region mapping live in tmp/bp3d and docs/MUSCLE-ANATOMY-3D-RESEARCH.md.
+Served at /static/anatomy-muscles.glb.

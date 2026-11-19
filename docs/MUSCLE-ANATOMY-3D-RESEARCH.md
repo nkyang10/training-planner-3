@@ -1,16 +1,15 @@
 # A nicer 3D muscle/skeleton figure — research, proven pipeline and integration plan
 
-**Status:** researched and pipeline-proven 2026-11-19. The Muscle tab currently renders a procedural, physically
-lit anatomy sculpt ([docs/MUSCLE-TAB.md](MUSCLE-TAB.md) §4b). This document answers the owner's next question:
-how to get a **nicely looked** muscle-and-skeleton figure — from a ready-made anatomy database, an AI 3D
-generation service, or an artist marketplace — and it proves the winning path end to end on this machine.
+**Status:** researched, pipeline-proven and **shipped 2026-11-19**. The Muscle tab's 3D viewer now renders the
+real BodyParts3D muscles-and-skeleton (`src/vendor/anatomy-muscles.glb` served at `/static/anatomy-muscles.glb`)
+with hover/click/orbit/pause interactions on the real meshes; the procedural sculpt is the automatic fallback and
+the flat figure the no-JS path. This document records how the source was chosen, the pipeline that builds the
+asset, and the evidence that it works.
 
-**Recommendation in one line:** use **BodyParts3D** (CC Attribution 4.0, real adult-male anatomy, one named mesh
-per muscle and bone) as the figure, converted with the already-installed Blender into a named-node GLB that the
-existing three.js viewer loads; keep the procedural sculpt as the fallback and the interaction rig unchanged.
-**The figure is a muscle view, not a naked body:** the default build is muscles over the skeleton (an écorché
-anatomy look); the skin mesh exists in the database and would be an optional translucent layer, never the default
-surface.
+**Recommendation, now shipped:** **BodyParts3D** (CC Attribution 4.0, real adult-male anatomy, one named mesh
+per muscle and bone) converted with the installed Blender into a named-node GLB that the existing three.js
+viewer loads. **The figure is a muscle view, not a naked body:** the build is muscles over the skeleton (an
+écorché anatomy look) — the skin mesh stays out by design.
 
 ---
 
@@ -38,14 +37,14 @@ Every step below actually ran; the artifacts live in `tmp/bp3d/` and the evidenc
 2. **Curate the parts** (`tmp/bp3d/build-region-map.mjs` → `tmp/bp3d/region-map.json`): every catalog region maps
    to its BP3D part ids (§3).
 3. **Build the muscle view** (`tmp/bp3d/build-muscle-view.py`, Blender 5.2 headless): extract every curated
-   muscle and bone — **170 parts, skin excluded by design** — and export one GLB with one named node per part,
-   named `region__part__FJ` so the app can map nodes straight back to catalog regions. The body scale uses the
-   constants measured from the full-body skin mesh (feet at y = 0, 1719.47 mm → 4.7 units), so the muscle view
-   stays aligned with the interaction rig without shipping the skin. Materials: deep muscle red with a clearcoat
-   écorché sheen, ivory bones. (`tmp/bp3d/anatomy-muscleview.glb`, 170 objects, 33 region groups, ~20 MB raw —
-   the integration slice should decimate the rib/vertebrae detail or export bones at a lower profile.)
-   An earlier proof build included the skin mesh and read as a naked body; the owner's direction fixed it:
-   **muscles over bones is the product view** (`tmp/bp3d/build_anatomy_glb.py` remains as the with-skin variant).
+   muscle and bone — **186 named parts, skin excluded by design** — decimated to a browser-scale 11 MB GLB
+   (`src/vendor/anatomy-muscles.glb`, parse measured at ~0.3 s in a real browser), one named node per part
+   (`region__part__FJ`) and **one `RegionMuscle-<region>` material per catalog region** so the app tints and
+   selects each region independently. The body scale uses the constants measured from the full-body skin mesh
+   (feet at y = 0, 1719.47 mm → 4.7 units), so the muscle view stays aligned with the interaction rig without
+   shipping the skin. Materials: deep muscle red with a clearcoat écorché sheen, ivory bones. An earlier proof
+   build included the skin mesh and read as a naked body; the owner's direction fixed it: **muscles over bones
+   is the product view** (`tmp/bp3d/build_anatomy_glb.py` remains as the with-skin variant).
 4. **Render and verify in a real browser** (`tmp/anatomy-probe.html` + `tmp/serve-anatomy.mjs`, headless Chrome):
    the page reports from inside itself, and the muscle-view run reported:
    `meshes=170 · drawn=237,140 px · muscle-red≈88.6k px (5.5× the skin-covered build) · raycast torso=obliques__left-external-oblique-L@5.95`
@@ -107,22 +106,23 @@ skip it or keep the procedural shin overlay.
 - Do not ship anything from Z-Anatomy without reading its per-asset license first (GitHub marks the repo
   license as "Other").
 
-## 5. Integration plan (the next slice)
+## 5. Integration record (shipped 2026-11-19)
 
 The rig already isolates overlays from the base body, so the swap is contained:
 
-1. **Build the full figure GLB**: the muscle-view build is the product figure — 170 parts, skin excluded,
-   objects named `region__part__FJ` (already produced as `tmp/bp3d/anatomy-muscleview.glb`). For the app,
-   decimate the rib/vertebrae detail (or drop to bone-region aggregates) to bring it under ~8 MB, and export
-   bones + muscles as separate named top-level groups. Vendor `GLTFLoader.js` + `utils/BufferGeometryUtils.js`
-   beside the three builds.
-2. **Load it in the viewer**: a fetch of `/static/anatomy-muscles.glb` via GLTFLoader replaces the procedural body
-   group; keep the procedural build as the catch-path when the fetch or WebGL fails (the flat figure remains the
-   ultimate fallback). Serve the GLB from a route like the vendored scripts.
-3. **Layers: Muscles (default) / Skeleton / Body silhouette**: muscles over bones is the default product view;
-   the skin mesh is an optional, semi-transparent silhouette layer (and raycast-through or off while hidden).
-   Selection raycasts the visible layer's meshes and maps node → region via the `region__` name prefix — the
-   probe already demonstrated a torso ray returning `obliques__left-external-oblique-L`, a real muscle node.
+1. **The app asset and routes shipped**: `src/vendor/anatomy-muscles.glb` (11 MB, decimated) served at
+   `/static/anatomy-muscles.glb` beside `/static/gltf-loader.js` and `/static/utils/BufferGeometryUtils.js`
+   (vendored, MIT; the loader's relative import was rewritten to `./utils/…` so it resolves under `/static/`).
+2. **The viewer loads real anatomy first, procedural fallback second**: the muscle-tab module imports the
+   loader, loads the GLB, maps every `RegionMuscle-*` mesh into `regionMaterials` with its base colour snapshot,
+   and raycasts those meshes for hover names and click-to-select — all through the same `__muscleTabBridge`
+   selection state as the tag editor, tray, checkbox list and flat figure. Any failure (asset, import, WebGL)
+   falls back to the procedural rig; the flat 2D figure remains the no-JS surface. Live-verified on :8093.
+3. **Interactions on the real muscles, browser-proven**: the fixture harness ran the real app page — the GLB
+   resolved, `anatomy-ok` and `ready=1` fired, the in-page canvas reported a ~111 KB rendered frame, and the
+   capture ([docs/design/muscle-tab-demo.png](design/muscle-tab-demo.png)) pixel-verifies the écorché figure in
+   the viewer region. The standalone probe measured 186 meshes in ~0.3 s and a torso raycast returning
+   `abs__muscle-of-anterior-abdominal-wall-L` — a real muscle node, not a silhouette.
 4. **Heat and state on real muscles**: per-region material tint from `sorenessFill`, selected = ember emissive,
    care-needed = red pulse — the same repaint logic, now driving `region:…` material sets instead of overlay
    groups. The procedural rig stays for regions with no BP3D part (lats, fibula) as thin overlays on the skin.

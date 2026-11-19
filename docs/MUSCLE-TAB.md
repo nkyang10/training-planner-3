@@ -87,36 +87,38 @@ report).
 
 ## 4b. The 3D figure
 
-The Muscle tab's primary view is an interactive **3D anatomy figure** built with three.js:
+The Muscle tab's primary view is an interactive **3D muscle figure built from real anatomy**, with a procedural
+fallback:
 
-- **Realistic rendering.** ACES filmic tone mapping, a three-point light rig (warm key with soft shadows, cool
-  fill, ember rim), a shadow-catching ground disc, and physical materials with clearcoat and sheen — the figure
-  reads as a lit clay anatomy model rather than a flat drawing.
-- **The rig is typed data** (`src/muscle-rig.ts`): the body silhouette (a lathe trunk plus capsule limbs) and one
-  overlay shape set per catalog muscle, mirrored across the axis exactly like the 2D figure. Tests hold the rig
-  to the catalog, the authoring convention and the figure's bounds.
-- **Interaction.** Drag to orbit, scroll or pinch to zoom, click or tap a muscle to select it (raycast against
-  the overlay meshes); hover shows a name-and-state tooltip. Front / Back / Reset buttons tween the camera.
-- **The animation can be stopped.** While the runner decides, the figure turns slowly on a turntable and
-  breathes subtly; the **Pause rotation** button holds it still (and `prefers-reduced-motion` starts it paused).
-  Care-needed muscles pulse a low red so the flag never relies on hue alone.
-- **One selection state, two surfaces.** The 3D viewer and the flat figure drive the same bridge
-  (`window.__muscleTabBridge`), so a click on the 3D figure updates the tray, the editor, the checkbox list and
-  the 2D figure — and vice versa. Recent check-ins paint the same heat ramp on the overlay muscles.
-- **Resilience.** The 3D layer is an ES module behind an import map that resolves the vendored builds; if WebGL
-  cannot start, the viewer says so and opens the flat figure automatically. The flat figure (inside its
-  "no 3D needed" details) carries the no-JavaScript and keyboard paths, so the form works in every browser.
-- **Browser-verified.** A headless-Chrome harness (tmp scripts, seeded data) loads the page over HTTP and asserts
-  from inside the page: the import map resolves, the modules load, `viewerReady=1`, a canvas exists and WebGL
-  initialized — then captures [docs/design/muscle-tab-demo.png](design/muscle-tab-demo.png). The capture waits on a
-  long-poll load blocker released by the viewer's ready beacon, so the screenshot shows the rendered figure rather
-  than the first blank paint.
-
-A photoreal anatomical mesh is the documented follow-up — and the path is now **researched and pipeline-proven**:
-BodyParts3D (CC BY 4.0) provides one named mesh per real muscle and bone, and a Blender→GLB→three.js pipeline was
-run end-to-end on this machine (real anatomy rendered under the app's light rig, raycast picking returning
-anatomical names). Options compared, licenses, the curated part mapping and the integration plan live in
-[MUSCLE-ANATOMY-3D-RESEARCH.md](MUSCLE-ANATOMY-3D-RESEARCH.md).
+- **The real figure ships in the app.** BodyParts3D per-muscle and per-bone OBJ meshes (CC BY 4.0; attribution in
+  `src/vendor/THREE-LICENSE.txt`), curated per catalog region, decimated for the browser and exported by Blender
+  5.2 headless as `src/vendor/anatomy-muscles.glb` — 186 named objects (`region__part__FJ`) across 19 muscle
+  regions plus the skeleton, each muscle region carrying its own `RegionMuscle-<region>` material so the app tints
+  and selects it independently. Options, licenses, build scripts and the curated mapping:
+  [MUSCLE-ANATOMY-3D-RESEARCH.md](MUSCLE-ANATOMY-3D-RESEARCH.md).
+- **Interaction on the real meshes.** Hover raycasts and **recolors the muscle with the same ember as a
+  click-select** (`#ff5a1f` colour plus emissive glow, so hovering and selecting read identically) while the
+  tooltip names it and its tag state. A trailing-edge re-pick lands the cursor's resting position — a glide that
+  stops between the 60 ms throttle windows still highlights the muscle under the still cursor — and hovering is
+  read-only (`bridge.peek`): it never creates a tag, so gliding across the figure no longer quietly selects the
+  muscles it crossed. Click or tap selects the catalog region (drag still orbits — a small movement threshold
+  separates the two); scroll or pinch zooms; **Pause rotation** stops the turntable and the subtle breathing;
+  Front / Back / Reset tween the camera. The flat figure mirrors the hover: a region brightens and takes an ember
+  edge. Bones stay visible but
+  unpickable. Lats has no BP3D part, so its 3D surface simply does not paint — the flat figure and the checkbox
+  list still carry it.
+- **The procedural rig is the fallback** (`src/muscle-rig.ts`, typed and test-held): if the asset or WebGL fails,
+  the viewer builds the stylized sculpt instead, so the runner always sees a working figure. The flat 2D figure
+  (in its "no 3D needed" details) remains the no-JavaScript and keyboard path; both 3D modes and the flat figure
+  share one selection state through the bridge (`window.__muscleTabBridge`).
+- **Rendering.** ACES filmic tone mapping, a warm key with soft shadows, cool fill, ember rim, shadow-catching
+  ground; muscles read as an écorché deep red with clearcoat, bones ivory. Care-needed muscles pulse low red so
+  the flag never relies on hue alone; recent check-ins paint the heat ramp on the actual muscle surfaces.
+- **Browser-verified.** The fixture harness loads the real app page over HTTP: the module graph and the 11 MB GLB
+  resolve, `anatomy-ok` fires, the in-page canvas reports a ~111 KB rendered frame, and the captured screenshot
+  ([docs/design/muscle-tab-demo.png](design/muscle-tab-demo.png)) pixel-verifies the écorché figure in the viewer
+  region. A dedicated probe measured the GLB loading 186 meshes in ~0.3 s with a torso raycast returning
+  `abs__muscle-of-anterior-abdominal-wall-L` — a real muscle, not a silhouette.
 
 ## 5. The check-in flow
 

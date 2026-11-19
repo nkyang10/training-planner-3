@@ -723,8 +723,10 @@ function muscleScript(input: MusclePageInput): string {
     renderEditor();
     renderTray();
     refillActivities();
-    // The 3D viewer drives selection through this bridge: it calls toggle(), and reads tagOf/has to repaint.
-    window.__muscleTabBridge = { toggle, tagOf, has: (id) => state.has(id) };
+    // The 3D viewer drives selection through this bridge: it calls toggle(), and reads peek/has to repaint.
+    // peek is read-only on purpose: hovering must never create a tag, or a glide across the figure would
+    // quietly select every muscle it crossed.
+    window.__muscleTabBridge = { toggle, peek: (id) => state.get(id) ?? null, has: (id) => state.has(id) };
   })();
   </script>`;
 }
@@ -748,7 +750,7 @@ function muscleViewerScript(input: MusclePageInput): string {
   <script type="module">
   import * as THREE from 'three';
   import { OrbitControls } from '/static/orbit-controls.js';
-  (() => {
+  (async () => {
     const RIG = ${jsonForScript(rig)};
     const HEAT = ${jsonForScript(heat)};
     const NAMES = ${jsonForScript(names)};
@@ -851,26 +853,14 @@ function muscleViewerScript(input: MusclePageInput): string {
     ground.receiveShadow = true;
     scene.add(ground);
 
-    const bodyMat = new THREE.MeshPhysicalMaterial({
-      color: '#c8b193',
-      roughness: 0.55,
-      metalness: 0,
-      clearcoat: 0.25,
-      clearcoatRoughness: 0.55,
-      sheen: 0.4,
-      sheenColor: new THREE.Color('#ffe6c8'),
-    });
-    const muscleMatBase = {
-      roughness: 0.42,
-      metalness: 0,
-      clearcoat: 0.35,
-      clearcoatRoughness: 0.5,
-      sheen: 0.3,
-      sheenColor: new THREE.Color('#ffd9b8'),
-    };
-
     const figure = new THREE.Group();
     scene.add(figure);
+
+    // One interaction layer for both figure modes: the region's shared material, its base colour, its meshes.
+    const regionMaterials = new Map();
+    const baseColors = new Map();
+    const pickMeshes = [];
+
     const buildShape = (shape, mirrored, material) => {
       const at = shape.at;
       let geometry;
@@ -892,56 +882,98 @@ function muscleViewerScript(input: MusclePageInput): string {
       mesh.receiveShadow = true;
       return mesh;
     };
-    for (const part of RIG.body) {
-      figure.add(buildShape(part.shape, false, bodyMat));
-      if (part.mirror) figure.add(buildShape(part.shape, true, bodyMat));
-    }
 
-    const muscleGroups = new Map();
-    const muscleMeshes = [];
-    for (const muscle of RIG.muscles) {
-      const material = new THREE.MeshPhysicalMaterial({ ...muscleMatBase, color: '#cfa173' });
-      const group = new THREE.Group();
-      group.userData.muscleId = muscle.id;
-      const addShapes = (mirrored) => {
-        for (const shape of muscle.shapes) {
-          const mesh = buildShape(shape, mirrored, material);
-          mesh.userData.muscleId = muscle.id;
-          group.add(mesh);
-          muscleMeshes.push(mesh);
+    // The real figure first: BodyParts3D muscles over bones, one RegionMuscle material per catalog region.
+    const buildAnatomy = async () => {
+      const { GLTFLoader } = await import('/static/gltf-loader.js');
+      const gltf = await new GLTFLoader().loadAsync('/static/anatomy-muscles.glb');
+      gltf.scene.traverse((child) => {
+        if (child.isMesh !== true) return;
+        child.castShadow = true;
+        child.receiveShadow = true;
+        const materialName = child.material !== null && typeof child.material.name === 'string' ? child.material.name : '';
+        if (!materialName.startsWith('RegionMuscle-')) return; // bones stay visible but unpickable
+        const region = String(child.name).split('__')[0];
+        child.userData.region = region;
+        if (!regionMaterials.has(region)) {
+          regionMaterials.set(region, child.material);
+          baseColors.set(region, child.material.color.clone());
         }
+        pickMeshes.push(child);
+      });
+      figure.add(gltf.scene);
+    };
+
+    // The procedural sculpt stays as the catch-path when the asset or WebGL cannot deliver.
+    const buildProcedural = () => {
+      const bodyMat = new THREE.MeshPhysicalMaterial({
+        color: '#c8b193',
+        roughness: 0.55,
+        metalness: 0,
+        clearcoat: 0.25,
+        clearcoatRoughness: 0.55,
+        sheen: 0.4,
+        sheenColor: new THREE.Color('#ffe6c8'),
+      });
+      const muscleMatBase = {
+        roughness: 0.42,
+        metalness: 0,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.5,
+        sheen: 0.3,
+        sheenColor: new THREE.Color('#ffd9b8'),
       };
-      addShapes(false);
-      if (muscle.mirror) addShapes(true);
-      figure.add(group);
-      muscleGroups.set(muscle.id, { group, material });
-    }
+      for (const part of RIG.body) {
+        figure.add(buildShape(part.shape, false, bodyMat));
+        if (part.mirror) figure.add(buildShape(part.shape, true, bodyMat));
+      }
+      for (const muscle of RIG.muscles) {
+        const material = new THREE.MeshPhysicalMaterial({ ...muscleMatBase, color: '#cfa173' });
+        const group = new THREE.Group();
+        group.userData.region = muscle.id;
+        const addShapes = (mirrored) => {
+          for (const shape of muscle.shapes) {
+            const mesh = buildShape(shape, mirrored, material);
+            mesh.userData.region = muscle.id;
+            group.add(mesh);
+            pickMeshes.push(mesh);
+          }
+        };
+        addShapes(false);
+        if (muscle.mirror) addShapes(true);
+        figure.add(group);
+        regionMaterials.set(muscle.id, material);
+        baseColors.set(muscle.id, new THREE.Color('#cfa173'));
+      }
+    };
 
     let hoveredId = null;
+    // Hover and selection share one ember: the muscle under the cursor changes colour exactly like a
+    // click-select does — one obvious signal, not a subtle half-tint that is easy to miss.
+    const EMBER = '#ff5a1f';
     const syncMuscle = (id, tag) => {
-      const entry = muscleGroups.get(id);
-      if (entry === undefined) return;
+      const material = regionMaterials.get(id);
+      if (material === undefined) return; // a region with no mesh here (lats in the anatomy build) simply does not paint
       const heat = HEAT[id];
       const selected = bridge.has(id);
       const warning = heat !== undefined && heat.dashed === true;
-      const color = tag !== null && heat !== undefined ? heat.fill : selected ? '#ff5a1f' : '#cfa173';
-      entry.material.color.set(color);
-      if (selected) {
-        entry.material.emissive.set('#ff5a1f');
-        entry.material.emissiveIntensity = 0.4;
+      const base = baseColors.get(id);
+      const baseHex = base === undefined ? '#cfa173' : '#' + base.getHexString();
+      const hovered = id === hoveredId && !selected;
+      const resting = tag !== null && heat !== undefined ? heat.fill : baseHex;
+      material.color.set(hovered || selected ? EMBER : resting);
+      if (hovered || selected) {
+        material.emissive.set(EMBER);
+        material.emissiveIntensity = 0.4;
       } else if (warning) {
-        entry.material.emissive.set('#c03a2b');
-        entry.material.emissiveIntensity = 0.32;
-      } else if (id === hoveredId) {
-        entry.material.emissive.set('#ff5a1f');
-        entry.material.emissiveIntensity = 0.18;
+        material.emissive.set('#c03a2b');
+        material.emissiveIntensity = 0.32;
       } else {
-        entry.material.emissive.set('#000000');
-        entry.material.emissiveIntensity = 0;
+        material.emissive.set('#000000');
+        material.emissiveIntensity = 0;
       }
     };
     window.__muscleViewer = { syncMuscle };
-    for (const id of Object.keys(NAMES)) syncMuscle(id, bridge.tagOf(id) ?? null);
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2();
@@ -949,8 +981,8 @@ function muscleViewerScript(input: MusclePageInput): string {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.set(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects(muscleMeshes, false);
-      return hits.length > 0 ? hits[0].object.userData.muscleId : null;
+      const hits = raycaster.intersectObjects(pickMeshes, false);
+      return hits.length > 0 ? hits[0].object.userData.region : null;
     };
     let downAt = null;
     renderer.domElement.addEventListener('pointerdown', (event) => {
@@ -967,10 +999,8 @@ function muscleViewerScript(input: MusclePageInput): string {
       tooltip.hidden = true;
     });
     let moveAt = 0;
-    renderer.domElement.addEventListener('pointermove', (event) => {
-      const now = Date.now();
-      if (now - moveAt < 60) return;
-      moveAt = now;
+    let trailingHover = null;
+    const applyHover = (event) => {
       const id = pick(event);
       if (id === hoveredId) {
         if (id !== null && id !== undefined) positionTip(event);
@@ -978,25 +1008,38 @@ function muscleViewerScript(input: MusclePageInput): string {
       }
       const previous = hoveredId;
       hoveredId = id === undefined ? null : id;
-      if (previous !== null) syncMuscle(previous, bridge.tagOf(previous) ?? null);
+      if (previous !== null) syncMuscle(previous, bridge.peek(previous));
       if (hoveredId === null) {
         tooltip.hidden = true;
         renderer.domElement.style.cursor = 'grab';
         return;
       }
-      syncMuscle(hoveredId, bridge.tagOf(hoveredId) ?? null);
+      syncMuscle(hoveredId, bridge.peek(hoveredId));
       renderer.domElement.style.cursor = 'pointer';
-      const tag = bridge.tagOf(hoveredId) ?? null;
+      const tag = bridge.peek(hoveredId);
       const heat = HEAT[hoveredId];
       const state = tag === null ? 'not tagged yet' : tag.soreness + '/10 · ' + labelFor(tag.soreness) + (heat !== undefined && heat.dashed === true ? ' · needs care' : '');
       tooltip.textContent = NAMES[hoveredId] + ' — ' + state;
       positionTip(event);
       tooltip.hidden = false;
+    };
+    renderer.domElement.addEventListener('pointermove', (event) => {
+      const now = Date.now();
+      if (now - moveAt < 60) {
+        // A glide that stops between throttle windows must still land its resting position: the trailing
+        // edge re-picks the last event, so the muscle under the still cursor is always the highlighted one.
+        if (trailingHover !== null) clearTimeout(trailingHover);
+        trailingHover = setTimeout(() => { trailingHover = null; applyHover(event); }, 60);
+        return;
+      }
+      moveAt = now;
+      if (trailingHover !== null) { clearTimeout(trailingHover); trailingHover = null; }
+      applyHover(event);
     });
     renderer.domElement.addEventListener('pointerleave', () => {
       const previous = hoveredId;
       hoveredId = null;
-      if (previous !== null) syncMuscle(previous, bridge.tagOf(previous) ?? null);
+      if (previous !== null) syncMuscle(previous, bridge.peek(previous));
       tooltip.hidden = true;
     });
     const positionTip = (event) => {
@@ -1047,9 +1090,9 @@ function muscleViewerScript(input: MusclePageInput): string {
         figure.scale.set(breathe, 1, breathe);
         for (const [id, heat] of Object.entries(HEAT)) {
           if (heat.dashed !== true) continue;
-          const entry = muscleGroups.get(id);
-          if (entry === undefined || bridge.has(id)) continue;
-          entry.material.emissiveIntensity = 0.24 + Math.sin(elapsed * 2.6) * 0.14;
+          const material = regionMaterials.get(id);
+          if (material === undefined || bridge.has(id)) continue;
+          material.emissiveIntensity = 0.24 + Math.sin(elapsed * 2.6) * 0.14;
         }
         controls.update();
       } else {
@@ -1070,7 +1113,15 @@ function muscleViewerScript(input: MusclePageInput): string {
     if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(container);
     else window.addEventListener('resize', resize);
     resize();
-    // A DOM marker the fixture screenshot and the browser check can assert: the 3D viewer really started.
+
+    // Real anatomy first; the procedural sculpt catches whatever fails. Only then mark the viewer ready, so a
+    // fixture capture can never fire before a figure is on screen.
+    try {
+      await buildAnatomy();
+    } catch (error) {
+      buildProcedural();
+    }
+    for (const id of Object.keys(NAMES)) syncMuscle(id, bridge.peek(id));
     container.dataset.viewerReady = '1';
   })();
   </script>`;

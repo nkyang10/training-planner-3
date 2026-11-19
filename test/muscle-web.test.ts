@@ -135,7 +135,7 @@ describe("the muscle tab page", () => {
     expect(html).toContain("No check-ins yet");
     expect(html).toContain("not a diagnosis");
     expect(html).toContain('action="/muscle/checkin"');
-    expect(html).toContain("app.css?v=21");
+    expect(html).toContain("app.css?v=22");
   });
 
   it("ships the 3D viewer with an import map, controls and the flat figure as fallback", async () => {
@@ -177,6 +177,51 @@ describe("the muscle tab page", () => {
     const controlsText = await controls.text();
     expect(controlsText).toContain("OrbitControls");
     expect(controlsText).toContain("from 'three'");
+  });
+
+  it("serves the loader chain and the real anatomy asset behind the viewer", async () => {
+    const { base, cookie } = await start();
+    const loader = await fetch(`${base}/static/gltf-loader.js`, { headers: { cookie } });
+    expect(loader.status).toBe(200);
+    const loaderText = await loader.text();
+    expect(loaderText).toContain("GLTFLoader");
+    expect(loaderText).toContain("from './utils/BufferGeometryUtils.js'");
+
+    const utils = await fetch(`${base}/static/utils/BufferGeometryUtils.js`, { headers: { cookie } });
+    expect(utils.status).toBe(200);
+    const utilsText = await utils.text();
+    expect(utilsText).toContain("toTrianglesDrawMode");
+
+    const anatomy = await fetch(`${base}/static/anatomy-muscles.glb`, { headers: { cookie } });
+    expect(anatomy.status).toBe(200);
+    expect(anatomy.headers.get("content-type")).toContain("model/gltf-binary");
+    const bytes = await anatomy.arrayBuffer();
+    expect(bytes.byteLength).toBeGreaterThan(1_000_000);
+    expect(new DataView(bytes).getUint32(0, true)).toBe(0x46546c67); // "glTF"
+  });
+
+  it("wires the viewer to load the real anatomy first and fall back to the sculpt", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(html).toContain("import('/static/gltf-loader.js')");
+    expect(html).toContain("'/static/anatomy-muscles.glb'");
+    expect(html).toContain("RegionMuscle-");
+    expect(html).toContain("userData.region");
+    expect(html).toContain("buildProcedural");
+    // Hover paints the same ember as a click-select, and the trailing edge lands the resting cursor.
+    expect(html).toContain("hovered || selected ? EMBER");
+    expect(html).toContain("const EMBER = '#ff5a1f'");
+    expect(html).toContain("applyHover");
+    expect(html).toContain("trailingHover");
+    // Hovering never creates tags: the viewer reads through the read-only peek.
+    expect(html).toContain("peek: (id) => state.get(id) ?? null");
+    expect(html).not.toContain("bridge.tagOf(");
+    // The ready marker only fires after a figure is built, so captures can never fire early.
+    expect(html).toContain("container.dataset.viewerReady = '1'");
+    // The flat figure mirrors the hover: warm brighten plus an ember edge.
+    const css = await (await fetch(`${base}/static/app.css`)).text();
+    expect(css).toContain(".muscle-region:hover path");
+    expect(css).toContain("brightness(1.18)");
   });
 
   it("saves a shared no-script check-in and renders its reading, heat and drills", async () => {

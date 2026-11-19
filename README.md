@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 446 passing" src="https://img.shields.io/badge/tests-446%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 452 passing" src="https://img.shields.io/badge/tests-452%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (446 tests in 18 files). |
+| `pnpm test` | Run the Vitest suite (452 tests in 19 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -119,15 +119,16 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 
 ### ?? Muscles
 
-- A third app-bar tab, **Muscles** (`/muscle`): an interactive **3D anatomy figure** (three.js, vendored and
-  served as static scripts behind an import map — no runtime npm dependency). The figure is physically rendered
-  (ACES tone mapping, key/fill/rim lights, soft shadows, clearcoat-and-sheen materials) from a typed rig
-  (`src/muscle-rig.ts`) shared with the flat figure. Drag to orbit, scroll or pinch to zoom, click or tap a
-  muscle to select it, hover for a name-and-state tooltip; **Pause rotation** stops the slow turntable and
-  breathing while you decide (it starts paused under `prefers-reduced-motion`), and Front / Back / Reset tween
-  the camera. If WebGL cannot start, the viewer says so and opens the flat figure — which stays available in a
-  collapsible "no 3D needed" details for keyboard and no-JavaScript users, and shares one selection state with
-  the 3D view.
+- A third app-bar tab, **Muscles** (`/muscle`): an interactive **3D muscle figure built from real anatomy** —
+  BodyParts3D per-muscle and per-bone meshes (CC BY 4.0, attributed in `src/vendor/THREE-LICENSE.txt`), converted
+  with Blender into one decimated GLB (`src/vendor/anatomy-muscles.glb`, 11 MB, one `RegionMuscle-<region>`
+  material per catalog region, named `region__part__FJ`). three.js loads it via the vendored GLTFLoader; the
+  procedural rig (`src/muscle-rig.ts`) stays as the automatic fallback when the asset or WebGL fails, and the
+  flat figure remains the no-JS/keyboard surface. Hover names a muscle and paints it with the same ember as a
+  click-select (a trailing-edge re-pick lands the cursor's resting position, and hovering never creates a tag),
+  click/tap selects it (raycast on the real
+  meshes — the check-in flow, tray, editor and flat figure share one selection state), drag orbits, scroll or
+  pinch zooms, **Pause rotation** stops the turntable and breathing, and Front / Back / Reset tween the camera.
 - Tagging is per muscle: a 0-10 anchored soreness slider
   (0 nothing · 5 noticeable · 7 sore to touch · 9-10 severe), condition tags (tight, cramp, fatigued, dull ache,
   sharp pain, swelling, numbness, old-injury flare), a left/right/both side, and a "better once warmed up?" toggle.
@@ -246,7 +247,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 446 Vitest tests across 18 files. |
+| `test/` | 452 Vitest tests across 19 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -286,11 +287,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 
 | Gate | State |
 |---|---|
-| Tests | **446 / 446** in 18 files |
+| Tests | **452 / 452** in 19 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (restarted 2026-11-19, CSS v21 — the Plan / Training log / **Muscles** switch now lives in the app bar and only on the pages that belong to a view; muscle check-ins live-verified with a temporary account that was removed afterwards; model key preserved) |
+| Live deployment | calendar **:8093**, gateway **:8092** (restarted 2026-11-19 with the real BodyParts3D muscle figure on the Muscles tab — `/static/anatomy-muscles.glb`, 11 MB, 186 named meshes, hover/click/orbit/pause on the real muscles with the procedural sculpt as fallback; muscle check-ins live-verified with a temporary account that was removed afterwards; model key preserved. Same day, hover reworked and redeployed: the 3D hover now paints the muscle with the same ember as a click-select, a trailing-edge re-pick lands the cursor's resting position after a fast glide, and hovering is read-only — it no longer silently tags the muscles it crossed; verified in headless Chrome with real mouse events, pixel diffs and a vision pass, 452/452 green) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
@@ -387,8 +388,9 @@ pipeline-proven path in [docs/MUSCLE-ANATOMY-3D-RESEARCH.md](docs/MUSCLE-ANATOMY
 - **Code shape:** the calendar-cell union and its single renderer live in `src/calendar-items.ts`; the state catalog in
   `src/coach-state-catalog.ts`, the state/audit page render in `src/web-coach-states.ts`, and shared HTML helpers in
   `src/web-html.ts`. The muscle domain (catalog, taxonomy, interpretation rules, drills, validation) lives in
-  `src/muscles.ts`, the SVG figures in `src/muscle-map.ts`, the 3D rig in `src/muscle-rig.ts` (with the vendored
-  three.js builds in `src/vendor/`), and the Muscle tab page in `src/web-muscle.ts`.
+  `src/muscles.ts`, the SVG figures in `src/muscle-map.ts`, the 3D rig in `src/muscle-rig.ts`, the real anatomy
+  asset + three.js/GLTFLoader builds in `src/vendor/` (licenses and the CC BY 4.0 BodyParts3D attribution in
+  `src/vendor/THREE-LICENSE.txt`), and the Muscle tab page in `src/web-muscle.ts`.
   `src/web.ts` still holds the routes and the inline client script, so a route/client-script split is a
   follow-up refactor, not a behavior change.
 - **Garmin:** capped at **100 activities per pull**; the Personal API key is stored per runner in SQLite in plaintext, so

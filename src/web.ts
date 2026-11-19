@@ -1828,7 +1828,7 @@ function layout(
   const context = pageContext(title, user, activeView);
   const timezone = escapeHtml(safeTimeZone(user?.timezone));
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread))}</title><link rel="stylesheet" href="/static/app.css?v=21"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread))}</title><link rel="stylesheet" href="/static/app.css?v=22"></head>
   <body data-site-name="${escapeHtml(SITE_NAME)}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<main>${flash}${body}</main>${bubble}${notificationScript}${accountScript}</body></html>`;
 }
 
