@@ -1,4 +1,4 @@
-# POC3 - implementation plan for the first slice
+# Milebook - implementation plan for the first slice
 
 **Status:** in progress. **Date:** 2026-11-18. **Owner:** root agent.
 **Basis:** `00-EXECUTIVE-SUMMARY.md` and `05-improvement-backlog.md` (slice 1 plus the cheapest slice 2 trust items).
@@ -7,7 +7,7 @@ and not add infrastructure the PoC does not have.
 
 ## 1. My opinion
 
-The analysis says POC3 is not short on features; it is short on **exposure and completion**. The coach can already write
+The analysis says Milebook is not short on features; it is short on **exposure and completion**. The coach can already write
 the calendar with proof, but the runner cannot see the proof, cannot log a run without Garmin, cannot keep a sensitive
 confirmation across a refresh, and cannot take their data out. Adding another dashboard would make the product wider
 without making it more trustworthy.

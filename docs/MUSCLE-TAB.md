@@ -10,7 +10,7 @@ citations are in §9.
 
 ## 1. Why
 
-The calendar and training log say *what* the runner did. Nothing in POC3 says *how the runner's body absorbed it*.
+The calendar and training log say *what* the runner did. Nothing in Milebook says *how the runner's body absorbed it*.
 The muscle loop closes that gap with the same philosophy as the rest of the app:
 
 - **Care about the user.** A check-in takes under a minute, never scolds, and normalizes DOMS ("soreness is not

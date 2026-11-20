@@ -45,7 +45,7 @@ const WINDOW_DAYS = 90;
 
 const EMPTY: GarminSyncOutcome = { imported: 0, created: 0, newest: null, error: null };
 
-/** The bare Garmin id behind a stored POC3 activity id, or "" for a reported activity. */
+/** The bare Garmin id behind a stored Milebook activity id, or "" for a reported activity. */
 function garminActivityId(activityId: string): string {
   return activityId.startsWith("garmin:") ? activityId.slice("garmin:".length) : "";
 }

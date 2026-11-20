@@ -1,5 +1,5 @@
 /**
- * A small lint gate for POC3: no console output in src (except index.ts), no TODO, no secrets, no `any` in src.
+ * A small lint gate for Milebook: no console output in src (except index.ts), no TODO, no secrets, no `any` in src.
  * Dependency-free so it runs before install completes.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";

@@ -1,7 +1,7 @@
-# POC3 - runner workflow, needs and improvement analysis
+# Milebook - runner workflow, needs and improvement analysis
 
 **Status:** complete analysis package, waiting for owner decisions. **Date:** 2026-11-18.
-**Scope:** a full user-workflow and feature analysis of POC3 (the private calendar-first AI coach for runners), mapped
+**Scope:** a full user-workflow and feature analysis of Milebook (the private calendar-first AI coach for runners), mapped
 against runner needs researched from public training-sharing sources, reviewed for missing or improvable parts, and
 turned into a ranked, sliced backlog.
 **Producer:** a multi-agent analysis run: five producer agents (workflow map, runner-needs research, competitive
@@ -20,9 +20,9 @@ are the evidence behind them.
 | Document | Question it answers | Evidence base | Lines |
 |---|---|---|---|
 | [00-EXECUTIVE-SUMMARY.md](00-EXECUTIVE-SUMMARY.md) | What should the owner decide next, and why? | synthesis of 01-06 | 246 |
-| [01-user-workflow-map.md](01-user-workflow-map.md) | How does a runner actually move through POC3 today, end to end? Where does it break? | `src/` at HEAD (routes, client script, gateway, states, store) + product docs | 1033 |
+| [01-user-workflow-map.md](01-user-workflow-map.md) | How does a runner actually move through Milebook today, end to end? Where does it break? | `src/` at HEAD (routes, client script, gateway, states, store) + product docs | 1033 |
 | [02-runner-needs-research.md](02-runner-needs-research.md) | What do runners need, complain about and work around, based on public training-sharing sources? | 46 cited sources: Reddit, LetsRun, Garmin/TrainerRoad forums, coach blogs, race organisers, peer-reviewed papers | 464 |
-| [03-competitive-benchmark.md](03-competitive-benchmark.md) | Where does POC3 sit against 12 products, and which gaps are table stakes? | 68 cited sources: vendor pages, help centres, pricing, independent reviews | 802 |
+| [03-competitive-benchmark.md](03-competitive-benchmark.md) | Where does Milebook sit against 12 products, and which gaps are table stakes? | 68 cited sources: vendor pages, help centres, pricing, independent reviews | 802 |
 | [04-gap-analysis.md](04-gap-analysis.md) | Which runner needs are unmet, how badly, and where in the workflow? | 01 + 02 + 03, 22 code anchors spot-checked | 460 |
 | [05-improvement-backlog.md](05-improvement-backlog.md) | What should be built, in what order, with what acceptance criteria? | 04, ranked by impact x evidence x fit | 580 |
 | [06-review-report.md](06-review-report.md) | What in this package is verified, what was corrected, and what still cannot be trusted? | independent code-anchor, URL, id and consistency checks | 234 |
@@ -35,7 +35,7 @@ are the evidence behind them.
 | [11-user-side-review.md](11-user-side-review.md) | What does a first-time runner actually experience on the live product - does the consultant-friend coach behave as promised, and what still confuses a new user? | live journey probe with verbatim coach turns + five vision-model first-impression critiques of the deployed screens (PR-16..PR-20, US-1..US-8) | 99 |
 | [12-improvement-record.md](12-improvement-record.md) | What was built from the user-side findings - the coach that finally sees reported effort, the plan_stale gate, the copy pass - and how did the unspecced muscle feature end up shipped? | the improvement slice's workstream reports + the owner's ship decision + the 22/22 live verification | 81 |
 | [13-layout-review.md](13-layout-review.md) | What does each page's 排版 look like today, and how should the coach bubble regroup - tabs, side-by-side, or both? | headless-Chrome captures at 1280/1024/390/320 before and after + DOM probes (overlap, panel geometry, tab state, focus, inert, URL tabs, analytics events) + the shipped dock, pass-2, P0 accessibility and P1/P2 verification (516/516) | 359 |
-| [14-uiux-layout-research.md](14-uiux-layout-research.md) | What does modern UI/UX research and design-system guidance say about tabs, side-by-side panes, overlays and progressive disclosure - and how does POC3's layout grammar measure up? | 43 cited sources: W3C WCAG 2.2/APG, Material 3, Apple HIG, Fluent 2, Carbon, GOV.UK, NN/g, Laws of UX, HAX and PAIR; heuristic audit of the rendered pages, measurements, the P0/P1/P2 implementation notes and the evaluation plan | 627 |
+| [14-uiux-layout-research.md](14-uiux-layout-research.md) | What does modern UI/UX research and design-system guidance say about tabs, side-by-side panes, overlays and progressive disclosure - and how does Milebook's layout grammar measure up? | 43 cited sources: W3C WCAG 2.2/APG, Material 3, Apple HIG, Fluent 2, Carbon, GOV.UK, NN/g, Laws of UX, HAX and PAIR; heuristic audit of the rendered pages, measurements, the P0/P1/P2 implementation notes and the evaluation plan | 627 |
 | [15-coach-interaction-llm-plan.md](15-coach-interaction-llm-plan.md) | How does the coach talk and what is it fed - and how do we get peer-voice short replies, an append-only conversation the prefill cache can actually reuse, an explained re-prefill, and a silent per-runner preference profile? | owner directive 2026-11-20 (the four asks) + `src/coach.ts`/`gateway.ts`/`directives.ts`/`web.ts` anchors + a byte-level two-turn prompt probe on a mid-size synthetic runner (CI-01..CI-09, LL-1..LL-6, D19-D22); plan only, nothing implemented | 331 |
 | [16-coach-interaction-implementation-record.md](16-coach-interaction-implementation-record.md) | What actually shipped from the coach-interaction plan - the peer voice, the epoch-gated cached prefill, the explained re-prefill, the silent preference profile - with which D19-D22 decisions, in which files, and with what verification? | the implementation slice's workstream + `pnpm check` 556/556 + the upgraded byte-stability probe (full prefix reused byte-identically on no-change turns) + the live deploy and two real Chinese model turns (99/68-char replies, prefill reasons end to end, learned zh-Hant on the audit page, temp account removed) | 126 |
 
@@ -43,7 +43,7 @@ are the evidence behind them.
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
 corrections to 04. The root then fixed the remaining review findings: added URL schemes to 02's 43 openable citations,
 assigned I-18 to slice 1, added the G-08/G-18 mapping note, reworded the infrastructure claim, repaired the two literal
-`??` defects in 03, deleted stale root-level copies of 01-03 and POC3-CALENDAR.md, and recorded the disposition of every
+`??` defects in 03, deleted stale root-level copies of 01-03 and MILEBOOK-CALENDAR.md, and recorded the disposition of every
 finding in 06 section 8.
 
 **Character encoding.** 00, 02, 04, 05, 06, 07, 10 and this index are pure ASCII. 01, 03, 08, 09, 11, 13 and 14 are
@@ -72,7 +72,7 @@ replacement characters.
 | `N1-N43` | Runner needs, 13 families | 02 |
 | `C1-C8` | Segment conflicts and tensions | 02 |
 | `S1-S68` | Competitive-benchmark sources | 03 (separate ledger from 02's S ids) |
-| `O1-O6` | POC3 differentiation opportunities | 03 |
+| `O1-O6` | Milebook differentiation opportunities | 03 |
 | `G-01..G-28` | Gaps between needs and the product | 04 |
 | `I-01..I-24` | Ranked improvement items | 05 |
 | `PR-01..PR-15` | Institute product-review items (season engine, subjective inbound, recaps, share/coach outbound, surface grammar, involve-the-coach pass) | 08 (PR-01..PR-14), 09 (PR-15) |

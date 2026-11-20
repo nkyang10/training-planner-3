@@ -359,7 +359,7 @@ function usernameTaken(username: string): Error {
 }
 
 /**
- * Older POC3 databases keyed activities by activity_id alone, so one runner's row blocked another runner from storing
+ * Older Milebook databases keyed activities by activity_id alone, so one runner's row blocked another runner from storing
  * the same Garmin activity. Rebuild that table with the composite (user_id, activity_id) key, preserving every row.
  */
 function migrateActivitiesTable(db: SqliteDatabase): void {

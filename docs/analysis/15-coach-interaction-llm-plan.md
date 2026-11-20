@@ -1,4 +1,4 @@
-# POC3 - the coach interaction, reviewed from the LLM architect's seat: reply style, cached prefill and the silent runner profile
+# Milebook - the coach interaction, reviewed from the LLM architect's seat: reply style, cached prefill and the silent runner profile
 
 **Status:** review + plan, waiting for owner decisions (D19-D22). **Date:** 2026-11-20.
 **Implemented 2026-11-20:** LL-1..LL-6 shipped with the recommended decisions; see
@@ -42,7 +42,7 @@ alone. Everything after it - including the whole conversation, sent twice - is r
 
 The runner types (or taps an intent) in the bubble; `/chat` proxies to the gateway; the gateway rebuilds the
 entire prompt from the store, calls the model once with `propose_calendar_turn`, validates, repairs once, applies
-atomically and returns the reply plus `poc3` metadata; the bubble renders the reply as plain text, tappable
+atomically and returns the reply plus `milebook` metadata; the bubble renders the reply as plain text, tappable
 suggestions, state cards, guardrail and failure cards (`src/web.ts:2622-2691`, `/chat` proxy `src/web.ts:4236`,
 meta flatten `src/web.ts:4319-4390`). The contract - server-validated proposals, idempotent replay, hidden typed
 directives, durable states with guardrails, an audit page - is the strong half of this product and is not touched
@@ -218,7 +218,7 @@ point this way; the restructure just gives the model one consistent frame instea
   「拿緊你最新嘅跑步紀錄…」, "Refreshing how your body feels..." / 「更新緊你嘅身體狀況…」, "New day - checking your
   plan..." / 「新嘅一日，睇緊你嘅計劃…」. Plain "..." remains the indicator for cached-append turns - the
   difference is itself the feedback loop: fast turns look fast, slow turns explain themselves.
-- The server is the source of truth: the gateway returns `poc3.prefill: { epoch, refreshed: [...reasons],
+- The server is the source of truth: the gateway returns `milebook.prefill: { epoch, refreshed: [...reasons],
   snapshotTokens }` computed from the epoch rule (4.2), the `/chat` proxy forwards it
   (`src/web.ts:4319-4390` pattern), and the client stores the epoch for its next prediction. A wrong prediction
   (rare, e.g. an out-of-band sync) silently self-corrects on the next turn.
@@ -263,7 +263,7 @@ Each slice is independently shippable behind `pnpm check` (516 tests today); eac
   does not fire.
 - **LL-3 - epochs and snapshots.** `promptEpoch` computation, the `prompt_snapshots` table (store + store tests),
   snapshot body = today's compact facts JSON + active states + muscle facts, append-on-epoch, prune to last 3,
-  the staleness contract wording in segment A, `poc3.prefill` in the completion meta, conversation-budget
+  the staleness contract wording in segment A, `milebook.prefill` in the completion meta, conversation-budget
   compaction with its own reason. Tests: `test/store.test.ts`, `test/gateway.test.ts` (epoch fires exactly on
   the rule list; no snapshot when nothing changed; compaction at the budget). Acceptance: a turn with no epoch
   bump sends zero snapshot bytes; every epoch reason maps to a string in the meta.

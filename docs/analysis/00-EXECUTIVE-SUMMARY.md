@@ -1,7 +1,7 @@
-# POC3 - executive summary: runner workflow, runner needs and the next slice
+# Milebook - executive summary: runner workflow, runner needs and the next slice
 
 **Status:** decision document; first slice implemented. **Date:** 2026-11-18.
-**Audience:** the POC3 owner and anyone deciding what to build next.
+**Audience:** the Milebook owner and anyone deciding what to build next.
 **Inputs:** `01-user-workflow-map.md`, `02-runner-needs-research.md`, `03-competitive-benchmark.md`,
 `04-gap-analysis.md`, `05-improvement-backlog.md`, `06-review-report.md`; code at HEAD; 46 runner-research sources and
 68 competitive-benchmark sources, all accessed 2026-11-18.
@@ -19,7 +19,7 @@ evidence; the change log is 07.
 
 ## 1. The answer in one page
 
-POC3 is not a thin demo. The loop that matters -- a runner talks to a coach, the coach edits a visible calendar, the
+Milebook is not a thin demo. The loop that matters -- a runner talks to a coach, the coach edits a visible calendar, the
 server validates the write, and the runner can undo it -- is real, enforced and unusually well built. The training-log
 and run-detail depth is at parity with paid products. The coaching-state engine is a genuine safety and trust asset.
 
@@ -30,7 +30,7 @@ But as a **daily runner product**, the workflow is incomplete in five structural
 | 1 | **The completion half is Garmin-only** | `appendActivity` has exactly one caller, the Garmin sync. A treadmill, commute, phone-only or cautious return-to-run session cannot be recorded. The "Reported" chip and the `"chat"` activity source exist but nothing creates one. | WF-02, CN-01/02, G-02, `src/garmin-sync.ts:165` |
 | 2 | **Coach-only writes make one model the availability of the whole planner** | There is no edit form, no direct move and no deterministic fallback. If the model is down or returns invalid JSON, add/move/delete freeze. The coach is the only writer by design, which is a product decision that now has an availability cost. | WF-16, CN-03, G-09, Q-03, `src/gateway.ts:1074-1081` |
 | 3 | **There is no mobile story** | No manifest, no service worker, no installable app, and a fixed seven-column month grid under 640 px. Calendar-first is phone-first; this is the largest table-stakes gap versus every competitor except Intervals.icu. | WF-22, CN-16, G-11, `src/web.ts:1609-1610`, `src/styles.ts:38` |
-| 4 | **The trust machinery is invisible** | Undo exists but only through chat; there is no change-history panel, no diff before a multi-session write, and the audit page is unlinked and not role-gated. POC3's strongest differentiator currently feels like opacity. | WF-07/20, CN-04/11, G-05/G-06, ST-06, O1/O4 |
+| 4 | **The trust machinery is invisible** | Undo exists but only through chat; there is no change-history panel, no diff before a multi-session write, and the audit page is unlinked and not role-gated. Milebook's strongest differentiator currently feels like opacity. | WF-07/20, CN-04/11, G-05/G-06, ST-06, O1/O4 |
 | 5 | **Race week and the account lifecycle have no artefacts** | Race day/week/taper/post-race exist as guardrails, not as a countdown, briefing, pacing plan or return block. There is no export, no backup, no account deletion, no password reset, no cookie revocation and no Garmin-key deletion. | WF-21/27, CN-10/12/13/14/15, G-13/G-21/G-22 |
 
 Three smaller but high-leverage findings sit on top of these:
@@ -87,17 +87,17 @@ Ratings: **strong** = better than the market and hard to lose; **workable** = th
 | S11 Post-race | weak | Post-race state blocks hard sessions | No race report, no return block, no link between race and plan |
 | S12 Data and account management | weak | Profile, key replacement, states, sign out | No export, backup, deletion, reset, revocation or key deletion |
 
-The pattern: **the middle of the journey is strong, the edges are weak**. POC3 is excellent at "I have a plan and I ran;
+The pattern: **the middle of the journey is strong, the edges are weak**. Milebook is excellent at "I have a plan and I ran;
 show me both", and weak at "I am new", "I am on my phone", "I am in race week", "I want my data out" and "something
 went wrong".
 
 ---
 
-## 4. Runner needs: the top ten and how POC3 fits
+## 4. Runner needs: the top ten and how Milebook fits
 
 Ranking from 02 section 10 (frequency x severity x strategic fit x evidence strength, out of 20).
 
-| Rank | Need | What it means | POC3 fit | Verdict |
+| Rank | Need | What it means | Milebook fit | Verdict |
 |---|---|---|---|---|
 | 1 | N4 Re-plan without rebuilding | A changed week must not force a new block | Move/delete/batch primitives exist | partial: UX and diff missing |
 | 2 | N29 Reschedule a week in seconds | The most common calendar interaction | Chat-only; no direct manipulation | partial |
@@ -131,7 +131,7 @@ would be needed before treating the ranking as market sizing.
 The market context matters: free plans (Garmin, Nike, COROS), free logs (Strava, TrainingPeaks Basic, Intervals.icu) and
 cheap AI summaries (Garmin Connect+, Strava) set the floor. "AI insights" is not a differentiator. **Conversational
 control with proof** is. The competitive risk is not that someone copies the calendar; it is that Strava+Runna or Garmin
-makes AI plan-writing ordinary while POC3 is still web-only and Garmin-only.
+makes AI plan-writing ordinary while Milebook is still web-only and Garmin-only.
 
 ---
 
@@ -232,7 +232,7 @@ redirect GET to create a new session (server restart or a cookie older than 24 h
 
 ## 11. Bottom line
 
-POC3's differentiated core is already built: the coach can edit the calendar, the server can prove what changed, the
+Milebook's differentiated core is already built: the coach can edit the calendar, the server can prove what changed, the
 states can say no, and the log can show what actually happened. The product's problem is not invention; it is
 **exposure and completion**. Slice 1 makes the demo honest and trustworthy. Slice 2 makes it usable on a phone and
 credible in race week. Slice 3 makes it safe to operate for real accounts. The highest-leverage work is to make what

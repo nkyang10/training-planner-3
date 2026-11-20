@@ -1,4 +1,4 @@
-# POC3 — Garmin training programs: what the API can and cannot give us
+# Milebook — Garmin training programs: what the API can and cannot give us
 
 **Status:** research + implemented activity-workout overlay (2026-11-18) · **Scope:** the Garmin Personal API, the
 activity-workout endpoint, and the honest boundary for importing a full training plan into the calendar grid.
@@ -10,7 +10,7 @@ activity-workout endpoint, and the honest boundary for importing a full training
 | Can we get the training program a recorded activity followed? | **Yes.** `GET /activity-service/activity/{activityId}/workouts` returns the planned workout the completed activity followed: steps, intensities, durations, targets and coach notes. | Official Personal API Swagger + official Python client wrapper `get_activity_workouts` |
 | Can we get the runner's future scheduled workouts / Garmin Coach plan from the Personal API? | **No.** `workout-service/*`, `trainingplan-service/*` and `calendar-service/*` are not in the Personal API's documented endpoint surface. | Official Personal API Swagger lists 24 GET endpoints, none of them a plan or schedule service |
 | Can the official Training API read the plan? | **No.** It is publish-only: it pushes workouts and training plans **to** Garmin Connect. | Garmin Training API page |
-| Can we import the executed workout into the calendar grid? | **Yes**, as a paired run+workout row on the run's day that opens one integrated run+program peek, plus a step card on the activity detail. POC3 stores it in `activity_workouts`. | Implemented in POC3 |
+| Can we import the executed workout into the calendar grid? | **Yes**, as a paired run+workout row on the run's day that opens one integrated run+program peek, plus a step card on the activity detail. Milebook stores it in `activity_workouts`. | Implemented in Milebook |
 | Can we import the future Garmin plan into the calendar grid? | **Not with the current architecture.** It needs a Garmin account (SSO) session token for `connectapi.garmin.com`, which the personal API key cannot mint. | See [§3](#3-what-a-full-plan-import-would-require) |
 
 The rest of this document separates what is officially verified, what was observed on a live payload, and what is
@@ -27,14 +27,14 @@ inferred, so a later slice can pick up the full-plan import without redoing the 
 - The key is exchanged for a **Bearer JWT** with a `POST` to
   `/personalapitoken-service/personal-api/personal-api-key/token` and `Authorization: ApiKey <key>`. The token is valid
   for **24 hours**; refresh tokens are not supported, so the client re-exchanges the key.
-- POC3 stores one key per runner (plaintext SQLite, private-server PoC) and caches the JWT for 20 minutes.
+- Milebook stores one key per runner (plaintext SQLite, private-server PoC) and caches the JWT for 20 minutes.
 
 ### 1.2 Documented endpoint surface
 
 The Personal API Swagger ("Garmin Connect Personal API 1.0.0 OAS3") documents **24 GET endpoints only**; there are no
-write endpoints. The relevant ones for POC3 are:
+write endpoints. The relevant ones for Milebook are:
 
-| Endpoint | What POC3 uses it for |
+| Endpoint | What Milebook uses it for |
 |---|---|
 | `GET /activitylist-service/activities/search/activities` | The activity list (`start`/`limit`; 100 per pull is the practical maximum). |
 | `GET /activity-service/activity/{activityId}` | Activity summary and `splitSummaries` (laps/intervals). |
@@ -59,13 +59,13 @@ Authorization: Bearer <jwt>
   Connect — not a future session and not the whole multi-week plan. An empty list means the activity followed no planned
   workout.
 - The field-level properties of the DTO are **not published** in the retrievable Swagger summary. A live payload reported
-  by a community integration in November 2026 is a flat, FIT-style step array. POC3 therefore parses defensively: it
+  by a community integration in November 2026 is a flat, FIT-style step array. Milebook therefore parses defensively: it
   accepts the observed fields and close variants, and treats an unreadable payload as "no planned workout" rather than
   throwing.
 
 **Observed step fields** (community payload; treat the exact names as observed, not contractual):
 
-| Field | Meaning | POC3 handling |
+| Field | Meaning | Milebook handling |
 |---|---|---|
 | `stepIndex` | 1-based position in the workout | Step table row number |
 | `intensity` | `WARMUP`, `ACTIVE`, `RECOVERY`, `REST`, `COOLDOWN`, … | Human label: Warm-up, Run, Recovery, Rest, Cool-down |
@@ -76,14 +76,14 @@ Authorization: Bearer <jwt>
 | `targetValue` | Repeat count on a repeat step | `3 ×` |
 | `notes` | Coach's note for the step | Joined into the workout notes |
 
-A repeat step closes the block it points back to, so POC3 groups the preceding steps into one phrase. A real mapped
+A repeat step closes the block it points back to, so Milebook groups the preceding steps into one phrase. A real mapped
 example:
 
 ```
 Warm-up 10:00 @ 5:45–6:25/km · 3 × (Run 7:00 @ 4:14–4:33/km, Recovery 2:00) · Cool-down 10:00 @ 5:45–6:25/km
 ```
 
-Pace targets arrive in **metres per second**; POC3 converts them to min/km and orders the range fast-to-slow. Nested
+Pace targets arrive in **metres per second**; Milebook converts them to min/km and orders the range fast-to-slow. Nested
 repeats group correctly because grouping runs in step order: the inner repeat is already one entry when the outer repeat
 closes.
 
@@ -97,7 +97,7 @@ closes.
 | Garmin Coach / adaptive plan definition | The plan name, weeks, phases, goal race and per-day sessions | Garmin web API `trainingplan-service` + GraphQL `trainingPlanScalar` |
 | Plan ↔ activity reverse link | "Which plan did this run belong to?" | GraphQL `workoutScheduleSummariesScalar[].associatedActivityId` (web token) |
 | A workout id inside the activity summary | Would make the per-run lookup one request | Not documented; Garmin ships the dedicated `/workouts` sub-resource instead |
-| Write access | Pushing a POC3 plan to Garmin | No write endpoints in the Personal API; the official Training API is publish-only and business-tier |
+| Write access | Pushing a Milebook plan to Garmin | No write endpoints in the Personal API; the official Training API is publish-only and business-tier |
 
 The official **Connect Developer Program Training API** is explicitly described as a way to *publish* workouts and
 training plans **to** the Garmin Connect calendar. It is not a read API and cannot tell us which plan an activity came
@@ -142,7 +142,7 @@ provisioned, full plan reads possible) and `none` (hide plan widgets). A probe s
 
 ---
 
-## 4. What POC3 does with the available data
+## 4. What Milebook does with the available data
 
 - **Fetch:** after the activity rows are stored, a sync enriches up to **3** workouts (`workoutFetchLimit`) for Garmin
   activities in the 90-day window that have no workout row or a retryable failure. A second attempt is allowed
@@ -165,12 +165,12 @@ provisioned, full plan reads possible) and `none` (hide plan widgets). A probe s
 - **Training log and day page:** the week card shows a "Garmin workout" line under the planned line, and `/day/<day>` has
   a "Garmin workouts" card.
 - **Run peek:** a "Training program · Garmin" section with the name, summary, step table and notes when the workout is known.
-- **Rate limiting:** Garmin publishes no Personal API quota, but `429` is possible (POC3 already turns 401/403/429/400 into
+- **Rate limiting:** Garmin publishes no Personal API quota, but `429` is possible (Milebook already turns 401/403/429/400 into
   actionable errors). The cap, the retry cap, the calendar budget/throttle and the on-demand fetch keep the extra calls
   bounded.
 
 This is the honest scope: **the executed workout is imported; the future plan is not**, because the transport for it is not
-part of the key model POC3 uses.
+part of the key model Milebook uses.
 
 ---
 
@@ -181,8 +181,8 @@ part of the key model POC3 uses.
 | Show what Garmin workout a run followed | **Done** (paired pill with a clickable brief, detail card, week card, day page, peek) | — |
 | Show the Garmin Coach plan name for a run | Not available from the Personal API | SSO + GraphQL `workoutScheduleSummariesScalar.associatedActivityId` |
 | Import upcoming Garmin sessions into the calendar grid | Not available from the Personal API | SSO + `calendar-service` month feed / `workoutScheduleByPeriod`, mapped to a read-only "Garmin plan" pill layer |
-| Import the whole Garmin plan as POC3 sessions | Not available and would mix two owners of the plan | Keep imported sessions read-only and separate from coach-written sessions |
-| Push POC3 sessions to Garmin | Not in the Personal API | Official Training API (publish-only, business tier) |
+| Import the whole Garmin plan as Milebook sessions | Not available and would mix two owners of the plan | Keep imported sessions read-only and separate from coach-written sessions |
+| Push Milebook sessions to Garmin | Not in the Personal API | Official Training API (publish-only, business tier) |
 | Keep activity sync working when Garmin changes | Done: workout overlay is best-effort and optional | Probe once per endpoint family; cache the verdict |
 
 ---

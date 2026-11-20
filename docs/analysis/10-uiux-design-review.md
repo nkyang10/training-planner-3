@@ -1,4 +1,4 @@
-# POC3 - UI/UX design review
+# Milebook - UI/UX design review
 
 **Status:** review document; the section-5 quick wins were implemented and verified on 2026-11-19 - see
 [11-uiux-quickwins-implementation.md](11-uiux-quickwins-implementation.md). The findings below remain the

@@ -1,7 +1,7 @@
 /**
  * Build a reported activity from the runner's form.
  *
- * POC3's completion half used to be Garmin-only: `appendActivity` had exactly one caller, the sync. This module turns a
+ * Milebook's completion half used to be Garmin-only: `appendActivity` had exactly one caller, the sync. This module turns a
  * small form into the same `Activity` record the sync writes, so the calendar, the training log, plan matching, the run
  * peek and the activity detail all work without a device.
  *

@@ -142,7 +142,7 @@ const BUFFER_GEOMETRY_UTILS_MODULE = readFileSync(new URL("./vendor/BufferGeomet
  */
 const ANATOMY_MUSCLES_GLB = readFileSync(new URL("./vendor/anatomy-muscles.glb", import.meta.url));
 
-const SESSION_COOKIE = "poc3sid";
+const SESSION_COOKIE = "milebooksid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_SESSIONS = 500;
 
@@ -1614,7 +1614,7 @@ function renderNotificationScript(): string {
     // Localized chrome strings injected by the server (see layout's window.__I18N__). English keeps working if absent.
     const ui = window.__I18N__ || {};
     const interp = (tpl, count) => (typeof tpl === 'string' ? tpl.replace('{count}', String(count)) : '');
-    const siteName = document.body.dataset.siteName || 'AI Coach Calendar';
+    const siteName = document.body.dataset.siteName || 'Milebook';
     const pageContext = document.body.dataset.pageContext || '';
     const timezone = document.body.dataset.timezone || 'UTC';
     const setUnread = (value) => {
@@ -1762,7 +1762,7 @@ function renderMuscleBadgeScript(): string {
 
 /**
  * Privacy-safe UI event hook. Components mark the events that matter with `data-track`; this dispatches a
- * `poc3:track` CustomEvent on window. It never sends data over the network — a host that wants analytics listens for
+ * `milebook:track` CustomEvent on window. It never sends data over the network — a host that wants analytics listens for
  * the event and applies its own consent and retention rules.
  */
 function renderTrackScript(): string {
@@ -1772,7 +1772,7 @@ function renderTrackScript(): string {
       const name = el.getAttribute('data-track');
       if (!name) return;
       const value = el.getAttribute('data-track-value') || (el instanceof HTMLInputElement ? el.value : '');
-      window.dispatchEvent(new CustomEvent('poc3:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
+      window.dispatchEvent(new CustomEvent('milebook:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
     };
     document.addEventListener('click', (event) => {
       const el = event.target instanceof Element ? event.target.closest('[data-track]') : null;
@@ -1880,7 +1880,7 @@ function renderGarminPanel(savedKey: GarminKey | undefined, next: string, tx: Tr
   ${renderGarminScript()}`;
 }
 
-const SITE_NAME = "AI Coach Calendar";
+const SITE_NAME = "Milebook";
 const MAX_UNREAD_DISPLAY = 99;
 
 function formatUnreadCount(unread: number): string {
@@ -2056,7 +2056,7 @@ function renderChatBubble(tx: Translator): string {
     let sendInFlight = false;
     // The panel is one coach surface in three groups: the conversation, the durable states it believes, and the
     // calendar changes it made. The strip only switches which group is visible; the chat keeps running underneath.
-    const changesSeenKey = 'poc3.coachChangesSeen';
+    const changesSeenKey = 'milebook.coachChangesSeen';
     const readChangesSeen = () => {
       try { return localStorage.getItem(changesSeenKey) || ''; } catch { return ''; }
     };
@@ -2073,8 +2073,8 @@ function renderChatBubble(tx: Translator): string {
     // already waiting when that truth arrives. The client predicts the re-prefill from signals it already has - a
     // fresh Garmin import, a saved muscle check-in, a new day, a confirmed state or a calendar batch - and names
     // the reason in the typing line; the response's prefill block then replaces the guess with the fact.
-    const prefillKey = 'poc3.coachPrefill';
-    const waitFlagKey = 'poc3.coachWait';
+    const prefillKey = 'milebook.coachPrefill';
+    const waitFlagKey = 'milebook.coachWait';
     const readPrefill = () => {
       try { return JSON.parse(localStorage.getItem(prefillKey) || 'null'); } catch { return null; }
     };
@@ -2121,7 +2121,7 @@ function renderChatBubble(tx: Translator): string {
     };
     let activeTab = 'chat';
     const track = (name, value) => {
-      window.dispatchEvent(new CustomEvent('poc3:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
+      window.dispatchEvent(new CustomEvent('milebook:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
     };
     const setTab = (name, options) => {
       const next = tabPanels.some((tabPanel) => tabPanel.dataset.coachPanel === name) ? name : 'chat';
@@ -2697,7 +2697,7 @@ function renderChatBubble(tx: Translator): string {
       const requestId = makeRequestId();
       const postChat = () => fetch('/chat', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-poc3-request-id': requestId },
+        headers: { 'content-type': 'application/json', 'x-milebook-request-id': requestId },
         body: JSON.stringify(intent ? { message: text, intent } : { message: text }),
       });
       try {
@@ -3725,7 +3725,9 @@ export function createWeb(options: WebOptions): WebApp {
       // Per-request translator: cookie wins, then Accept-Language, then default. Everything rendered
       // below (chrome, satellites, errors, flash) flows through this pageLayout, so one switch covers all pages.
       const requestCookies = parseCookies(request);
-      const tx = createTranslator(resolveLocale(requestCookies[LOCALE_COOKIE], request.headers["accept-language"]));
+      // A locale chosen before the POC3 -> Milebook rename still counts: the legacy poc3_lang cookie is honoured.
+      const localeCookieValue = requestCookies[LOCALE_COOKIE] ?? requestCookies["poc3_lang"];
+      const tx = createTranslator(resolveLocale(localeCookieValue, request.headers["accept-language"]));
       const pageLayout = (
         title: string,
         body: string,
@@ -4336,25 +4338,25 @@ export function createWeb(options: WebOptions): WebApp {
           ...(weekStart === undefined ? {} : { weekStart }),
         });
         const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
-        const requestId = request.headers["x-poc3-request-id"];
+        const requestId = request.headers["x-milebook-request-id"];
         try {
           const upstream = await fetch(`${gatewayUrl}/v1/chat/completions`, {
             method: "POST",
             headers: {
               "content-type": "application/json",
-              "x-poc3-user": user.userId,
-              ...(typeof requestId === "string" ? { "x-poc3-request-id": requestId } : {}),
+              "x-milebook-user": user.userId,
+              ...(typeof requestId === "string" ? { "x-milebook-request-id": requestId } : {}),
             },
             body: JSON.stringify({
-              model: options.modelId ?? "poc3-coach",
+              model: options.modelId ?? "milebook-coach",
               stream: false,
               messages: [{ role: "user", content: message }],
-              ...(directive === undefined ? {} : { poc3: { directive } }),
+              ...(directive === undefined ? {} : { milebook: { directive } }),
             }),
           });
           const payload = (await upstream.json()) as {
             choices?: Array<{ message?: { content?: unknown } }>;
-            poc3?: {
+            milebook?: {
               sessions?: number;
               memories?: number;
               changes?: unknown[];
@@ -4388,10 +4390,10 @@ export function createWeb(options: WebOptions): WebApp {
             response.end(JSON.stringify({ error: { detail: payload.error?.detail ?? `coach answered ${upstream.status}` } }));
             return;
           }
-          const suggestions = Array.isArray(payload.poc3?.suggestions)
-            ? payload.poc3.suggestions.filter((suggestion): suggestion is string => typeof suggestion === "string")
+          const suggestions = Array.isArray(payload.milebook?.suggestions)
+            ? payload.milebook.suggestions.filter((suggestion): suggestion is string => typeof suggestion === "string")
             : [];
-          const rawFailures = payload.poc3?.failures;
+          const rawFailures = payload.milebook?.failures;
           const failures = Array.isArray(rawFailures)
             ? rawFailures
                 .filter((failure): failure is Record<string, unknown> => typeof failure === "object" && failure !== null && !Array.isArray(failure))
@@ -4403,7 +4405,7 @@ export function createWeb(options: WebOptions): WebApp {
                   reason: failure["reason"] === "missing-session-id" ? "missing-session-id" : "session-not-found",
                 }))
             : [];
-          const rawStates = Array.isArray(payload.poc3?.states) ? payload.poc3.states : [];
+          const rawStates = Array.isArray(payload.milebook?.states) ? payload.milebook.states : [];
           const states: Array<{
             stateId: string;
             key: CoachStateKey;
@@ -4436,7 +4438,7 @@ export function createWeb(options: WebOptions): WebApp {
               uiNote: tx.t(`coachState.note.${key}` as const),
             });
           }
-          const rawBlocked = Array.isArray(payload.poc3?.blockedByStates) ? payload.poc3.blockedByStates : [];
+          const rawBlocked = Array.isArray(payload.milebook?.blockedByStates) ? payload.milebook.blockedByStates : [];
           const blockedByStates: Array<{ key: CoachStateKey; label: string }> = [];
           for (const value of rawBlocked) {
             if (typeof value === "string" && isCoachStateKey(value)) {
@@ -4446,24 +4448,24 @@ export function createWeb(options: WebOptions): WebApp {
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(JSON.stringify({
             reply,
-            sessions: payload.poc3?.sessions ?? 0,
-            changes: payload.poc3?.changes ?? [],
+            sessions: payload.milebook?.sessions ?? 0,
+            changes: payload.milebook?.changes ?? [],
             suggestions,
             failures,
-            changeSetId: payload.poc3?.changeSetId ?? null,
-            reverted: payload.poc3?.reverted === true,
-            memories: payload.poc3?.memories ?? 0,
-            attempts: payload.poc3?.attempts ?? 1,
-            outcome: payload.poc3?.outcome ?? "committed",
-            validationCode: payload.poc3?.validationCode ?? null,
-            mode: payload.poc3?.mode ?? null,
-            writesAllowed: payload.poc3?.writesAllowed !== false,
-            blockedWrites: typeof payload.poc3?.blockedWrites === "number" ? payload.poc3.blockedWrites : 0,
-            directiveId: typeof payload.poc3?.directiveId === "string" ? payload.poc3.directiveId : null,
+            changeSetId: payload.milebook?.changeSetId ?? null,
+            reverted: payload.milebook?.reverted === true,
+            memories: payload.milebook?.memories ?? 0,
+            attempts: payload.milebook?.attempts ?? 1,
+            outcome: payload.milebook?.outcome ?? "committed",
+            validationCode: payload.milebook?.validationCode ?? null,
+            mode: payload.milebook?.mode ?? null,
+            writesAllowed: payload.milebook?.writesAllowed !== false,
+            blockedWrites: typeof payload.milebook?.blockedWrites === "number" ? payload.milebook.blockedWrites : 0,
+            directiveId: typeof payload.milebook?.directiveId === "string" ? payload.milebook.directiveId : null,
             states,
             blockedByStates,
-            prefill: typeof payload.poc3?.prefill === "object" && payload.poc3?.prefill !== null
-              ? payload.poc3.prefill
+            prefill: typeof payload.milebook?.prefill === "object" && payload.milebook?.prefill !== null
+              ? payload.milebook.prefill
               : null,
           }));
         } catch (error) {
@@ -5243,7 +5245,7 @@ export function createWeb(options: WebOptions): WebApp {
         });
         response.writeHead(200, {
           "content-type": "application/json; charset=utf-8",
-          "content-disposition": `attachment; filename="poc3-export-${today}.json"`,
+          "content-disposition": `attachment; filename="milebook-export-${today}.json"`,
           "cache-control": "no-store",
         });
         response.end(JSON.stringify(bundle, null, 2));
@@ -5253,12 +5255,12 @@ export function createWeb(options: WebOptions): WebApp {
       if (url.pathname === "/export.ics" && method === "GET") {
         const ics = buildCalendarIcs({
           sessions: options.store.listSessions(user.userId, "0000-01-01", "9999-12-31"),
-          calendarName: `POC3 - ${user.displayName}`,
+          calendarName: `Milebook - ${user.displayName}`,
           now: now(),
         });
         response.writeHead(200, {
           "content-type": "text/calendar; charset=utf-8",
-          "content-disposition": `attachment; filename="poc3-calendar-${today}.ics"`,
+          "content-disposition": `attachment; filename="milebook-calendar-${today}.ics"`,
           "cache-control": "no-store",
         });
         response.end(ics);

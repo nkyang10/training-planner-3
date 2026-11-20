@@ -46,8 +46,8 @@ export function localeMeta(code: Locale): LocaleMeta {
  * app / nav / header / account / notif / coach / garmin / footer / login / signup / profile / common / error.
  */
 const en = {
-  "app.name": "AI Coach Calendar",
-  "app.brand": "⚡ AI COACH CALENDAR",
+  "app.name": "Milebook",
+  "app.brand": "⚡ Milebook",
 
   "nav.plan": "Plan",
   "nav.log": "Training log",
@@ -1255,8 +1255,8 @@ type Messages = Record<MessageKey, string>;
 
 /** Traditional Chinese (Hong Kong). Must stay key-identical to `en`; the type makes a missing key a compile error. */
 const zhHK: Messages = {
-  "app.name": "AI 教練日曆",
-  "app.brand": "⚡ AI 教練日曆",
+  "app.name": "Milebook",
+  "app.brand": "⚡ Milebook",
 
   "nav.plan": "訓練計劃",
   "nav.log": "訓練記錄",
@@ -2571,7 +2571,7 @@ export function createTranslator(locale: Locale): Translator {
 export const defaultTranslator: Translator = createTranslator(DEFAULT_LOCALE);
 
 /** Cookie the web shell uses to remember a runner's chosen language across every page. */
-export const LOCALE_COOKIE = "poc3_lang";
+export const LOCALE_COOKIE = "milebook_lang";
 
 /** Map a browser `Accept-Language` header onto a supported locale (best-effort, prefix matched). */
 function matchAcceptLanguage(header: string | undefined): Locale | undefined {
@@ -2587,7 +2587,7 @@ function matchAcceptLanguage(header: string | undefined): Locale | undefined {
 
 /**
  * Resolve the locale for a request: an explicit cookie wins, then the browser's Accept-Language, then English.
- * `cookieValue` is the raw value read from the request's `poc3_lang` cookie.
+ * `cookieValue` is the raw value read from the request's `milebook_lang` cookie.
  */
 export function resolveLocale(cookieValue: string | undefined, acceptLanguage: string | undefined): Locale {
   if (isLocale(cookieValue)) return cookieValue;

@@ -54,7 +54,7 @@ describe("export bundle", () => {
       activities: [activity],
       changeSets: [changeSet],
     });
-    expect(bundle.app).toBe("POC3");
+    expect(bundle.app).toBe("Milebook");
     expect(bundle.profile).toEqual({
       userId: "u1",
       username: "demo",
@@ -84,7 +84,7 @@ describe("calendar ICS", () => {
     expect(ics.trimEnd().endsWith("END:VCALENDAR")).toBe(true);
     expect(ics).toContain("DTSTART;VALUE=DATE:20261108");
     expect(ics).toContain("DTSTART;VALUE=DATE:20261112");
-    expect(ics).toContain("UID:session:long@poc3");
+    expect(ics).toContain("UID:session:long@milebook");
     expect(ics).toContain("SUMMARY:Tempo 8 km");
     expect(ics).toContain("min\\; threshold");
     expect(ics.indexOf("DTSTART;VALUE=DATE:20261108")).toBeLessThan(ics.indexOf("DTSTART;VALUE=DATE:20261112"));

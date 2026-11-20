@@ -1,18 +1,21 @@
-# POC3 documents
+# Milebook documents
 
-Start with the [solution document](POC3-CALENDAR.md); it is the reference for the architecture, coach contract, calendar
+Start with the [solution document](MILEBOOK-CALENDAR.md); it is the reference for the architecture, coach contract, calendar
 and training-log behavior. The [training-log plan](TRAINING-LOG-PLAN.md) goes deeper on the analysis slices, the
 [Garmin training-program note](GARMIN-TRAINING-PROGRAMS.md) answers what the Garmin API can and cannot provide, and the
 [feature backlog](FEATURES-FOR-REVIEW.md) lists what is still waiting for owner review.
 
+*The working title **POC3** became **Milebook** on 2026-11-20; every document now uses the new name, and the solution
+document is `MILEBOOK-CALENDAR.md`.*
+
 | Document | What it answers |
 |---|---|
-| [POC3-CALENDAR.md](POC3-CALENDAR.md) | The standalone solution: problem, architecture, accounts/profiles, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, paired run+workout rows, the integrated run+program peek, Garmin, API, runbook, limits |
+| [MILEBOOK-CALENDAR.md](MILEBOOK-CALENDAR.md) | The standalone solution: problem, architecture, accounts/profiles, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, paired run+workout rows, the integrated run+program peek, Garmin, API, runbook, limits |
 | [TRAINING-LOG-PLAN.md](TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented training-log slices: load/ramp, hard/easy, rich run metrics, per-kilometre splits, Garmin laps/intervals, HR zones, period best efforts/PRs, the metric-selectable trend graph, the Garmin activity-workout overlay (paired row, integrated run+program peek, calendar fill) and weekly coach review |
 | [GARMIN-TRAINING-PROGRAMS.md](GARMIN-TRAINING-PROGRAMS.md) | What the Garmin Personal API exposes (per-activity executed workout), what it does not (future scheduled workouts, Coach/adaptive plans), and what a full-plan import would require |
 | [FEATURES-FOR-REVIEW.md](FEATURES-FOR-REVIEW.md) | Remaining candidate features from PoC1/PoC2, prioritised for owner review; the implemented slice is marked done |
 | [analysis/13-layout-review.md](analysis/13-layout-review.md) | Page-by-page 排版 review (calendar, day, training log, activity, muscle, states, profile, auth) and three implemented passes: the coach dock (before/after measurements, tabs-vs-side-by-side options, the Chat/States/Changes IA), the same grammar on the log, states, activity and muscle pages; the P0 accessibility pass (launcher disclosure, inert focus management, 320 px capture); and the P1/P2 pass (load chip, URL-addressable tabs, states head action, segmented-control semantics, 1024 px dock-open columns, Muscles jump, analytics hook) |
-| [analysis/14-uiux-layout-research.md](analysis/14-uiux-layout-research.md) | Professional research review of the layout grammar: tabs vs side-by-side vs overlays, progressive disclosure, responsive breakpoints, WCAG 2.2/APG semantics, AI assistant guidance, a heuristic audit of POC3, the P0/P1/P2 implementation notes and a proposed evaluation plan |
+| [analysis/14-uiux-layout-research.md](analysis/14-uiux-layout-research.md) | Professional research review of the layout grammar: tabs vs side-by-side vs overlays, progressive disclosure, responsive breakpoints, WCAG 2.2/APG semantics, AI assistant guidance, a heuristic audit of Milebook, the P0/P1/P2 implementation notes and a proposed evaluation plan |
 | [adr/0001-server-validated-coach.md](adr/0001-server-validated-coach.md) | LLM proposes, server validates before writing |
 | [adr/0002-calendar-first-bubble.md](adr/0002-calendar-first-bubble.md) | Calendar is the product; the bubble is self-implemented, not an iframe |
 | [adr/0003-validation-feedback-loop.md](adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back to the model for one repair/clarification; turns are idempotent |

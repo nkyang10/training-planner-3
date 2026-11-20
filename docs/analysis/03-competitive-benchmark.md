@@ -1,8 +1,8 @@
-# Competitive benchmark: runner training products versus POC3
+# Competitive benchmark: runner training products versus Milebook
 
-**Status:** Final draft for review (shared task `task-3`) · **Analysis date:** 2026-11-18 · **Product under analysis:** POC3, private proof of concept (calendar-first AI coach for runners) · **Scope:** 12 competitor products and 6 adjacent behaviours/substitutes · **Owner:** competitive intelligence · **Write scope:** this file only; no source, test, data or other docs were modified.
+**Status:** Final draft for review (shared task `task-3`) · **Analysis date:** 2026-11-18 · **Product under analysis:** Milebook, private proof of concept (calendar-first AI coach for runners) · **Scope:** 12 competitor products and 6 adjacent behaviours/substitutes · **Owner:** competitive intelligence · **Write scope:** this file only; no source, test, data or other docs were modified.
 
-> **One-line finding.** POC3 is not competing with one product. It competes with a stack runners already assemble: a free Garmin or Nike plan, Strava's log and social graph, a spreadsheet or PDF, WhatsApp, and occasionally a human coach. POC3's only defensible wedge is the one thing that stack cannot do: a coach that edits the runner's actual calendar, with validation, guardrails and undo.
+> **One-line finding.** Milebook is not competing with one product. It competes with a stack runners already assemble: a free Garmin or Nike plan, Strava's log and social graph, a spreadsheet or PDF, WhatsApp, and occasionally a human coach. Milebook's only defensible wedge is the one thing that stack cannot do: a coach that edits the runner's actual calendar, with validation, guardrails and undo.
 
 ---
 
@@ -13,11 +13,11 @@
 This is a decision aid, not a product review. It answers four questions:
 
 1. What do the 12 most relevant products actually do (documented), and what do runners say about whether it works (reported)?
-2. Where is POC3 genuinely alone, at parity, or behind?
-3. Which gaps are real opportunities for a calendar-first AI coach, and which are table stakes POC3 must simply match?
-4. Which POC3 non-goals are strategic liabilities rather than focus?
+2. Where is Milebook genuinely alone, at parity, or behind?
+3. Which gaps are real opportunities for a calendar-first AI coach, and which are table stakes Milebook must simply match?
+4. Which Milebook non-goals are strategic liabilities rather than focus?
 
-It is **not** a hands-on trial. No competitor account was created, no paid plan was purchased, no app was installed, and no paywalled page was circumvented. POC3 behaviour is taken from the repository's shipped-feature documentation (`README.md`, `docs/FEATURES-FOR-REVIEW.md`, `docs/POC3-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/TRAINING-LOG-PLAN.md`), not from fresh end-to-end testing.
+It is **not** a hands-on trial. No competitor account was created, no paid plan was purchased, no app was installed, and no paywalled page was circumvented. Milebook behaviour is taken from the repository's shipped-feature documentation (`README.md`, `docs/FEATURES-FOR-REVIEW.md`, `docs/MILEBOOK-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/TRAINING-LOG-PLAN.md`), not from fresh end-to-end testing.
 
 ### 0.2 Evidence legend
 
@@ -47,7 +47,7 @@ It is **not** a hands-on trial. No competitor account was created, no paid plan 
 - **Search and fetch:** `web_search`, `serper_search` (`search`/`webpage`) and `web_fetch`. When a page was JavaScript-heavy or navigation-heavy, I used the search-index summary and say so in the ledger's reliability column.
 - **Date discipline:** every price and feature claim is stated as of **2026-11-18**, the access date. Where a page carries its own update date, that date is shown in the ledger.
 - **Quotes:** short paraphrases only; no fabricated quotations. Direct quotation marks are reserved for wording visible in a fetched page or scraped thread.
-- **POC3 truth:** feature status comes from the repo's own documents, including explicit "implemented", "partially implemented", "open" and "non-goal" labels. I did not infer features from screenshots.
+- **Milebook truth:** feature status comes from the repo's own documents, including explicit "implemented", "partially implemented", "open" and "non-goal" labels. I did not infer features from screenshots.
 - **No triangulation theatre:** repeated vendor claims count as one source, not two.
 
 ### 0.5 Limitations (read before using any number)
@@ -58,37 +58,37 @@ It is **not** a hands-on trial. No competitor account was created, no paid plan 
 4. **Vendor forums are not neutral.** The Athletica forum review is answered by Athletica staff; the Intervals.icu forum is full of power users; the Runna subreddit is explicitly a fan community.
 5. **AI features are moving targets and often beta.** Garmin says Active Intelligence is "currently releasing in beta"; Strava's Athlete Intelligence launched as a public beta; COROS's AI plan-writing capability is dated to 21 September 2026. Capability claims can be stale within weeks.
 6. **Some pages were region-locked or JS-heavy.** The Google Calendar and WhatsApp FAQ pages returned Chinese-locale content; Nike and Humango marketing pages returned only summary text; Final Surge's pricing page did not render prices to the crawler. These are flagged, not silently patched.
-7. **POC3 is a private PoC.** It has no pricing, no mobile app, no payments and synthetic demo data. "Behind" in this document means "behind for a commercial runner product", not "behind for a PoC".
+7. **Milebook is a private PoC.** It has no pricing, no mobile app, no payments and synthetic demo data. "Behind" in this document means "behind for a commercial runner product", not "behind for a PoC".
 8. **No user interviews.** Personas and segment weights come from the companion research (`docs/analysis/02-runner-needs-research.md`); this document only links competitor evidence to those needs where the link is explicit.
 
 ### 0.6 Executive summary (the 10 findings that matter)
 
-1. **The market has four product families, not one:** device-first coaches (Garmin, COROS), coach platforms (TrainingPeaks, TrainingPeaks Coach, Final Surge), AI-plan apps (Runna, Athletica, Humango), and social-logging apps (Strava, Nike Run Club, Runkeeper). Intervals.icu is a fifth, power-user analytics platform. POC3 does not fit any of them cleanly; that is both the opening and the risk.
+1. **The market has four product families, not one:** device-first coaches (Garmin, COROS), coach platforms (TrainingPeaks, TrainingPeaks Coach, Final Surge), AI-plan apps (Runna, Athletica, Humango), and social-logging apps (Strava, Nike Run Club, Runkeeper). Intervals.icu is a fifth, power-user analytics platform. Milebook does not fit any of them cleanly; that is both the opening and the risk.
 2. **AI is mostly read-only across the market.** Strava's Athlete Intelligence writes a summary on an activity [S17]; Garmin's Active Intelligence "talks. You listen." with no reply box [S34]; Athletica explicitly says its AI Coach "does not automatically modify your training" [S54]; Runna's AI is post-run Workout Insights [S28]. The only competitor that lets AI *write* structured plans/calendar entries is COROS, and only through an external MCP assistant, with limits: 4–16-week plans, start date within 14 days, no delete via AI [S46].
-3. **POC3's true differentiator is not "AI coach" — it is "AI coach that edits the calendar with proof".** Natural-language add/move/delete/revert, server validation, before/after change sets, undo, hidden directives and an audit page are not a combination any of the 12 ships natively. This is the strongest claim in this document and the one with the clearest failure modes (§7, O1/O4).
-4. **Garmin sets the free floor.** Garmin Coach delivers "free custom plans" [S31] and DSW are generated on compatible watches/Edge [S29]. Garmin Connect+ adds AI summaries for $6.99/month or $69.99/year [S32], but reviewers describe the AI as one-way and low-insight [S33][S34]. POC3 cannot charge for "AI insights" alone; that is already free or cheap.
+3. **Milebook's true differentiator is not "AI coach" — it is "AI coach that edits the calendar with proof".** Natural-language add/move/delete/revert, server validation, before/after change sets, undo, hidden directives and an audit page are not a combination any of the 12 ships natively. This is the strongest claim in this document and the one with the clearest failure modes (§7, O1/O4).
+4. **Garmin sets the free floor.** Garmin Coach delivers "free custom plans" [S31] and DSW are generated on compatible watches/Edge [S29]. Garmin Connect+ adds AI summaries for $6.99/month or $69.99/year [S32], but reviewers describe the AI as one-way and low-insight [S33][S34]. Milebook cannot charge for "AI insights" alone; that is already free or cheap.
 5. **Runna is the strongest paid AI-plan app and is now Strava-owned.** Runna costs $119.99/year [S25], pushes structured workouts to Garmin/Apple/COROS/Fitbit/Suunto [S19][S25], and is iterating fast (20+ features in 2026; Holiday Mode, seven-day plans, new Home tab) [S15]. Reviewers praise structure and convenience but report aggressive paces, opaque adaptation and calendar-cleanup bugs [S26][S27].
 6. **TrainingPeaks owns the coach workflow; Final Surge owns the cheap coach workflow.** TrainingPeaks Premium is $19.95/month or $134.99/year with a free Basic account [S3]; Coach Edition starts at $21.99/month [S2]; Coach Match human coaching is $149–$359/month [S6]. Final Surge is free for athletes and $19/$39 per month for coaches [S21][S22]. Neither offers a native conversational coach that writes the calendar.
 7. **Strava is the distribution and social layer, not a training-plan product.** Running plans moved to Runna effective 10 July (page dated 17 September 2026) [S12]; cycling plans remain fixed 4-week, 5-workout email plans [S13]. Strava's AI summaries are subscriber-only, mobile-only and can be hidden [S17]; users call them useless and ask for a coach that adjusts the plan [S18]. Strava now connects read-only to Gemini and Claude [S16].
-8. **Intervals.icu is the free power-user benchmark.** Free, with a $4/month supporter tier, drag-and-drop calendar, plan editor, custom zones and an MCP connector for the runner's own AI [S49][S50][S52]. It has no official mobile app [S51]. It is the product most likely to make a data-literate runner ask why POC3 exists.
-9. **Runners still run their week outside these products.** They use Google Calendar, Sheets, PDF plans, WhatsApp/Telegram groups and Reddit plan critique because no product owns "my actual week" end to end [S60]–[S67]. This is the demand-side evidence for POC3's calendar-first bet, and the reason "another plan app" is not enough.
-10. **POC3 is ahead on conversational control, behind on the table stakes.** It is ahead on calendar-write coaching, guardrailed states, executed-workout overlay and auditability. It is behind on mobile, reminders, plan templates, export, wearable breadth, strength, social/community, coach view, race-day logistics, onboarding and a business model. The next section quantifies that honestly.
+8. **Intervals.icu is the free power-user benchmark.** Free, with a $4/month supporter tier, drag-and-drop calendar, plan editor, custom zones and an MCP connector for the runner's own AI [S49][S50][S52]. It has no official mobile app [S51]. It is the product most likely to make a data-literate runner ask why Milebook exists.
+9. **Runners still run their week outside these products.** They use Google Calendar, Sheets, PDF plans, WhatsApp/Telegram groups and Reddit plan critique because no product owns "my actual week" end to end [S60]–[S67]. This is the demand-side evidence for Milebook's calendar-first bet, and the reason "another plan app" is not enough.
+10. **Milebook is ahead on conversational control, behind on the table stakes.** It is ahead on calendar-write coaching, guardrailed states, executed-workout overlay and auditability. It is behind on mobile, reminders, plan templates, export, wearable breadth, strength, social/community, coach view, race-day logistics, onboarding and a business model. The next section quantifies that honestly.
 
 ### 0.7 Market map used in this document
 
-| Family | Products in this benchmark | What the runner buys | Where the plan lives | POC3 relationship |
+| Family | Products in this benchmark | What the runner buys | Where the plan lives | Milebook relationship |
 |---|---|---|---|---|
-| Device-first coach | Garmin Coach/DSW, COROS Training Hub | A watch plus free/cheap coaching | Watch + vendor app/web | POC3 reads Garmin execution but cannot read the future Garmin plan |
-| Coach platform | TrainingPeaks, TrainingPeaks Coach Edition, Final Surge | A coach's workflow, or a place to self-coach | Coach's calendar, synced to device | POC3 has no coach view; this is a non-goal and a market gap |
-| AI-plan app | Runna, Athletica AI, Humango | A generated, adapting plan and app coaching | Vendor app calendar | POC3's closest competitors on "AI plan", furthest on calendar writes |
-| Social-logging app | Strava, Nike Run Club, Runkeeper | Recording, comparison, community, light plans | Activity feed + email/app plan | POC3 is deliberately private and social-free; that is a niche, not parity |
-| Power-user analytics | Intervals.icu | Free depth and data ownership | Web calendar + charts | POC3 matches some depth, loses on breadth and price |
+| Device-first coach | Garmin Coach/DSW, COROS Training Hub | A watch plus free/cheap coaching | Watch + vendor app/web | Milebook reads Garmin execution but cannot read the future Garmin plan |
+| Coach platform | TrainingPeaks, TrainingPeaks Coach Edition, Final Surge | A coach's workflow, or a place to self-coach | Coach's calendar, synced to device | Milebook has no coach view; this is a non-goal and a market gap |
+| AI-plan app | Runna, Athletica AI, Humango | A generated, adapting plan and app coaching | Vendor app calendar | Milebook's closest competitors on "AI plan", furthest on calendar writes |
+| Social-logging app | Strava, Nike Run Club, Runkeeper | Recording, comparison, community, light plans | Activity feed + email/app plan | Milebook is deliberately private and social-free; that is a niche, not parity |
+| Power-user analytics | Intervals.icu | Free depth and data ownership | Web calendar + charts | Milebook matches some depth, loses on breadth and price |
 
 ---
 
 ## 1. Competitor profiles
 
-Each profile is 12–20 lines and follows the same eight questions: positioning, core workflow, pricing model, target runner, standout strengths, evidence-based weaknesses, what POC3 can learn, what not to copy. "Documented" means a vendor page/help center says it; "reviewer" means a user or journalist reports it.
+Each profile is 12–20 lines and follows the same eight questions: positioning, core workflow, pricing model, target runner, standout strengths, evidence-based weaknesses, what Milebook can learn, what not to copy. "Documented" means a vendor page/help center says it; "reviewer" means a user or journalist reports it.
 
 ### 1.1 TrainingPeaks (athlete product)
 
@@ -98,7 +98,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Self-coached runners/triathletes who like metrics and periodisation, and coached athletes whose coach uses TrainingPeaks.
 - **Standout strengths (documented).** Deep load model (TSS/CTL/ATL), ATP periodisation, a real calendar, strength-training tools, Peak Performances, calendar export to Google/Outlook/Apple (Premium) [S1][S4][S8].
 - **Evidence-based weaknesses.** Premium gates basic schedule moves that users think should be free; the platform is complex; running TSS can be calculated from power, pace or HR and users are told to troubleshoot "unrealistically high or low" values [S5][S7]. One user compares it unfavourably to Intervals.icu on features-per-dollar [S7]. Its public positioning is plans, coach directory and Coach Match, not a verified conversational calendar coach [S1][S4][S6].
-- **What POC3 can learn.** The calendar is the anchor; periodisation needs a visible block (ATP); coach handoff is a product, not a feature; export/ICS is expected by serious users [S4].
+- **What Milebook can learn.** The calendar is the anchor; periodisation needs a visible block (ATP); coach handoff is a product, not a feature; export/ICS is expected by serious users [S4].
 - **What not to copy.** Paywalling basic rescheduling; metric density without explanation; making the runner learn TSS variants before trusting the plan.
 - **Confidence.** High on features/prices; medium on user sentiment (small subreddit sample).
 
@@ -110,7 +110,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner (as buyer).** Coaches, clubs and coached athletes; the athlete often does not choose the platform, the coach does.
 - **Standout strengths (documented).** Real multi-athlete coach view, plan libraries, accredited-coach positioning, a marketplace with a free consultation, and a business model that pays for the coach's tooling [S2][S6].
 - **Evidence-based weaknesses.** The athlete pays twice (platform + coach); quality is coach-dependent; the marketplace is high-touch and expensive; there is no AI coach in the athlete experience; the coach's admin work is the product's centre of gravity [S2][S6].
-- **What POC3 can learn.** A coach view is a legitimate paid product; "human coach + software" is the premium tier runners already accept; a free consultation reduces marketplace friction [S6].
+- **What Milebook can learn.** A coach view is a legitimate paid product; "human coach + software" is the premium tier runners already accept; a free consultation reduces marketplace friction [S6].
 - **What not to copy.** Marketplace complexity and opaque coach pricing; coach-only value that leaves the self-coached runner with a data dashboard and no coaching voice.
 - **Confidence.** High on pricing/tiers; medium on coach quality.
 
@@ -122,7 +122,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** The broad recreational-to-serious runner who wants social comparison, segments, routes and a place where every activity already lives.
 - **Standout strengths (documented).** Unmatched social graph and segments; Training Log; Fitness & Freshness; custom HR zones; pace analysis; Best Efforts (mobile only); routes/offline maps; Recover Athletics injury-prevention content [S11]. Running plans now route to Runna, which brings structured workouts and adaptation [S12][S25].
 - **Evidence-based weaknesses.** Athlete Intelligence is widely described as a recap, not coaching; users explicitly ask for an AI that adjusts the week [S18]. Running plans are no longer a native Strava product; cycling plans are fixed 4-week, 5-workout email plans with no pause [S12][S13]. The social graph is also a privacy/performance pressure cooker, and API access has been contentious [S19].
-- **What POC3 can learn.** Distribution and habit: the activity already lives somewhere; best-efforts presentation; mobile-first capture; the power of a weekly log.
+- **What Milebook can learn.** Distribution and habit: the activity already lives somewhere; best-efforts presentation; mobile-first capture; the power of a weekly log.
 - **What not to copy.** Social comparison as the core loop; AI that summarises but cannot act; email-based plans that are not a calendar.
 - **Confidence.** High on features; medium on US price; medium on sentiment.
 
@@ -134,7 +134,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Cost-sensitive coaches, clubs, high-school/college programmes and their athletes; runners who want a clean log without TrainingPeaks' complexity.
 - **Standout strengths (documented).** Free athlete tier, simple coach workflow, structured workouts with multiple target types, Garmin sync, per-workout comments, iOS/Android apps [S20][S21][S23].
 - **Evidence-based weaknesses.** Less analytical depth than TrainingPeaks; lap times require setup or Garmin workout configuration; one coach says TrainingPeaks is easier for building workouts; pricing is not transparently machine-readable [S21][S24].
-- **What POC3 can learn.** A free athlete tier plus coach-paid model is viable; simplicity beats depth for a segment of coaches; comments per workout are a cheap coaching primitive [S23][S24].
+- **What Milebook can learn.** A free athlete tier plus coach-paid model is viable; simplicity beats depth for a segment of coaches; comments per workout are a cheap coaching primitive [S23][S24].
 - **What not to copy.** Thin analysis; no AI layer; pricing opacity.
 - **Confidence.** High on model/tiers; medium on exact price.
 
@@ -146,7 +146,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Beginner-to-intermediate runners training for a 5K–marathon who want structure and "computer says run" convenience; increasingly, Strava users who want a plan without leaving the ecosystem.
 - **Standout strengths (documented/reported).** Clear structure, watch sync, in-run pace coaching, strength modules, adaptive pace updates, a polished app and very fast release cadence (five updates and two coaches announced on 12 November 2026; 20+ features in 2026) [S15][S26][S27].
 - **Evidence-based weaknesses.** Reviewers repeatedly report paces that are too fast, plans that are too aggressive, and injuries [S26][S27]. "Adaptation" is perceived by some as driven by clicking "complete" rather than analysing the run [S27]. Calendar cleanup when switching plans is buggy [S27]. Strength/yoga content quality is criticised [S26]. One long-term user says service declined after the Strava acquisition [S26]. Runna's own injury statistic is observational and explicitly not causal [S15].
-- **What POC3 can learn.** The onboarding-to-plan flow is the best in the set; watch push is non-negotiable for adoption; "plan is clay, not concrete" controls (Holiday Mode, move, not-feeling-100%) match how runners actually adjust [S26][S27].
+- **What Milebook can learn.** The onboarding-to-plan flow is the best in the set; watch push is non-negotiable for adoption; "plan is clay, not concrete" controls (Holiday Mode, move, not-feeling-100%) match how runners actually adjust [S26][S27].
 - **What not to copy.** Aggressive pace prescription without a recent honest benchmark; opaque adaptation; subscription-only access; calendar operations that cannot be cleanly undone.
 - **Confidence.** High on price/features; medium on outcomes; low on injury claims.
 
@@ -158,7 +158,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Garmin owners, especially beginners and intermediate runners who want a plan on the wrist without another subscription; also experienced runners using DSW as a daily readiness check.
 - **Standout strengths (documented).** Zero marginal cost, native watch execution, periodised plans, race/phase structure, adaptation to performance and recovery, and a huge installed base [S29][S30][S31].
 - **Evidence-based weaknesses.** The adaptive Garmin Coach reportedly enforces a minimum of five runs/week, is overly conservative, reshuffles the week constantly and lets a poor sleep score replace hard sessions; sync bugs are reported [S35]. Connect+ Active Intelligence is one-way: no follow-up questions, no action on the plan, data locked in the Garmin app [S33][S34]. Reviewers call the insights shallow and the paywall unwelcome [S33][S34].
-- **What POC3 can learn.** Zero-friction execution and trust in the device; phase-aware plans; the value of a daily readiness check; the fact that runners will accept conservative coaching if it is stable.
+- **What Milebook can learn.** Zero-friction execution and trust in the device; phase-aware plans; the value of a daily readiness check; the fact that runners will accept conservative coaching if it is stable.
 - **What not to copy.** Health-score overrides that silently cancel hard sessions; a fixed minimum number of run days; plan changes the runner cannot see or veto.
 - **Confidence.** High on features/prices; medium on reviewer claims (self-selected r/Garmin thread).
 
@@ -170,7 +170,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Casual runners, beginners and ASICS loyalists who want a clean tracker and a simple plan, not a social network or a data laboratory.
 - **Standout strengths (documented/reported).** Clean UI, reliable GPS, clear audio cues, plans from 5K to marathon, Apple Watch support, Strava sync [S36][S37].
 - **Evidence-based weaknesses.** Most valuable features sit behind Go; ads in the free tier; development pace has slowed; smaller community; guided audio is less polished than Nike Run Club [S37]. The plan/adaptation claims are thin: the vendor page documents plans, not a real adaptive engine [S36].
-- **What POC3 can learn.** Low-friction recording and audio cues; a simple plan can be enough for a large casual segment; free tier plus one paid upgrade is easy to understand.
+- **What Milebook can learn.** Low-friction recording and audio cues; a simple plan can be enough for a large casual segment; free tier plus one paid upgrade is easy to understand.
 - **What not to copy.** A stalled product with thin analytics; inconsistency between official and store pricing; no coach relationship.
 - **Confidence.** High on official price; medium on review; low on the "$9.99" discrepancy.
 
@@ -182,7 +182,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Beginners and brand-affiliated runners who want motivation and voice coaching more than data; runners who will not pay a subscription.
 - **Standout strengths (documented).** Free at the point of use; excellent guided-run catalogue; simple 8-week plans; motivational content and community challenges [S39][S40][S41].
 - **Evidence-based weaknesses.** Plans are fixed and can feel aggressive (an 8-week plan with five runs/week is described as too much for a returning runner) [S42]. The app has no adaptive plan and is "primarily based on feel" [S27]. Crash/regression reports exist [S43]. Data depth is thin relative to Garmin/Strava/TP [S37].
-- **What POC3 can learn.** Audio coaching is a retention feature, not a gimmick; free access creates reach; a plan can start from "how many days can you run?".
+- **What Milebook can learn.** Audio coaching is a retention feature, not a gimmick; free access creates reach; a plan can start from "how many days can you run?".
 - **What not to copy.** Fixed plans that ignore the runner's week; no structured targets; no plan-vs-actual judgement.
 - **Confidence.** High on features/free; medium on reviewer claims.
 
@@ -194,7 +194,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** COROS owners, especially data-oriented runners and coaches managing teams; cost-sensitive athletes who want coach tooling without TrainingPeaks fees.
 - **Standout strengths (documented).** Free coach/team layer, plan and workout builders, drag-and-drop calendar, team panel, EvoLab metrics (training load, 4-week intensity distribution, threshold pace/HR, race predictor), strength plans in the public library [S44][S45][S48].
 - **Evidence-based weaknesses.** Users report CRUD gaps: cannot add gear, change activity type, add manual activity or adjust settings in the Hub; FIT import errors; the web app is a companion, not a full replacement [S47]. No native conversational coach; AI plan-writing is only via an external MCP assistant [S46].
-- **What POC3 can learn.** A free coach/team layer is a credible wedge; plan and workout libraries are expected; device-native metrics can be exposed without a subscription.
+- **What Milebook can learn.** A free coach/team layer is a credible wedge; plan and workout libraries are expected; device-native metrics can be exposed without a subscription.
 - **What not to copy.** Splitting configuration and planning across two surfaces; incomplete CRUD; assuming the runner will use the web Hub on a phone.
 - **Confidence.** High on features; medium on criticism.
 
@@ -206,7 +206,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Data-literate runners/cyclists/triathletes, coaches and power users who want control and do not need a mobile app.
 - **Standout strengths (documented).** Enormous depth for free; drag-and-drop calendar; workout builder with ZWO/FIT/MRC/ERG import/export; plan editor; custom zones; 1200+ integrations; MCP for external AI [S49][S50][S52].
 - **Evidence-based weaknesses.** No official mobile app; the web UI on a phone is described as "not very slick and smooth", with calendar navigation and small-screen friction; third-party companion apps fill the gap [S51]. Steep learning curve; no guided onboarding; no native conversational coach [S49][S51].
-- **What POC3 can learn.** Free depth is a competitive weapon; a plan editor and workout builder are table stakes for power users; an MCP/open-data posture can attract the AI-curious.
+- **What Milebook can learn.** Free depth is a competitive weapon; a plan editor and workout builder are table stakes for power users; an MCP/open-data posture can attract the AI-curious.
 - **What not to copy.** Web-only UX for a phone-first activity; chart overload without a narrative; assuming the runner wants to learn the model.
 - **Confidence.** High on features/prices; medium on mobile UX.
 
@@ -218,7 +218,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Self-coached endurance athletes, especially triathletes, who want science-based adaptive plans and a conversational explanation layer without a human coach.
 - **Standout strengths (documented).** Adaptive plan, conversational AI Coach, personalised zones from a baseline test, multi-sport coverage, broad device sync, Workout Wizard [S53][S54].
 - **Evidence-based weaknesses.** A detailed forum review reports injury-driven threshold recalculation that made zones useless, race predictions 21–30 minutes off, unnecessarily heavy peak volume, no long runs or marathon-pace runs in a marathon block, and "black box" metrics; the company replied that race prediction is not a feature and the approach is conservative [S55]. The AI Coach cannot change the plan, so the runner must still do the work of replanning [S54].
-- **What POC3 can learn.** A conversational explanation layer is valued; Workout Wizard-style manual adjustment is a good compromise when the AI cannot write; adaptive zones need an injury-safe path.
+- **What Milebook can learn.** A conversational explanation layer is valued; Workout Wizard-style manual adjustment is a good compromise when the AI cannot write; adaptive zones need an injury-safe path.
 - **What not to copy.** Black-box metrics; race predictions presented as reliable; AI that can explain but not act; volume prescriptions that ignore the runner's life.
 - **Confidence.** High on features/prices; low–medium on outcomes (single detailed forum review).
 
@@ -230,7 +230,7 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 - **Target runner.** Busy endurance athletes (often triathletes) who value flexibility over data depth; coaches/teams wanting an AI planning layer.
 - **Standout strengths (documented/reported).** Flexible moving of workouts, Garmin sync, injury/sport-removal adjustments, multi-sport goals, race planner, recalibration tests [S57][S58].
 - **Evidence-based weaknesses.** Reviewers describe the AI as underwhelming and "gimmicky"; analysis is limited beyond basic summaries; thresholds can be too easy; plans can undertrain; Hugo is not conversational enough; €20/month is judged not justified yet [S58][S59]. The vendor's "hyper-personalized" language is stronger than the reported experience [S56][S58].
-- **What POC3 can learn.** Injury/sport removal that reflows the calendar is a strong pattern; schedule-first adaptation matches real life; recalibration tests are a useful trust device.
+- **What Milebook can learn.** Injury/sport removal that reflows the calendar is a strong pattern; schedule-first adaptation matches real life; recalibration tests are a useful trust device.
 - **What not to copy.** Chat that overpromises; shallow analysis dressed as AI; adaptation that is not visible or explainable.
 - **Confidence.** High on price/features; medium on outcomes.
 
@@ -249,11 +249,11 @@ Each profile is 12–20 lines and follows the same eight questions: positioning,
 | **?** | Unknown/not verified: contradictory, inaccessible or simply not documented |
 | **n/a** | Not applicable to a private PoC with no commercial packaging |
 
-Column key: **POC3** = this product; **TP** = TrainingPeaks athlete; **TPC** = TrainingPeaks Coach Edition; **STR** = Strava; **FS** = Final Surge; **RUN** = Runna; **GAR** = Garmin Coach/DSW/Connect+; **RK** = Runkeeper; **NRC** = Nike Run Club; **COR** = COROS Training Hub; **INT** = Intervals.icu; **ATH** = Athletica AI; **HUM** = Humango.
+Column key: **Milebook** = this product; **TP** = TrainingPeaks athlete; **TPC** = TrainingPeaks Coach Edition; **STR** = Strava; **FS** = Final Surge; **RUN** = Runna; **GAR** = Garmin Coach/DSW/Connect+; **RK** = Runkeeper; **NRC** = Nike Run Club; **COR** = COROS Training Hub; **INT** = Intervals.icu; **ATH** = Athletica AI; **HUM** = Humango.
 
 ### 2.2 Matrix (as of 2026-11-18)
 
-| Capability | POC3 | TP | TPC | STR | FS | RUN | GAR | RK | NRC | COR | INT | ATH | HUM |
+| Capability | Milebook | TP | TPC | STR | FS | RUN | GAR | RK | NRC | COR | INT | ATH | HUM |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Month/week calendar planning | ● month; week only in log¹ | ● | ● | ◐² | ● | ● | ● | ◐ | ◐ | ● | ● | ● | ● |
 | Plan templates / plan library | ○³ | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |
@@ -284,10 +284,10 @@ Column key: **POC3** = this product; **TP** = TrainingPeaks athlete; **TPC** = T
 
 ### 2.3 Matrix footnotes (uncertainty register)
 
-1. POC3's Plan calendar is month-only; the Week view exists in the Training log, not as an editable plan view (`FEATURES-FOR-REVIEW.md`, A5).
+1. Milebook's Plan calendar is month-only; the Week view exists in the Training log, not as an editable plan view (`FEATURES-FOR-REVIEW.md`, A5).
 2. Strava's running plans moved to Runna; native cycling plans are fixed 4-week, 5-workout email plans with no editable calendar [S12][S13].
-3. POC3 plan templates are explicitly open (`FEATURES-FOR-REVIEW.md`, B7); the coach can invent a plan but cannot start from a named template.
-4. POC3 replans on request through the LLM, and the coaching-state engine detects race/load/consistency; there is no automatic weekly adaptation or deterministic plan generator.
+3. Milebook plan templates are explicitly open (`FEATURES-FOR-REVIEW.md`, B7); the coach can invent a plan but cannot start from a named template.
+4. Milebook replans on request through the LLM, and the coaching-state engine detects race/load/consistency; there is no automatic weekly adaptation or deterministic plan generator.
 5. Strava's native plans are fixed; adaptation exists only through the Runna bundle [S12][S25].
 6. TrainingPeaks' public materials emphasise plans, the coach directory and Coach Match; I found no documented native conversational coach in the athlete guide [S1][S4][S6]. Marked `?`, not `○`.
 7. TrainingPeaks Coach Edition is a human-coach workflow; no AI chat is documented [S2][S4].
@@ -302,40 +302,40 @@ Column key: **POC3** = this product; **TP** = TrainingPeaks athlete; **TPC** = T
 16. Intervals.icu: external AI via MCP; no native natural-language calendar editing documented [S49].
 17. Athletica: "The AI Coach does not automatically modify your training, settings, or completed workouts" [S54].
 18. Humango: reviewers say Hugo can schedule trainings but is "not smart in any meaningful way" [S58].
-19. POC3 cannot read future scheduled Garmin workouts, Garmin Coach plans or the Garmin calendar; a Personal API key exposes the executed workout, not the future plan (`README.md`; `docs/GARMIN-TRAINING-PROGRAMS.md`).
+19. Milebook cannot read future scheduled Garmin workouts, Garmin Coach plans or the Garmin calendar; a Personal API key exposes the executed workout, not the future plan (`README.md`; `docs/GARMIN-TRAINING-PROGRAMS.md`).
 20. Strava plans arrive by email; there is no structured workout push to a watch in the native cycling plan documentation [S13].
-21. POC3 stores HR-zone time but no zone boundaries (`README.md`, "Splits and zones" limit).
+21. Milebook stores HR-zone time but no zone boundaries (`README.md`, "Splits and zones" limit).
 22. Runna's plan pages do not document HR-zone targets; a reviewer says it does not incorporate HR/elevation/power [S19].
-23. POC3 uses Garmin's proprietary training load plus a soft coupled 7/28-day ACWR; it is a signal, not a diagnosis (`README.md`).
+23. Milebook uses Garmin's proprietary training load plus a soft coupled 7/28-day ACWR; it is a signal, not a diagnosis (`README.md`).
 24. Strava documents Relative Effort and Fitness & Freshness, not ACWR [S11].
 25. Runna does not document a load/ACWR model; a reviewer says it ignores HR, elevation and power [S19].
-26. POC3's Training log week view shows weekly load, ACWR and a hard/easy split (`README.md`).
-27. POC3 PR badges and period best efforts are bests within stored history (90 days / 100 activities), not lifetime records (`README.md`).
+26. Milebook's Training log week view shows weekly load, ACWR and a hard/easy split (`README.md`).
+27. Milebook PR badges and period best efforts are bests within stored history (90 days / 100 activities), not lifetime records (`README.md`).
 28. Strava Best Efforts is mobile-only [S11].
-29. POC3's notification bell is the Garmin sync feed; there are no per-session workout reminders (`FEATURES-FOR-REVIEW.md`, A7).
-30. POC3 is web-only; no mobile app or installable PWA (`FEATURES-FOR-REVIEW.md`, A10).
+29. Milebook's notification bell is the Garmin sync feed; there are no per-session workout reminders (`FEATURES-FOR-REVIEW.md`, A7).
+30. Milebook is web-only; no mobile app or installable PWA (`FEATURES-FOR-REVIEW.md`, A10).
 31. Intervals.icu has no official mobile app; a forum moderator says "There are no official app" and lists third-party companions [S51].
-32. POC3 has no service worker/offline shell (`FEATURES-FOR-REVIEW.md`, A10).
+32. Milebook has no service worker/offline shell (`FEATURES-FOR-REVIEW.md`, A10).
 33. Intervals.icu can be used as a PWA on Android per a forum user, but there is no first-party offline app [S51].
-34. POC3 syncs Garmin only, through a per-runner Personal API key (`README.md`).
+34. Milebook syncs Garmin only, through a per-runner Personal API key (`README.md`).
 35. Garmin syncs Garmin devices; that is broad within the Garmin ecosystem but not cross-brand.
 36. COROS syncs COROS devices; Training Hub is COROS-only [S44][S45].
-37. POC3 has no strength or cross-training logging (`FEATURES-FOR-REVIEW.md`, no strength item).
+37. Milebook has no strength or cross-training logging (`FEATURES-FOR-REVIEW.md`, no strength item).
 38. Strava records strength activities and offers Recover Athletics content, but no structured strength plan [S11].
 39. Runna includes strength modules; reviewers criticise their quality and gym-equipment assumptions [S26][S27].
 40. Athletica generates a limited set of stability/mobility and upper/lower-body exercises per the forum review [S55].
-41. POC3's state engine has `pain_injury`, `illness`, `return_to_run`, `medical_red_flag` and other guardrails; sensitive states require confirmation and the gateway blocks writes accordingly (`docs/COACH-STATES.md`).
+41. Milebook's state engine has `pain_injury`, `illness`, `return_to_run`, `medical_red_flag` and other guardrails; sensitive states require confirmation and the gateway blocks writes accordingly (`docs/COACH-STATES.md`).
 42. TrainingPeaks Coach Edition's guardrail is the human coach, not software enforcement [S2][S4].
 43. Strava offers Recover Athletics injury-prevention exercises but no plan-level guardrail [S11].
 44. Runna markets injury prevention and reports an observational injury rate; reviewers report injuries from aggressive plans [S15][S26][S27].
 45. Garmin DSW reduces/changes sessions based on sleep/recovery; reviewers experience this as a guardrail that overrides hard work [S35].
 46. Athletica is conservative by design per its staff reply, but the forum review reports a post-injury threshold recalculation problem [S55].
 47. Humango lets a runner log an injury or remove a sport temporarily and adjusts the schedule; a reviewer used this for sciatica and found it better than TrainingPeaks [S58].
-48. POC3 has race day/week, taper and post-race states and guardrails, but no race countdown card, pacing plan or race-day logistics (`FEATURES-FOR-REVIEW.md`, B4).
-49. Human-coach marketplace is an explicit POC3 non-goal (`FEATURES-FOR-REVIEW.md`, §5).
-50. POC3 has no export endpoint; SQLite backup/export is a P0 candidate, not implemented (`FEATURES-FOR-REVIEW.md`, C7).
-51. POC3 has multi-user accounts with per-user isolation, but no coach view or shared athlete dashboard (`README.md`; `FEATURES-FOR-REVIEW.md`).
-52. POC3 is a private PoC; payments are a non-goal (`README.md`).
+48. Milebook has race day/week, taper and post-race states and guardrails, but no race countdown card, pacing plan or race-day logistics (`FEATURES-FOR-REVIEW.md`, B4).
+49. Human-coach marketplace is an explicit Milebook non-goal (`FEATURES-FOR-REVIEW.md`, §5).
+50. Milebook has no export endpoint; SQLite backup/export is a P0 candidate, not implemented (`FEATURES-FOR-REVIEW.md`, C7).
+51. Milebook has multi-user accounts with per-user isolation, but no coach view or shared athlete dashboard (`README.md`; `FEATURES-FOR-REVIEW.md`).
+52. Milebook is a private PoC; payments are a non-goal (`README.md`).
 53. Strava price is localized by country; the US figure is from independent 2026 reviews, not confirmed on Strava's own page in this session [S9][S10][S68].
 54. Runkeeper's official page says $11.99/month; third-party listings say $9.99/month; annual $39.99 is consistent [S36][S37][S38].
 
@@ -343,16 +343,16 @@ Column key: **POC3** = this product; **TP** = TrainingPeaks athlete; **TPC** = T
 
 - **Read rows, not totals.** A product can be ● on 20 rows and still lose the runner because it fails the two rows that matter to that runner (e.g., a phone-first beginner cares about mobile, reminders and plan clarity, not laps).
 - **`●` is not "good".** It means "native and documented". Garmin's ● on adaptive plans is exactly the feature reviewers criticise [S35].
-- **`○` is a product decision, not a bug.** POC3's ○ on social, coach marketplace and pricing are deliberate non-goals; the question is whether they are liabilities (§8).
+- **`○` is a product decision, not a bug.** Milebook's ○ on social, coach marketplace and pricing are deliberate non-goals; the question is whether they are liabilities (§8).
 - **`?` must be resolved before a build decision.** The highest-value unknowns are TrainingPeaks' native AI chat, Final Surge's load model, and Runkeeper/NRC's load models.
 
-### 2.5 POC3's row-level verdict
+### 2.5 Milebook's row-level verdict
 
 | Verdict | Rows | What it means |
 |---|---|---|
 | **Differentiated (no direct competitor documents the same combination)** | Natural-language calendar edits; auditable AI change sets/undo; executed-workout overlay paired with the planned session; private calendar-first coach with consent-based state guardrails | The wedge. Must be protected and made legible to the runner; "differentiated" is not the same as "unmatched" on each row. |
 | **Parity** | Executed-workout import (Garmin), per-km splits, laps/intervals, week/month/year log, hard/easy view, race states | Enough to be credible; not enough to win. |
-| **Behind** | Mobile, offline/PWA, reminders, plan templates, export, wearable breadth, strength, community, coach view, race-day logistics, onboarding, pricing/business model, automatic adaptation | Table stakes POC3 must close or explicitly price/position around. |
+| **Behind** | Mobile, offline/PWA, reminders, plan templates, export, wearable breadth, strength, community, coach view, race-day logistics, onboarding, pricing/business model, automatic adaptation | Table stakes Milebook must close or explicitly price/position around. |
 | **Unknown** | HR-zone boundaries, lifetime PRs, load model transparency vs Garmin | Low urgency; affects trust more than acquisition. |
 
 ---
@@ -373,7 +373,7 @@ The same four jobs look different in each family. The point is not to score feat
 
 **Friction.** Device lock-in; plan changes that are invisible or unexplained; a minimum number of run days in the adaptive Garmin Coach (reviewer-reported); a split between watch, phone app and web hub; no natural-language control; no plan provenance.
 
-**POC3 relative.** POC3 reads the *executed* Garmin workout and pairs it with the run, which is better than Garmin's own "which workout did I follow?" story in POC3's UI. But POC3 cannot read the *future* Garmin plan, so it cannot replace the device-first flow for a Garmin Coach user; it can only sit beside it.
+**Milebook relative.** Milebook reads the *executed* Garmin workout and pairs it with the run, which is better than Garmin's own "which workout did I follow?" story in Milebook's UI. But Milebook cannot read the *future* Garmin plan, so it cannot replace the device-first flow for a Garmin Coach user; it can only sit beside it.
 
 ### 3.2 Coach-platform family (TrainingPeaks, TrainingPeaks Coach Edition, Final Surge)
 
@@ -387,7 +387,7 @@ The same four jobs look different in each family. The point is not to score feat
 
 **Friction.** Cost (platform plus coach); coach availability and quality; complexity; premium gating of basic schedule edits; no AI conversation; the athlete is dependent on a human to re-flow the week.
 
-**POC3 relative.** POC3 has no coach view, which is a deliberate non-goal (`FEATURES-FOR-REVIEW.md`, §5). That means POC3 cannot serve the coach-platform buyer. It could, however, serve the *self-coached* runner who wants the coach-platform rigour without the coach, and later export a clean plan to a human coach.
+**Milebook relative.** Milebook has no coach view, which is a deliberate non-goal (`FEATURES-FOR-REVIEW.md`, §5). That means Milebook cannot serve the coach-platform buyer. It could, however, serve the *self-coached* runner who wants the coach-platform rigour without the coach, and later export a clean plan to a human coach.
 
 ### 3.3 AI-plan app family (Runna, Athletica AI, Humango)
 
@@ -401,7 +401,7 @@ The same four jobs look different in each family. The point is not to score feat
 
 **Friction.** Opaque adaptation; aggressive paces; no provenance for the plan; calendar bugs when switching plans; subscription-only access; AI that explains but cannot change the calendar.
 
-**POC3 relative.** POC3 is the inverse: weak onboarding and no templates, strong natural-language calendar control and guardrails. The opportunity is to combine Runna's intake with POC3's editing model, not to out-generate Runna.
+**Milebook relative.** Milebook is the inverse: weak onboarding and no templates, strong natural-language calendar control and guardrails. The opportunity is to combine Runna's intake with Milebook's editing model, not to out-generate Runna.
 
 ### 3.4 Social-logging family (Strava, Nike Run Club, Runkeeper)
 
@@ -415,29 +415,29 @@ The same four jobs look different in each family. The point is not to score feat
 
 **Friction.** The plan is not the system of record; AI summaries are not actionable; social comparison can motivate or demotivate; no natural-language edits; no guardrails.
 
-**POC3 relative.** POC3 is deliberately private and has no social graph. That is a legitimate niche but not parity: the social-logging family owns the runner's activity feed and identity, and POC3 cannot replace it without Strava.
+**Milebook relative.** Milebook is deliberately private and has no social graph. That is a legitimate niche but not parity: the social-logging family owns the runner's activity feed and identity, and Milebook cannot replace it without Strava.
 
-### 3.5 POC3 reference workflow (for contrast)
+### 3.5 Milebook reference workflow (for contrast)
 
-**Create.** The runner opens the coach bubble and asks for a block ("half marathon in 12 weeks, four days, long run Sunday"); the model proposes a `propose_calendar_turn`, the gateway validates it, and the month grid updates in place with animated pills [POC3 README]. There is no questionnaire, no template, and no deterministic fallback if the model fails.
+**Create.** The runner opens the coach bubble and asks for a block ("half marathon in 12 weeks, four days, long run Sunday"); the model proposes a `propose_calendar_turn`, the gateway validates it, and the month grid updates in place with animated pills [Milebook README]. There is no questionnaire, no template, and no deterministic fallback if the model fails.
 
-**Adjust.** "Move Thursday's tempo to Saturday, shorten it to 6 km" is a chat turn; the coach can add/move/delete/revert, and the gateway enforces write permission. There is no diff preview before apply (A3 open), no streaming (A4 open), and no drag-and-drop (A6 open) [POC3 backlog].
+**Adjust.** "Move Thursday's tempo to Saturday, shorten it to 6 km" is a chat turn; the coach can add/move/delete/revert, and the gateway enforces write permission. There is no diff preview before apply (A3 open), no streaming (A4 open), and no drag-and-drop (A6 open) [Milebook backlog].
 
-**Review.** The run peek shows metrics, plan match, load/effect, fastest efforts and PR badges; the activity detail shows splits, laps, HR zones and the Garmin workout the run followed; the training log shows week/month/year with load/ACWR and a metric trend [POC3 README]. This is a stronger *plan-vs-actual* story than any AI-plan app in this benchmark.
+**Review.** The run peek shows metrics, plan match, load/effect, fastest efforts and PR badges; the activity detail shows splits, laps, HR zones and the Garmin workout the run followed; the training log shows week/month/year with load/ACWR and a metric trend [Milebook README]. This is a stronger *plan-vs-actual* story than any AI-plan app in this benchmark.
 
-**Race.** Race day/week, taper and post-race are detected as coaching states and enforced by guardrails; sensitive states (pain, illness) require confirmation [POC3 COACH-STATES]. There is no race countdown card, pacing plan or race-day logistics (B4 open).
+**Race.** Race day/week, taper and post-race are detected as coaching states and enforced by guardrails; sensitive states (pain, illness) require confirmation [Milebook COACH-STATES]. There is no race countdown card, pacing plan or race-day logistics (B4 open).
 
 **Friction.** No mobile app, no reminders, no templates, no export, no diff preview, no streaming, no fallback planner, no coach view, no strength, no social. These are not small; they are the difference between a compelling demo and a product a runner can live with.
 
 ### 3.6 Steps-and-friction comparison
 
-| Family | Create a plan | Adjust a week | Review a run | Prepare for a race | Main friction | POC3 relative |
+| Family | Create a plan | Adjust a week | Review a run | Prepare for a race | Main friction | Milebook relative |
 |---|---|---|---|---|---|---|
 | **Device-first** (Garmin, COROS) | Watch/app onboarding; Garmin Coach/DSW; COROS web plan builder [S29][S30][S45] | Move on watch/app; Garmin may auto-reshuffle; COROS drag-drop web [S35][S45] | Watch metrics; Connect/Connect+ or EvoLab [S32][S45] | Race widget/DSW; race predictor [S30][S45] | Opaque changes; minimum days; device lock-in; split surfaces | Reads executed workout, not future plan; calendar is editable |
 | **Coach-platform** (TP, TPC, FS) | Coach builds calendar/library; ATP or plan purchase [S4][S8][S23] | Coach edits; athlete messages; premium gates basic move [S7] | TSS/CTL/ATL + comments; coach interprets [S1][S5] | Coach-built race week/taper [S8][S6] | Cost; coach dependence; complexity | No coach view; opportunity for handoff/export |
 | **AI-plan app** (Runna, Athletica, Humango) | Questionnaire → generated plan; baseline test [S19][S25][S54] | Move/Holiday/Not 100%; Workout Wizard; injury removal [S15][S54][S58] | Post-run AI insights or AI chat [S28][S53] | Taper; race planner/predictor [S25][S55][S57] | Opaque adaptation; aggressive paces; calendar bugs; read-only AI | Wins on NL writes/undo; loses on onboarding/templates |
 | **Social-logging** (Strava, NRC, Runkeeper) | Bolt-on plans: email/fixed/app plans [S12][S13][S39][S36] | Manual skip/rearrange/restart [S13] | Segments, best efforts, AI summary [S11][S17] | Plans + community, not execution tools [S11][S39] | Plan not system of record; AI not actionable; social pressure | Private calendar; no social graph |
-| **POC3 (reference)** | Chat + batch add; validated; no template [POC3 README] | Chat move/delete/revert; no diff preview [POC3 backlog] | Peek/detail/log + Garmin workout [POC3 README] | States/taper guardrails; no countdown/pacing [POC3 COACH-STATES] | No mobile/reminders/diff/streaming/fallback | — |
+| **Milebook (reference)** | Chat + batch add; validated; no template [Milebook README] | Chat move/delete/revert; no diff preview [Milebook backlog] | Peek/detail/log + Garmin workout [Milebook README] | States/taper guardrails; no countdown/pacing [Milebook COACH-STATES] | No mobile/reminders/diff/streaming/fallback | — |
 
 ---
 
@@ -467,16 +467,16 @@ This table is deliberately separate from §1–2. §1–2 report what is documen
 
 ## 5. Positioning map
 
-The axes are chosen for POC3's decisions, not for a generic market map: structure vs flexibility (how much the product prescribes vs how easily the runner can change it), data depth vs simplicity (how much the runner must know), and automation vs runner control (who decides when the plan changes).
+The axes are chosen for Milebook's decisions, not for a generic market map: structure vs flexibility (how much the product prescribes vs how easily the runner can change it), data depth vs simplicity (how much the runner must know), and automation vs runner control (who decides when the plan changes).
 
 ### 5.1 Structure vs flexibility
 
 | | **Low flexibility** (hard to change the plan) | **High flexibility** (easy to change the plan) |
 |---|---|---|
-| **High structure** (prescribed sessions) | Garmin Coach/DSW, Nike plans, Strava cycling plans, TrainingPeaks templates | **POC3**, Runna, Athletica, Humango, COROS, TrainingPeaks with a coach |
+| **High structure** (prescribed sessions) | Garmin Coach/DSW, Nike plans, Strava cycling plans, TrainingPeaks templates | **Milebook**, Runna, Athletica, Humango, COROS, TrainingPeaks with a coach |
 | **Low structure** (no prescribed block) | Paper/PDF plan alone | Strava log, Runkeeper free, Google Calendar/Sheets, Intervals.icu self-coached |
 
-- **POC3** sits in high structure / high flexibility *in its edit primitives*: the coach can add/move/delete/revert a whole week in one turn. But its *view flexibility* is low: month-only plan view, no week/agenda, no drag-and-drop, no templates. Honest placement: **high structure, medium-high flexibility, low view flexibility**.
+- **Milebook** sits in high structure / high flexibility *in its edit primitives*: the coach can add/move/delete/revert a whole week in one turn. But its *view flexibility* is low: month-only plan view, no week/agenda, no drag-and-drop, no templates. Honest placement: **high structure, medium-high flexibility, low view flexibility**.
 - **Runna** is high structure, medium flexibility: move/Holiday/Not-100% exist, but reviewers report calendar bugs and paces that are hard to override [S26][S27].
 - **Athletica** is high structure, high flexibility on paper (Workout Wizard) but the AI Coach cannot modify the plan [S54]; flexibility is manual.
 - **Humango** is medium structure, high flexibility: plans adapt and can be moved, but reviewers say the analysis and challenge are thin [S58][S59].
@@ -487,10 +487,10 @@ The axes are chosen for POC3's decisions, not for a generic market map: structur
 
 | | **Low simplicity** (steep learning curve) | **High simplicity** (usable on day one) |
 |---|---|---|
-| **High depth** (load, zones, splits, trends) | TrainingPeaks, Intervals.icu, COROS Training Hub | Garmin Connect/Connect+, **POC3 (if mobile/PWA solved)**, Strava |
+| **High depth** (load, zones, splits, trends) | TrainingPeaks, Intervals.icu, COROS Training Hub | Garmin Connect/Connect+, **Milebook (if mobile/PWA solved)**, Strava |
 | **Low depth** | — | Nike Run Club, Runkeeper, Google Calendar/Sheets |
 
-- **POC3** has high depth (load/ACWR, splits, laps, HR zones, PRs, metric trend, Garmin workout overlay) but low simplicity today: dense web UI, no mobile, no onboarding, no templates. It is the only product in the "high depth" row that is also trying to be a conversation, which is the opening.
+- **Milebook** has high depth (load/ACWR, splits, laps, HR zones, PRs, metric trend, Garmin workout overlay) but low simplicity today: dense web UI, no mobile, no onboarding, no templates. It is the only product in the "high depth" row that is also trying to be a conversation, which is the opening.
 - **Garmin** is the closest to high depth + high simplicity because the watch is the interface and the phone app is the dashboard [S32][S33].
 - **Strava** is medium depth + high simplicity; it deliberately stops at summaries and segments [S11][S17].
 - **Nike/Runkeeper** are low depth + high simplicity; they win casual runners on friction, not insight [S39][S37].
@@ -500,63 +500,63 @@ The axes are chosen for POC3's decisions, not for a generic market map: structur
 
 | | **Low runner control** (the system decides) | **High runner control** (the runner decides) |
 |---|---|---|
-| **High automation** | Garmin DSW, Runna | Athletica (suggests, never writes), **POC3** (proposes, validates, undo), Humango (adapts, movable) |
+| **High automation** | Garmin DSW, Runna | Athletica (suggests, never writes), **Milebook** (proposes, validates, undo), Humango (adapts, movable) |
 | **Low automation** | Paper/PDF plan | TrainingPeaks self-coached, Intervals.icu, Google Calendar/Sheets |
 
-- **POC3** is medium automation + high control: the coach acts only on a turn, the gateway validates before writing, and undo is available. That is a genuinely different position from both Garmin (automation overrides) and Athletica (no writes).
+- **Milebook** is medium automation + high control: the coach acts only on a turn, the gateway validates before writing, and undo is available. That is a genuinely different position from both Garmin (automation overrides) and Athletica (no writes).
 - **Garmin** is high automation + low control: sleep/recovery can replace a hard session; the runner sees it after the fact [S35].
 - **Runna** is high automation + medium control: the runner can move sessions, but the plan's pace/volume logic is not transparent [S26][S27].
 - **Athletica** is high automation + high control *because it refuses to write*; that is control by abstention, not by design [S54].
 - **TrainingPeaks/Intervals** are low automation + high control: the runner or coach does the work [S4][S49].
 
-### 5.4 Where POC3 is alone, at parity, or behind
+### 5.4 Where Milebook is alone, at parity, or behind
 
 | Status | Area | Evidence | Implication |
 |---|---|---|---|
 | **Differentiated** | Natural-language calendar edits with server validation, undo and an audit trail | No competitor documents native NL calendar editing; COROS only via external MCP with limits [S46]; Athletica explicitly refuses [S54] | The wedge. Protect it; make it legible; add diff preview and a user-facing history. |
-| **Differentiated (presentation)** | Executed-workout overlay paired with the planned session (run + Garmin workout in one pill) | POC3 pairs the recorded run with the workout it followed; competitors show the activity and the plan separately [POC3 README; S11][S45] | A concrete "did I do the session?" answer; extend to coach-authored sessions, not only Garmin. |
-| **Differentiated (consent semantics)** | Private calendar-first coach with hard state guardrails and sensitive-state consent | Garmin overrides via sleep [S35]; Athletica recalculates zones after injury [S55]; Humango adjusts after injury but without consent semantics [S58]; POC3 has a 34-state catalog and gateway enforcement [POC3 COACH-STATES] | A safety/trust story that no competitor tells; needs user-facing explanation and clinical humility. |
-| **Parity** | Garmin executed-workout import; per-km splits; laps/intervals; HR-zone time; PR badges; week/month/year log; load/ACWR | POC3 README vs [S1][S11][S45][S49] | Enough to be credible; not enough to win. |
+| **Differentiated (presentation)** | Executed-workout overlay paired with the planned session (run + Garmin workout in one pill) | Milebook pairs the recorded run with the workout it followed; competitors show the activity and the plan separately [Milebook README; S11][S45] | A concrete "did I do the session?" answer; extend to coach-authored sessions, not only Garmin. |
+| **Differentiated (consent semantics)** | Private calendar-first coach with hard state guardrails and sensitive-state consent | Garmin overrides via sleep [S35]; Athletica recalculates zones after injury [S55]; Humango adjusts after injury but without consent semantics [S58]; Milebook has a 34-state catalog and gateway enforcement [Milebook COACH-STATES] | A safety/trust story that no competitor tells; needs user-facing explanation and clinical humility. |
+| **Parity** | Garmin executed-workout import; per-km splits; laps/intervals; HR-zone time; PR badges; week/month/year log; load/ACWR | Milebook README vs [S1][S11][S45][S49] | Enough to be credible; not enough to win. |
 | **Behind** | Mobile app, offline/PWA, reminders, plan templates, data export, wearable breadth, strength/cross-training, community, coach view, race-day logistics, onboarding, pricing/business model, automatic adaptation | Matrix §2; competitor evidence [S1][S25][S32][S44][S49][S53] | Table stakes or strategic liabilities; see §7–8. |
-| **Unknown** | HR-zone boundaries, lifetime PRs, load-model transparency | POC3 stores zone time but not boundaries; PRs are period-limited [POC3 README] | Low urgency for acquisition; matters for trust and retention. |
+| **Unknown** | HR-zone boundaries, lifetime PRs, load-model transparency | Milebook stores zone time but not boundaries; PRs are period-limited [Milebook README] | Low urgency for acquisition; matters for trust and retention. |
 
-**Honest read.** POC3 is not "ahead" overall. It is ahead on one axis that matters a lot (conversational control with proof) and behind on the axes that determine whether a runner can use it daily (mobile, reminders, templates, export). A positioning statement that claims "AI coach" will lose to Runna/Garmin on completeness; a positioning statement that claims "the coach that edits your calendar, with proof" is defensible.
+**Honest read.** Milebook is not "ahead" overall. It is ahead on one axis that matters a lot (conversational control with proof) and behind on the axes that determine whether a runner can use it daily (mobile, reminders, templates, export). A positioning statement that claims "AI coach" will lose to Runna/Garmin on completeness; a positioning statement that claims "the coach that edits your calendar, with proof" is defensible.
 
 ---
 
-## 6. POC3 differentiation opportunities (evidence-backed)
+## 6. Milebook differentiation opportunities (evidence-backed)
 
-These are ranked by the combination of (a) strength of the competitor gap, (b) strength of runner evidence, (c) POC3's existing asset, and (d) the cost of being wrong. Each opportunity states the gap, the runner evidence, why POC3 is positioned to win, and what would make it fail.
+These are ranked by the combination of (a) strength of the competitor gap, (b) strength of runner evidence, (c) Milebook's existing asset, and (d) the cost of being wrong. Each opportunity states the gap, the runner evidence, why Milebook is positioned to win, and what would make it fail.
 
 ### O1 — The coach that edits the calendar, with proof (strongest)
 
 - **Competitor gap.** Every major AI feature in the benchmark is read-only: Strava Athlete Intelligence writes a summary [S17]; Garmin Active Intelligence has no reply box [S33][S34]; Athletica's AI Coach explicitly does not modify training [S54]; Runna's AI is post-run feedback [S28]; Humango's Hugo schedules but reviewers call it not meaningfully smart [S58]. COROS is the only product that lets AI write plans, and only through an external MCP assistant, 4–16 weeks, start within 14 days, no delete [S46].
 - **Runner evidence.** Strava users ask for "an AI coach that actually helps you improve your weak spots… telling you when to add more speed work or adjust your training plan" [S18]. Garmin users ask for a "rigid skeleton that the algorithm fills in" and for the plan to respect their training days [S35]. Runna users describe making 5–6 changes to a marathon plan over two months and still fighting the app [S27]. The companion research finds N4 "re-plan without rebuilding" is a recurring, high-severity need (doc 02, N4).
-- **Why POC3 is positioned to win.** It already has the hard part: a same-origin bubble that can read and animate the grid, a validated `propose_calendar_turn`, add/move/delete/revert, before/after change sets, undo, hidden directives and comment-only reviews [POC3 README; ADR-0001/0002]. Competitors would have to rebuild their calendar as a writable system of record; POC3 started there.
+- **Why Milebook is positioned to win.** It already has the hard part: a same-origin bubble that can read and animate the grid, a validated `propose_calendar_turn`, add/move/delete/revert, before/after change sets, undo, hidden directives and comment-only reviews [Milebook README; ADR-0001/0002]. Competitors would have to rebuild their calendar as a writable system of record; Milebook started there.
 - **What would make it fail.** Model latency or validation failures that make the runner wait and retry; no diff preview (A3) so the runner cannot see what will change; no streaming (A4) so the bubble feels dead; no mobile so the runner cannot use it at the track; a single bad write (moved race, deleted long run) that undo does not make trustworthy; the audit page remaining an internal owner-only page instead of a runner-facing "what changed" history.
-- **Evidence confidence.** High on the gap; high on POC3's asset; medium on runner willingness to pay for it.
+- **Evidence confidence.** High on the gap; high on Milebook's asset; medium on runner willingness to pay for it.
 
 ### O2 — Plan intake from the artefacts runners already have (PDF, Sheets, WhatsApp, Reddit critique)
 
 - **Competitor gap.** No benchmark product imports a runner's existing plan into an editable calendar with provenance. Strava plans are fixed/email [S13]; Runna generates its own [S25]; Garmin locks the plan to its ecosystem [S29][S30]; Nike plans are fixed [S39]; TrainingPeaks can host a plan but the runner needs a coach or a purchased plan [S4][S8]; Final Surge is coach-led [S23]. The market either generates a plan or hosts a coach's plan; it does not ingest *the runner's* plan.
 - **Runner evidence.** Hal Higdon distributes free schedules and sells an interactive version through TrainingPeaks [S64]; Marathon Handbook offers a free plan database with Excel/customisation [S63]; runners build Excel sheets to generate plans [S65]; Google Sheets templates exist [S62]; Reddit is full of "rate my plan" threads where the plan is a list of long runs or a screenshot [S66]; coaches describe managing athletes with "a mix of spreadsheets and WhatsApp" and call it "a mess" [S67]. The companion research finds N3 "start from a trusted, recognisable plan" is high-severity (doc 02, N3).
-- **Why POC3 is positioned to win.** The LLM can read a plan as text (PDF, sheet, message) and turn it into dated sessions; the calendar batch write can place a whole block; the coach can preserve the plan's provenance ("Higdon Novice 1, 18 weeks, 4 days") and let the runner edit it in language. This is a natural extension of the existing `propose_calendar_turn`, not a new architecture. PoC1 had plan uploads; POC3 has no upload surface yet (backlog B7 is templates, not import).
+- **Why Milebook is positioned to win.** The LLM can read a plan as text (PDF, sheet, message) and turn it into dated sessions; the calendar batch write can place a whole block; the coach can preserve the plan's provenance ("Higdon Novice 1, 18 weeks, 4 days") and let the runner edit it in language. This is a natural extension of the existing `propose_calendar_turn`, not a new architecture. PoC1 had plan uploads; Milebook has no upload surface yet (backlog B7 is templates, not import).
 - **What would make it fail.** Parse errors that place wrong dates or distances without a confirmation step; no file-upload UI; no template library or plan schema; no provenance; no export back to the runner's original format; licensing/terms issues with copyrighted plans; a bad import that takes longer to fix than retyping the plan.
-- **Evidence confidence.** High on demand; medium on POC3's current ability (not built); medium on legal/product constraints.
+- **Evidence confidence.** High on demand; medium on Milebook's current ability (not built); medium on legal/product constraints.
 
 ### O3 — Guardrailed coaching states with explicit consent
 
 - **Competitor gap.** Garmin's readiness logic can silently replace a hard session after a poor night's sleep [S35]; Athletica's injury path recalculates thresholds in a way a reviewer found "totally not reflective" of actual fitness [S55]; Runna's aggressive plans are repeatedly linked by reviewers to injuries [S26][S27]; Humango lets a runner remove a sport/injury and adjust the schedule, which a reviewer liked better than TrainingPeaks [S58]; TrainingPeaks/Final Surge rely on the human coach for judgement [S2][S24]. No competitor documents a state catalog with consent semantics and gateway enforcement.
 - **Runner evidence.** The companion research finds N16 "pain → modify or stop, with a way back", N17 "know what load increase is safe", N18 "resume after illness/travel", N11 "load and ACWR translated into an action" (doc 02). The Garmin thread shows runners want to decide whether to push through or take it easy, not have the watch decide [S35]. The Athletica review shows what happens when an injury corrupts the plan's zones [S55].
-- **Why POC3 is positioned to win.** It already has a 34-state catalog in ten families, deterministic race/load/consistency detectors, chat/user proposals, `observing` states for sensitive conditions, user precedence, TTL/expiry, a seven-day dismissal cooldown, a 180-day retention window, an immutable event log and gateway guardrails over the effective post-turn calendar [POC3 COACH-STATES]. That is a genuine safety/trust asset, not a prompt.
+- **Why Milebook is positioned to win.** It already has a 34-state catalog in ten families, deterministic race/load/consistency detectors, chat/user proposals, `observing` states for sensitive conditions, user precedence, TTL/expiry, a seven-day dismissal cooldown, a 180-day retention window, an immutable event log and gateway guardrails over the effective post-turn calendar [Milebook COACH-STATES]. That is a genuine safety/trust asset, not a prompt.
 - **What would make it fail.** Heuristic false positives (ACWR/race detection) that annoy the runner; no wellness/HRV/sleep data, so "load" is Garmin load only; no clinician partnership or referral pathway beyond copy; states feeling like surveillance; no user-facing explanation of why a session was blocked; sensitive states being inferred despite the rule.
-- **Evidence confidence.** High on POC3's asset; medium on demand (runners say they want control, but may not shop for a state engine); low on clinical efficacy.
+- **Evidence confidence.** High on Milebook's asset; medium on demand (runners say they want control, but may not shop for a state engine); low on clinical efficacy.
 
 ### O4 — Explainable AI: audit, undo, diff preview
 
 - **Competitor gap.** AI in the benchmark is opaque by default: Athletica's metrics are described as a "black box" [S55]; Humango's initial plan creation "isn't very transparent" [S58]; Runna's adaptation is perceived as driven by completion clicks [S27]; Garmin's Active Intelligence is a one-way summary [S33]. No competitor shows the runner a before/after change set for an AI plan edit.
 - **Runner evidence.** The companion research's F11 "trust, transparency & control" family (doc 02 family map) captures the need; competitor reviews show distrust when the system changes the plan without explanation [S27][S35][S55]. TrainingPeaks users argue that basic schedule moves should be free [S7], which is a control expectation, not a price complaint.
-- **Why POC3 is positioned to win.** Every batch is stored with before/after snapshots; undo is requested in chat; the gateway enforces write permission; the audit page shows hidden directives, blocked writes and state transitions [POC3 README]. The missing piece is runner-facing: a "what changed" card, a diff preview before apply, and a visible history (the current undo has "no history panel").
+- **Why Milebook is positioned to win.** Every batch is stored with before/after snapshots; undo is requested in chat; the gateway enforces write permission; the audit page shows hidden directives, blocked writes and state transitions [Milebook README]. The missing piece is runner-facing: a "what changed" card, a diff preview before apply, and a visible history (the current undo has "no history panel").
 - **What would make it fail.** Audit remains an internal owner-only page; no diff preview; no redo/selective revert; the explanation is technical rather than human ("validation failed" instead of "I moved Thursday's tempo to Saturday because you said you were travelling"); the runner never sees the change set unless they ask.
 - **Evidence confidence.** High on the gap and the asset; medium on whether runners will read an audit view (probably not) versus a one-line "here's what changed" (probably yes).
 
@@ -564,21 +564,21 @@ These are ranked by the combination of (a) strength of the competitor gap, (b) s
 
 - **Competitor gap.** Race-week support is either device-native and opaque (Garmin race widget/DSW [S30][S35]), plan-native (Runna race-day guidance [S25]), predictor-heavy (COROS race predictor [S45]; Athletica race predictions criticised [S55]), or human-coach-dependent (TrainingPeaks Coach [S6]). No product ties race week to the runner's actual calendar with guardrails, a countdown, pacing and post-race return in one place.
 - **Runner evidence.** The companion research finds N20 "race-week execution", N21 "race-day pacing plan", N22 "taper madness reassurance" and N23 "post-race recovery and return" (doc 02). Garmin users praise the periodisation/race structure but criticise the plan moving [S35]; Runna users value race-day guidance [S25]; Athletica's race prediction failure shows the risk of overclaiming [S55].
-- **Why POC3 is positioned to win.** It already detects race day/week, taper and post-race as states, blocks intervals on race week and enforces guardrails over the calendar [POC3 COACH-STATES]. A race countdown card, a race-week brief, a pacing/effort plan and a post-race return block are natural extensions of the existing calendar and state engine.
+- **Why Milebook is positioned to win.** It already detects race day/week, taper and post-race as states, blocks intervals on race week and enforces guardrails over the calendar [Milebook COACH-STATES]. A race countdown card, a race-week brief, a pacing/effort plan and a post-race return block are natural extensions of the existing calendar and state engine.
 - **What would make it fail.** No race result capture, no countdown, no pacing logic, no logistics (course, weather, travel), no post-race return plan; overclaiming prediction like Athletica; treating taper as a generic state rather than a runner-facing explanation.
-- **Evidence confidence.** High on demand; medium on POC3's current asset (states exist, race-day product does not).
+- **Evidence confidence.** High on demand; medium on Milebook's current asset (states exist, race-day product does not).
 
 ### O6 — A private, social-free training space (differentiated, but risky)
 
 - **Competitor gap.** Strava is a social network with segments, challenges and AI summaries [S11][S17]; Garmin adds badges/challenges and LiveTrack [S32]; Nike adds community challenges [S39]; Runna adds community/support [S25]. None offers a private calendar-first coach with no feed, no segments and no social comparison.
 - **Runner evidence.** Strava users describe the social/addiction loop and say they would cancel if not for the social graph; they also say the AI is "AI slop" [S18]. The companion research's F10/F11 families capture social/community and trust/control needs (doc 02). Some runners want a quiet space; others want accountability.
-- **Why POC3 is positioned to win.** Private by design, per-user isolation, no feed, no segments, no public leaderboards. It can be the "training diary that talks back" rather than another performance stage.
-- **What would make it fail.** Privacy is not a motivator for most runners; without social accountability, adherence drops; no coach/community means no support; the niche may be too small to sustain a product; runners still use Strava for the social graph, so POC3 becomes a second app.
+- **Why Milebook is positioned to win.** Private by design, per-user isolation, no feed, no segments, no public leaderboards. It can be the "training diary that talks back" rather than another performance stage.
+- **What would make it fail.** Privacy is not a motivator for most runners; without social accountability, adherence drops; no coach/community means no support; the niche may be too small to sustain a product; runners still use Strava for the social graph, so Milebook becomes a second app.
 - **Evidence confidence.** Medium on differentiation; low on market size. This is a positioning option, not a proven opportunity.
 
 ### 6.1 Opportunity ranking (decision aid)
 
-| Rank | Opportunity | Gap strength | Runner evidence | POC3 asset | Effort to make credible | Main risk |
+| Rank | Opportunity | Gap strength | Runner evidence | Milebook asset | Effort to make credible | Main risk |
 |---|---|---|---|---|---|---|
 | 1 | O1 Conversational calendar control with proof | Very high | High | Very high | Low–medium (diff preview, mobile) | Trust/latency |
 | 2 | O2 Plan intake from PDF/Sheets/WhatsApp | High | High | Medium (LLM + batch write; no upload) | Medium | Parse/legal/provenance |
@@ -593,9 +593,9 @@ These are ranked by the combination of (a) strength of the competitor gap, (b) s
 
 ### 7.1 Table stakes: capabilities a competitor already gives away free
 
-| Capability | Who gives it away | POC3 status | Risk if POC3 does not match | Minimum response |
+| Capability | Who gives it away | Milebook status | Risk if Milebook does not match | Minimum response |
 |---|---|---|---|---|
-| Free plan/templates | Garmin Coach [S31], Nike [S39], COROS [S48], TrainingPeaks Basic plans [S3], Final Surge athlete [S20], Intervals.icu [S49] | Absent (B7 open) | Runner sees no starting point; POC3 feels like a blank chat | Template library or plan import (O2) |
+| Free plan/templates | Garmin Coach [S31], Nike [S39], COROS [S48], TrainingPeaks Basic plans [S3], Final Surge athlete [S20], Intervals.icu [S49] | Absent (B7 open) | Runner sees no starting point; Milebook feels like a blank chat | Template library or plan import (O2) |
 | Free log/analytics | Strava [S11], TrainingPeaks Basic [S3], Final Surge [S20], Intervals.icu [S49], COROS [S44] | Parity on log; no mobile | Runner cannot check the week on the phone | PWA/mobile + export |
 | AI summaries/insights | Strava Athlete Intelligence [S17], Garmin Connect+ [S32], Runna Workout Insights [S28] | Stronger native chat, but web-only | "AI coach" is not a differentiator by itself | Make the *write* and *proof* the story, not the summary |
 | Mobile app | All 12 competitors except Intervals.icu (which has third-party apps) [S51] | Absent | Calendar-first is phone-first; the product is unusable at the track | PWA first, native later |
@@ -610,25 +610,25 @@ These are ranked by the combination of (a) strength of the competitor gap, (b) s
 
 | Non-goal | Why it is a liability | Evidence | Strategic options |
 |---|---|---|---|
-| **No mobile app** | The calendar is a phone object; runners check the week, move a session and start a run on the phone. Every competitor except Intervals.icu has a mobile app [S51]. | Garmin/Runna/NRC/Strava mobile-first workflows [S25][S35][S39]; POC3 backlog A10 | Build a PWA immediately; native later. This is the highest-urgency non-goal to revisit. |
-| **No Strava** | Strava owns the runner's activity identity and social graph; without it POC3 is a second place to log. But adding Strava conflicts with the privacy niche (O6). | Strava's 200M users and social loop [S16][S18]; POC3 non-goal [POC3 README] | Stay private but offer export/ICS; or integrate read-only later as a source, not a social feed. |
-| **No payments** | Free competitors set the price floor; without a business model POC3 cannot fund mobile, support or model costs. | Garmin/Nike/COROS/Intervals free tiers [S31][S39][S44][S49]; POC3 non-goal | Decide a paid wedge (coach view? race week? plan import?) before building more free surface. |
-| **No external calendar sync** | Google Calendar is the runner's real calendar; TrainingPeaks offers an ICS export URL for Google/Outlook/Apple [S4]. A private calendar that cannot leave POC3 is a walled garden. | Google Calendar product [S60]; TP calendar export [S4]; N1 calendar evidence (doc 02) | Read-only ICS export first; two-way sync later if the product demands it. |
-| **No multi-tenancy / coach view** | The coach market is where recurring money is (TrainingPeaks Coach $21.99+/mo [S2]; Final Surge $19–$39/mo [S21]; Coach Match $149–$359/mo [S6]). POC3 cannot serve it. | Coach platform pricing [S2][S6][S21]; COROS/Intervals coach tools [S44][S49] | Stay self-coached; partner with a coach platform via export; revisit if a coach asks. |
-| **No wellness/HRV/sleep** | Guardrails rely on self-report; Garmin/Whoop have the data. POC3 cannot match readiness-aware coaching. | Garmin Connect+ health data [S32][S33]; POC3 limit [POC3 README] | Keep states runner-set; integrate one wellness source only if it changes a decision. |
-| **No production multi-tenancy** | The PoC cannot scale beyond a private server; this is an engineering constraint, not a product position. | POC3 README limits | Keep private until the wedge is validated; do not pretend to be a commercial service. |
+| **No mobile app** | The calendar is a phone object; runners check the week, move a session and start a run on the phone. Every competitor except Intervals.icu has a mobile app [S51]. | Garmin/Runna/NRC/Strava mobile-first workflows [S25][S35][S39]; Milebook backlog A10 | Build a PWA immediately; native later. This is the highest-urgency non-goal to revisit. |
+| **No Strava** | Strava owns the runner's activity identity and social graph; without it Milebook is a second place to log. But adding Strava conflicts with the privacy niche (O6). | Strava's 200M users and social loop [S16][S18]; Milebook non-goal [Milebook README] | Stay private but offer export/ICS; or integrate read-only later as a source, not a social feed. |
+| **No payments** | Free competitors set the price floor; without a business model Milebook cannot fund mobile, support or model costs. | Garmin/Nike/COROS/Intervals free tiers [S31][S39][S44][S49]; Milebook non-goal | Decide a paid wedge (coach view? race week? plan import?) before building more free surface. |
+| **No external calendar sync** | Google Calendar is the runner's real calendar; TrainingPeaks offers an ICS export URL for Google/Outlook/Apple [S4]. A private calendar that cannot leave Milebook is a walled garden. | Google Calendar product [S60]; TP calendar export [S4]; N1 calendar evidence (doc 02) | Read-only ICS export first; two-way sync later if the product demands it. |
+| **No multi-tenancy / coach view** | The coach market is where recurring money is (TrainingPeaks Coach $21.99+/mo [S2]; Final Surge $19–$39/mo [S21]; Coach Match $149–$359/mo [S6]). Milebook cannot serve it. | Coach platform pricing [S2][S6][S21]; COROS/Intervals coach tools [S44][S49] | Stay self-coached; partner with a coach platform via export; revisit if a coach asks. |
+| **No wellness/HRV/sleep** | Guardrails rely on self-report; Garmin/Whoop have the data. Milebook cannot match readiness-aware coaching. | Garmin Connect+ health data [S32][S33]; Milebook limit [Milebook README] | Keep states runner-set; integrate one wellness source only if it changes a decision. |
+| **No production multi-tenancy** | The PoC cannot scale beyond a private server; this is an engineering constraint, not a product position. | Milebook README limits | Keep private until the wedge is validated; do not pretend to be a commercial service. |
 
-### 7.3 Fast-follow risks (what a competitor could ship before POC3)
+### 7.3 Fast-follow risks (what a competitor could ship before Milebook)
 
-| Risk | Who | Evidence | POC3 exposure | Fast-follow response |
+| Risk | Who | Evidence | Milebook exposure | Fast-follow response |
 |---|---|---|---|---|
 | **Strava + Runna becomes one training product** | Strava/Runna | Runna acquired Apr 2025 [S14]; running plans moved to Runna [S12]; bundle $149.99/yr [S9]; Runna shipping 20+ features in 2026 [S15] | High: distribution + plan + AI + social in one app | Do not compete on social; compete on private calendar writes and proof |
 | **Garmin Connect+ adds a conversational coach** | Garmin | Connect+ launched Mar 2025 [S32]; Active Intelligence one-way today [S33][S34]; Garmin has the data and install base | High: free plans + device + AI | Win on cross-device calendar, runner control and transparency; Garmin's incentive is to keep data in Garmin |
 | **COROS MCP makes AI plan-writing ordinary** | COROS | External AI can create/edit plans/workouts, 4–16 weeks, start ≤14 days, no delete [S46] | Medium–high: free with hardware, coach/team layer | Offer a better write UX (validation, undo, diff) and a runner-facing audit; COROS's limits are real |
 | **Intervals.icu MCP makes free AI analysis ordinary** | Intervals.icu | Free core + $4/mo supporter with MCP [S49]; 200k athletes [S49] | Medium: free depth + AI for power users | Do not compete on chart depth; compete on calendar-first coaching and simplicity |
-| **Athletica/Humango make conversational AI plans ordinary** | Athletica, Humango | Athletica AI Coach chat [S53][S54]; Humango Hugo [S56][S57] | Medium: AI plan + chat, but read-only | POC3's write/undo is the differentiator; add templates/onboarding to match intake |
-| **TrainingPeaks adds an AI coach to the coach platform** | TrainingPeaks | Data depth + coach distribution; no native AI coach verified [S1][S4][S6] | Medium: coach distribution + data depth | POC3 cannot win coaches; win self-coached runners who want proof/control |
-| **Runna fixes aggressive paces and calendar bugs** | Runna | Reviewers report both [S26][S27]; Runna is investing in academic guidance and Holiday Mode [S15] | High: if Runna fixes its weaknesses, POC3's "better editing" is less unique | Keep the calendar-write + guardrail + audit trio; do not rely on Runna's bugs |
+| **Athletica/Humango make conversational AI plans ordinary** | Athletica, Humango | Athletica AI Coach chat [S53][S54]; Humango Hugo [S56][S57] | Medium: AI plan + chat, but read-only | Milebook's write/undo is the differentiator; add templates/onboarding to match intake |
+| **TrainingPeaks adds an AI coach to the coach platform** | TrainingPeaks | Data depth + coach distribution; no native AI coach verified [S1][S4][S6] | Medium: coach distribution + data depth | Milebook cannot win coaches; win self-coached runners who want proof/control |
+| **Runna fixes aggressive paces and calendar bugs** | Runna | Reviewers report both [S26][S27]; Runna is investing in academic guidance and Holiday Mode [S15] | High: if Runna fixes its weaknesses, Milebook's "better editing" is less unique | Keep the calendar-write + guardrail + audit trio; do not rely on Runna's bugs |
 | **A free AI calendar agent appears** | New entrant / LLM wrapper | The cost of an LLM + calendar UI is low; COROS/Intervals already expose MCP [S46][S49] | Medium: commoditised chat + calendar | The moat is validation, guardrails, audit and trust — not the model call |
 
 ### 7.4 What must be true within 90 days
@@ -640,13 +640,13 @@ These are ranked by the combination of (a) strength of the competitor gap, (b) s
 5. **Week/agenda view:** the plan can be seen as a week, not only a month grid.
 6. **Reminder:** at least one per-session notification channel (browser/email) with opt-out.
 
-If these six are not true, POC3 can still be a compelling demo, but it cannot be judged against Runna/Garmin/Strava as a daily runner product.
+If these six are not true, Milebook can still be a compelling demo, but it cannot be judged against Runna/Garmin/Strava as a daily runner product.
 
 ---
 
 ## 8. Source ledger (S1–S68)
 
-**Access date:** every source below was accessed on **2026-11-18**. The "Date" column gives the publication/update date where the page states one; otherwise it shows the access date. POC3 repository documents (`README.md`, `docs/...`) are cited inline and are not part of the S series. **Type codes:** [V] vendor page, [H] vendor help center, [P] press release, [R] independent review/news, [C] community thread, [X] third-party comparison. **Reliability:** High = vendor documentation or dated primary source; Medium = independent/third-party with a stated method; Low = self-selected community anecdote or search-index summary. No paywalled source was used.
+**Access date:** every source below was accessed on **2026-11-18**. The "Date" column gives the publication/update date where the page states one; otherwise it shows the access date. Milebook repository documents (`README.md`, `docs/...`) are cited inline and are not part of the S series. **Type codes:** [V] vendor page, [H] vendor help center, [P] press release, [R] independent review/news, [C] community thread, [X] third-party comparison. **Reliability:** High = vendor documentation or dated primary source; Medium = independent/third-party with a stated method; Low = self-selected community anecdote or search-index summary. No paywalled source was used.
 
 **Fetch limitation (from review 06 F-17/F-18):** two cited pages return a JavaScript shell to a plain fetch -- the Garmin Coach overview (S30) and the Final Surge pricing page (S21). Their rows are marked as marketing or snippet-only; re-check them in a browser before making a pricing or feature decision.
 
@@ -729,14 +729,14 @@ If these six are not true, POC3 can still be a compelling demo, but it cannot be
 
 ### 9.1 Evidence-to-opportunity table
 
-| Opportunity | Competitor gap evidence | Runner evidence | POC3 asset | Cross-ref (doc 02) | Confidence | Falsifier |
+| Opportunity | Competitor gap evidence | Runner evidence | Milebook asset | Cross-ref (doc 02) | Confidence | Falsifier |
 |---|---|---|---|---|---|---|
-| **O1** Conversational calendar control with proof | Strava AI read-only [S17]; Garmin one-way [S33][S34]; Athletica no writes [S54]; Runna insights only [S28]; COROS MCP partial [S46] | r/Strava asks for plan-adjusting AI [S18]; r/Garmin wants control [S35]; Runna users fight the plan [S27] | Bubble + validated writes + undo + audit [POC3 README] | N4; F11 (doc 02 family map) | High | Runners prefer a tap-based editor; model errors make writes untrustworthy |
+| **O1** Conversational calendar control with proof | Strava AI read-only [S17]; Garmin one-way [S33][S34]; Athletica no writes [S54]; Runna insights only [S28]; COROS MCP partial [S46] | r/Strava asks for plan-adjusting AI [S18]; r/Garmin wants control [S35]; Runna users fight the plan [S27] | Bubble + validated writes + undo + audit [Milebook README] | N4; F11 (doc 02 family map) | High | Runners prefer a tap-based editor; model errors make writes untrustworthy |
 | **O2** Plan intake from PDF/Sheets/WhatsApp | Strava fixed/email [S13]; Runna generated only [S25]; Garmin locked [S29]; TP coach/plan purchase [S4][S8]; NRC fixed [S39] | Higdon free plans [S64]; Sheets/Excel [S62][S63][S65]; Reddit critique [S66]; coaches' spreadsheet+WhatsApp mess [S67] | LLM parse + batch write; no upload yet | N1, N3 | High demand; medium build | Parse errors; legal issues; no provenance; worse than retyping |
-| **O3** Guardrailed states with consent | Garmin sleep override [S35]; Athletica injury recalculation [S55]; Runna injuries [S26][S27]; Humango injury removal [S58]; TP/FS human coach [S2][S24] | Runners want to decide whether to push [S35]; pain/illness/return needs (doc 02) | 34-state catalog + gateway enforcement [POC3 COACH-STATES] | N11, N16, N17, N18 | High asset; medium demand | False positives; no wellness data; clinical overreach |
-| **O4** Explainable AI (audit/undo/diff) | Athletica black box [S55]; Humango opaque creation [S58]; Runna click-based adaptation [S27]; Garmin one-way [S33] | Trust/control need (doc 02 F11); TP users want basic moves free [S7] | Change sets, undo, audit page [POC3 README] | F11 (doc 02 family map) | High gap; medium demand | Runners ignore audit; no diff preview; explanations too technical |
-| **O5** Race-week command center | Garmin race widget [S30]; Runna race-day guidance [S25]; COROS predictor [S45]; Athletica prediction criticised [S55]; TP coach [S6] | Race-week/taper/pacing needs (doc 02) [N20–N23]; Garmin race structure praised [S35] | Race/taper/post-race states + guardrails [POC3 COACH-STATES] | N20, N21, N22, N23 | Medium–high | No countdown/pacing/logistics; prediction overreach |
-| **O6** Private social-free space | Strava social/segments [S11][S18]; Garmin badges [S32]; NRC community [S39]; Runna community [S25] | Social/addiction comments [S18]; privacy/trust needs (doc 02 F10/F11) | Private calendar + per-user isolation [POC3 README] | F10, F11 | Medium differentiation; low market size | Runners need accountability; niche too small |
+| **O3** Guardrailed states with consent | Garmin sleep override [S35]; Athletica injury recalculation [S55]; Runna injuries [S26][S27]; Humango injury removal [S58]; TP/FS human coach [S2][S24] | Runners want to decide whether to push [S35]; pain/illness/return needs (doc 02) | 34-state catalog + gateway enforcement [Milebook COACH-STATES] | N11, N16, N17, N18 | High asset; medium demand | False positives; no wellness data; clinical overreach |
+| **O4** Explainable AI (audit/undo/diff) | Athletica black box [S55]; Humango opaque creation [S58]; Runna click-based adaptation [S27]; Garmin one-way [S33] | Trust/control need (doc 02 F11); TP users want basic moves free [S7] | Change sets, undo, audit page [Milebook README] | F11 (doc 02 family map) | High gap; medium demand | Runners ignore audit; no diff preview; explanations too technical |
+| **O5** Race-week command center | Garmin race widget [S30]; Runna race-day guidance [S25]; COROS predictor [S45]; Athletica prediction criticised [S55]; TP coach [S6] | Race-week/taper/pacing needs (doc 02) [N20–N23]; Garmin race structure praised [S35] | Race/taper/post-race states + guardrails [Milebook COACH-STATES] | N20, N21, N22, N23 | Medium–high | No countdown/pacing/logistics; prediction overreach |
+| **O6** Private social-free space | Strava social/segments [S11][S18]; Garmin badges [S32]; NRC community [S39]; Runna community [S25] | Social/addiction comments [S18]; privacy/trust needs (doc 02 F10/F11) | Private calendar + per-user isolation [Milebook README] | F10, F11 | Medium differentiation; low market size | Runners need accountability; niche too small |
 
 ### 9.2 Support matrix (competitor evidence × opportunity)
 
@@ -759,11 +759,11 @@ If these six are not true, POC3 can still be a compelling demo, but it cannot be
 ### 9.3 Evidence gaps to close before committing to build
 
 1. **TrainingPeaks native AI chat:** TrainingPeaks' AI positioning may become a real coach; verify before assuming TP is read-only.
-2. **Final Surge load model:** if it has TSS/CTL/ATL, POC3's load parity claim narrows.
-3. **Runkeeper/NRC load models:** unknown; do not claim POC3 is "ahead" on load without checking.
+2. **Final Surge load model:** if it has TSS/CTL/ATL, Milebook's load parity claim narrows.
+3. **Runkeeper/NRC load models:** unknown; do not claim Milebook is "ahead" on load without checking.
 4. **Willingness to pay:** no pricing research exists for a calendar-first AI coach; the $119.99/yr Runna price and $19.90/mo Athletica price are the closest anchors [S25][S54].
-5. **Mobile/PWA demand:** the competitor evidence is strong that mobile matters, but no POC3 user test exists; treat as a product bet, not a proven need.
-6. **Coach-view demand:** the paid coach market is documented [S2][S6][S21], but POC3 has no coach users; do not build a coach view on inference alone.
+5. **Mobile/PWA demand:** the competitor evidence is strong that mobile matters, but no Milebook user test exists; treat as a product bet, not a proven need.
+6. **Coach-view demand:** the paid coach market is documented [S2][S6][S21], but Milebook has no coach users; do not build a coach view on inference alone.
 
 ---
 
@@ -788,7 +788,7 @@ If these six are not true, POC3 can still be a compelling demo, but it cannot be
 - **Reddit** threads were read through a page scraper; vote counts and comment ordering are as displayed on 2026-11-18 and may change.
 - **No paywalled source and no hands-on competitor test:** no account, trial or app was used; every "works well" claim is attributed to a reviewer, not to this analysis.
 
-### 10.3 Decision summary for the POC3 owner
+### 10.3 Decision summary for the Milebook owner
 
 1. **Protect the wedge.** The calendar-write coach with validation, undo and audit is the only capability in this benchmark that no competitor ships natively. Do not dilute it into "another AI plan app".
 2. **Make the proof visible.** Add a diff preview and a runner-facing "what changed" card before adding more coach intelligence. Trust is the product.
@@ -797,6 +797,6 @@ If these six are not true, POC3 can still be a compelling demo, but it cannot be
 5. **Keep the guardrails, explain them.** The state engine is a genuine safety/trust asset; make it legible ("why did the coach block this?") and keep sensitive states consent-based.
 6. **Do not build a social network or a coach marketplace.** They are losing battles against Strava and TrainingPeaks. Export/ICS and a coach handoff are the pragmatic interfaces.
 7. **Price the wedge, not the dashboard.** The market gives away logs, plans and AI summaries. The paid product, if any, is control/trust/race-week/coach handoff, not "insights".
-8. **Be honest about the PoC.** POC3 is a private proof of concept with no mobile, payments or multi-tenancy. The competitive analysis says the idea is differentiated; it does not say the product is complete.
+8. **Be honest about the PoC.** Milebook is a private proof of concept with no mobile, payments or multi-tenancy. The competitive analysis says the idea is differentiated; it does not say the product is complete.
 
 **Change log:** 2026-11-18 initial version; 68 sources, 12 competitor profiles, 26-row matrix, workflow/positioning/opportunity/threat analysis, ledger and traceability. Corrections must update the ledger row and the affected matrix footnote, not just the prose.

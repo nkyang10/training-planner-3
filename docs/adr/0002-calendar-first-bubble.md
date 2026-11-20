@@ -1,6 +1,6 @@
 # ADR-0002 — The calendar is the product; the coach is a same-origin bubble
 
-- **Status:** accepted (POC3)
+- **Status:** accepted (Milebook)
 - **Context:** earlier proofs made chat the front door and embedded a calendar elsewhere. That hides the plan, makes edits
   hard to verify, and forces a heavy embed (iframe, cookies, double login) when the calendar is the real object.
 

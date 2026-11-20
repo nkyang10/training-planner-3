@@ -1,4 +1,4 @@
-# POC3 ??training-log feature plan
+# Milebook ??training-log feature plan
 
 **Status:** research + Slice 1 + Slice 2 + Slice 3 implemented 繚 **Scope:** the read-only training log and the run-detail
 view 繚 **Updated:** 2026-11-18
@@ -15,7 +15,7 @@ answered the first question ??*when did I run?* This plan answers the next quest
 
 ### What strong training logs show
 
-| Product pattern | What runners use it for | POC3 decision |
+| Product pattern | What runners use it for | Milebook decision |
 |---|---|---|
 | Garmin Connect training status / load focus | Acute load, load focus, training effect, recovery context | Use the **training-load** and **training-effect** fields the Personal API already returns; show a soft ramp signal, not a medical verdict |
 | Garmin activity detail / laps | Pacing and interval execution | Compute **per-kilometre splits** from the activity-detail samples; show Garmin's own **lap/interval summaries** separately |
@@ -46,7 +46,7 @@ Verified against the live account on 2026-11-15:
 The research on running load is not a single prescription. A widely used weekly-progression threshold is **30%**;
 a week-over-week increase above that is treated as a significant jump. Acute:chronic workload ratio (ACWR) work uses a
 **7-day acute** window against a **28-day chronic** window, with 0.8??.3 often described as a stable band and values
-above **1.5** treated as a high-load signal. The methods (coupled, uncoupled, EWMA) disagree materially, so POC3 uses a
+above **1.5** treated as a high-load signal. The methods (coupled, uncoupled, EWMA) disagree materially, so Milebook uses a
 simple **coupled rolling average** and labels the result a soft signal, not an injury prediction.
 
 Sources are listed at the end.
@@ -58,7 +58,7 @@ Verified against the official Personal API Swagger and Garmin's official Python 
 - `GET /activity-service/activity/{activityId}/workouts` returns the **planned workout a completed activity followed**:
   steps, intensities, durations, targets and coach notes. The endpoint is official (the client wrapper is
   `get_activity_workouts`), but the field-level `ActivityWorkoutDTO` / `WorkoutStepDTO` properties are not published.
-  POC3 parses the observed flat FIT-style payload and close variants defensively; an empty or unreadable payload is a
+  Milebook parses the observed flat FIT-style payload and close variants defensively; an empty or unreadable payload is a
   confirmed "no planned workout".
 - A repeat step closes the block it points back to (`REPEAT_UNTIL_STEPS_CMPLT`, `durationValue` = step to return to,
   `targetValue` = repeat count), so the workout reads as `3 ? (Run 7:00 @ 4:14??:33/km, Recovery 2:00)`. Pace targets
@@ -167,7 +167,7 @@ recent activity/session context. The button opens the bubble; it does not call t
 ### 4.2 HR-zone time
 
 - The activity list's `hrTimeInZone_1..5` seconds are stored as optional activity fields.
-- The detail page renders a stacked zone bar and a legend with each zone's time. Zones are Garmin's; POC3 does not store
+- The detail page renders a stacked zone bar and a legend with each zone's time. Zones are Garmin's; Milebook does not store
   the zone boundaries.
 - Activities without zone data omit the card.
 
@@ -271,13 +271,13 @@ The two separate line cards (**Pace trend**, **Average HR trend**) are replaced 
 
 ## 7. Risks and limits
 
-- **Garmin training load is proprietary.** POC3 displays it; it does not recompute Garmin's algorithm.
-- **ACWR is a soft signal.** The research disagrees on the best method; POC3 uses the coupled rolling average and
+- **Garmin training load is proprietary.** Milebook displays it; it does not recompute Garmin's algorithm.
+- **ACWR is a soft signal.** The research disagrees on the best method; Milebook uses the coupled rolling average and
   presents the result as guidance, not a diagnosis.
 - **Per-kilometre splits are computed, not Garmin's own lap splits.** The interpolation is explicit; the final split is
   partial; the detail request is on-demand and can be large for long runs. Garmin laps are a separate card.
 - **Detail and summary access can be denied.** Some activities return 403; the page degrades to the stored list metrics.
-- **Zone time has no boundaries.** POC3 shows Garmin's seconds per zone; it does not infer or edit zone thresholds.
+- **Zone time has no boundaries.** Milebook shows Garmin's seconds per zone; it does not infer or edit zone thresholds.
 - **PRs are scoped to stored history.** The 100-activity/90-day sync window means a "PR" is a stored-history best, not a
   complete lifetime record. A dedicated records page and longer history are later work.
 - **The list is capped at 100 activities and the 90-day window.** A larger history needs a paging design.
@@ -290,7 +290,7 @@ The two separate line cards (**Pace trend**, **Average HR trend**) are replaced 
   endpoint stops after the attempts are spent; it never blocks activity sync.
 - **The paired row is a presentation, not a new record.** The run and the workout stay separate rows; pairing is computed
   from the stored workout for the run's day. A run whose workout is `none`/`unavailable` is a plain record row.
-- **The workout is not a plan.** It describes the run that happened; POC3 cannot import future scheduled workouts or the
+- **The workout is not a plan.** It describes the run that happened; Milebook cannot import future scheduled workouts or the
   Garmin Coach plan with a Personal API key.
 
 ## 8. Test plan

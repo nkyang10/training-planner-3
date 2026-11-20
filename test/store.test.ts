@@ -1141,7 +1141,7 @@ describe("muscle check-ins", () => {
   });
 
   it("keeps muscle check-ins across a reopen", () => {
-    const directory = mkdtempSync(join(tmpdir(), "poc3-muscle-"));
+    const directory = mkdtempSync(join(tmpdir(), "milebook-muscle-"));
     const dbPath = join(directory, "muscle.sqlite");
     const handle = createStore(`sqlite:${dbPath}`);
     handle.store.appendMuscleCheckIn(checkIn("checkin:persist", "u1", "2026-11-05", "2026-11-05T08:00:00.000Z"));
@@ -1181,7 +1181,7 @@ describe("muscle status controls", () => {
   });
 
   it("keeps status controls across a reopen", () => {
-    const directory = mkdtempSync(join(tmpdir(), "poc3-muscle-controls-"));
+    const directory = mkdtempSync(join(tmpdir(), "milebook-muscle-controls-"));
     const dbPath = join(directory, "controls.sqlite");
     const handle = createStore(`sqlite:${dbPath}`);
     handle.store.upsertMuscleStatusControl(control("u1", "calves", true, null));

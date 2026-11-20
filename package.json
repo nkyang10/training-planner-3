@@ -1,9 +1,9 @@
 {
-  "name": "training-planner-poc3",
+  "name": "milebook",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "POC3 — a calendar-first AI coach: the private calendar is the product, the coach bubble books and edits it.",
+  "description": "Milebook — a calendar-first AI coach: the private calendar is the product, the coach bubble books and edits it.",
   "engines": {
     "node": ">=24"
   },

@@ -287,8 +287,8 @@ Routes:
 
 All state POSTs are same-origin checked (Origin vs Host) in addition to the SameSite=Lax session cookie. Invalid form
 input redirects with a fixed error code (`invalid-key`, `invalid-ttl`, `invalid-note`, `not-found`); the page maps the
-code to a message, so a crafted `error=` query cannot inject copy. The gateway response adds `poc3.states` (state
-changes) and `poc3.blockedByStates` (keys blocked on a fallback). The web layer enriches those with labels and the stored
+code to a message, so a crafted `error=` query cannot inject copy. The gateway response adds `milebook.states` (state
+changes) and `milebook.blockedByStates` (keys blocked on a fallback). The web layer enriches those with labels and the stored
 record for the bubble; the keys themselves are never hidden directives.
 
 ## What is needed now
@@ -306,7 +306,7 @@ Implemented in this pass:
 8. Prompt background and catalog injection with privacy and evidence-as-data rules.
 9. Manager page, calendar chips, bubble cards, audit integration, state activity log and links.
 10. Read-only GET pages plus an explicit refresh action; serialized sync; same-origin state POSTs; fixed error codes.
-11. Auto-detection kill switch (`POC3_AUTO_STATES=false`), `pnpm check` and CI workflow.
+11. Auto-detection kill switch (`MILEBOOK_AUTO_STATES=false`), `pnpm check` and CI workflow.
 12. Tests: **337 across 15 files**, including 27 state-engine tests and gateway guardrail/revert/fallback tests.
 13. CSS v11, deploy checks for state styles, live verification.
 

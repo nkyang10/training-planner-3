@@ -1,6 +1,6 @@
 # ADR-0001 — The LLM proposes, the server validates and writes
 
-- **Status:** accepted (POC3)
+- **Status:** accepted (Milebook)
 - **Context:** the coach is an LLM. It can hallucinate days, invent session ids, double-book, or return prose instead of JSON.
   The calendar is system-owned, so a bad write is visible and hard for the runner to repair.
 

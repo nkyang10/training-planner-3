@@ -1,11 +1,11 @@
-# POC3 - institute product review: effort, happiness, structure
+# Milebook - institute product review: effort, happiness, structure
 
 **Status:** decision document for the owner; review only, no code changed. **Date:** 2026-11-18.
 **Lens:** whole-product review written from the seat of a senior product designer at an international professional
 sport institute for runner management and coaching - the disciplines that view a training product as an athlete
 system (periodization, load monitoring, athlete monitoring, coach operations), not a feature list.
 **Inputs:** the analysis package 00-07 (workflow map, 43 runner needs from 46 sources, 12-product competitive
-benchmark, gap analysis, ranked backlog, adversarial review, implementation record); `POC3-CALENDAR.md`,
+benchmark, gap analysis, ranked backlog, adversarial review, implementation record); `MILEBOOK-CALENDAR.md`,
 `TRAINING-LOG-PLAN.md`, `COACH-STATES.md`, `FEATURES-FOR-REVIEW.md`; code at HEAD with spot-verification of the two
 claims this review leans on hardest (training-load computation in `src/training.ts:207-216` and `:231-266`, reported-
 run fields in `src/manual-activity.ts:81-95`); and an independent vision-model first-impression critique of the eight
@@ -25,7 +25,7 @@ primitive of that relationship.
 
 ## 1. The verdict in one page
 
-POC3 has already built the part most products fake: **a coach whose edits are validated, auditable, reversible and
+Milebook has already built the part most products fake: **a coach whose edits are validated, auditable, reversible and
 guardrailed, and a log that tells the truth about what happened**. The coaching-state engine (34 states, consent
 semantics, hard guardrails) is ahead of anything in the 12-product benchmark, and the executed-Garmin-workout overlay
 is unique in the market. The middle of the journey - "I have a plan and I ran; show me both" - is strong.
@@ -59,7 +59,7 @@ you can see, effort that provably converts, and a sport the runner stays in - wi
 ## 2. Product thesis and the three pillars
 
 **Thesis.** Every runner deserves the two things an institute athlete gets: a program with reasons, and a coach who
-manages the whole person. POC3's architecture (validated writes, states, honest log) is the right chassis for that;
+manages the whole person. Milebook's architecture (validated writes, states, honest log) is the right chassis for that;
 what is missing is the content of the promise above the week.
 
 | Pillar | Definition (testable) | Today | Target state | First metric |
@@ -70,7 +70,7 @@ what is missing is the content of the promise above the week.
 
 **The coaching loop.** An institute runs one loop, weekly, for years: **plan -> execute -> observe -> review -> adapt**.
 
-| Stage | POC3 today | Missing |
+| Stage | Milebook today | Missing |
 |---|---|---|
 | Plan | Coach books validated sessions; batch CRUD; guardrails | Block-level planning (a week is never planned as part of a block); templates |
 | Execute | Garmin sync, manual logging, workout overlay, peeks | The runner's feeling of the session (RPE); reminders (I-10) |
@@ -81,10 +81,10 @@ what is missing is the content of the promise above the week.
 **Institute practices this maps onto** (all standard, none exotic): session-RPE load monitoring
 ([Haddad et al. 2017](https://www.frontiersin.org/journals/neuroscience/articles/10.3389/fnins.2017.00612/full));
 acute:chronic workload bands ([Gabbett 2016](https://bjsm.bmj.com/content/50/5/273) - the 0.8-1.3 / >1.5 thresholds
-POC3 already encodes);
+Milebook already encodes);
 daily wellness questionnaires; taper windows (already encoded and cited: Wang 2023 in `COACH-STATES.md`); and
 long-term athlete development for the lifecycle view ([LTAD](https://athletics.ca/wp-content/uploads/2015/01/LTAD_EN.pdf)).
-POC3 has quietly implemented the elite-adjacent half of this list. The unimplemented half - subjective monitoring and
+Milebook has quietly implemented the elite-adjacent half of this list. The unimplemented half - subjective monitoring and
 season structure - is exactly what sections 3-4 cover.
 
 ---
@@ -133,7 +133,7 @@ Strava and PDF import are later still.
 - **Free core, forever:** coach chat, calendar, log, states, safety. **Safety features are never paywalled.**
 - **Pro:** the season engine - goal-race object, blocks, templates, testing, verdicts, advanced load, coach pack.
 - **Club / institute edition (later, after the solo product is proven):** a coach console over the same validated
-  write architecture - this is where an international sport institute would actually deploy it, and POC3's audit and
+  write architecture - this is where an international sport institute would actually deploy it, and Milebook's audit and
   guardrail spine is precisely what team software lacks.
 - **Never:** ads, data sale, engagement-maximizing dark patterns.
 

@@ -1,4 +1,4 @@
-# POC3 — page-layout review and the coach dock
+# Milebook — page-layout review and the coach dock
 
 **Status:** review + three implemented slices. The coach bubble is a **docked coach column on wide screens** and a
 **tabbed sheet below 1200 px**; the panel is grouped into **Chat / States / Changes**. A second pass applied the same
@@ -347,7 +347,7 @@ The research review's remaining codeable recommendations shipped in one slice:
   shortening the ~3,500 px phone path.
 - **Long-label reflow.** A 320 px pseudo-locale probe wraps and stacks the segmented labels with **0 horizontal
   overflow**; `.seg-labels` is a wrapping flex row and `.seg-label` allows `overflow-wrap: anywhere`.
-- **Privacy-safe analytics hook.** `data-track` attributes feed a `poc3:track` CustomEvent on `window` with
+- **Privacy-safe analytics hook.** `data-track` attributes feed a `milebook:track` CustomEvent on `window` with
   `{ name, value, page }`; nothing leaves the page and no health/chat/state text is included. Events: `coach-open`,
   `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`,
   `muscle-checkin`.

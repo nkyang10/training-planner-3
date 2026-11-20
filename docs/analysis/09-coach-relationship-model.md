@@ -1,4 +1,4 @@
-# POC3 - the coach relationship model: consultant-friend
+# Milebook - the coach relationship model: consultant-friend
 
 **Status:** owner directive captured as a design spec; review only, no code changed. **Date:** 2026-11-18.
 **Origin - the owner's words (2026-11-18, after the institute review):** the coach should be "like a consultant or
@@ -6,7 +6,7 @@ friends of user rather than a pusher or teacher. User ask coach, coach response.
 locations, put action available for coach to get involved. Discuss with user. Feedback and make decision."
 **Grounding:** the current coach contract is `COACH_RULES` in `src/coach.ts:233-263` (quoted below where it
 conflicts with the directive); the enforcement machinery it relies on (comment-only turns, ask-user policy,
-idempotency, revert, user-set-state precedence) is verified in `docs/POC3-CALENDAR.md` sections 7-8 and the 00-07
+idempotency, revert, user-set-state precedence) is verified in `docs/MILEBOOK-CALENDAR.md` sections 7-8 and the 00-07
 package. Companion documents: `08-institute-product-review.md` (this extends its constitution, principles 4, 5 and 9);
 new ids continue the PR-xx and D-xx conventions.
 

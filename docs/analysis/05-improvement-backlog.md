@@ -1,4 +1,4 @@
-# POC3 - improvement backlog: ranked, sliced and testable
+# Milebook - improvement backlog: ranked, sliced and testable
 
 **Status:** complete analysis; first slice implemented. **Date:** 2026-11-18. **Companion:** `04-gap-analysis.md` (gap ids G-01..G-28, need ids N1-N43).
 **Scope:** improvements that fit a private single-runner PoC. No new infrastructure is required by slice 1.
@@ -241,7 +241,7 @@ stronger.
 ### I-04 Diff preview and approve before a multi-session write
 
 - **Problem.** A turn proposes and commits in one phase (`src/gateway.ts:596-763`), so a plausible but wrong rewrite of a
-  week lands silently (CN-11, N36, O1/O4). This is the one trust feature competitors cannot copy quickly, and POC3 does not
+  week lands silently (CN-11, N36, O1/O4). This is the one trust feature competitors cannot copy quickly, and Milebook does not
   ship it.
 - **Proposed behaviour.** For any turn that would touch more than one session, or any move/delete, the gateway returns a
   proposal with a diff and no write; the runner approves or edits. Single-session adds stay one-phase.
@@ -579,7 +579,7 @@ G-18 (no judgement sentence at review time) is carried by I-07 (intent at the po
 can be matched and corrected). They are not separate backlog items because both are copy and wiring on surfaces those
 items already touch; splitting them would create duplicate acceptance tests.
 
-**One-line summary for the owner.** Slice 1 is not new product; it is the product POC3 already claims to be, made visible
+**One-line summary for the owner.** Slice 1 is not new product; it is the product Milebook already claims to be, made visible
 and honest. Slice 2 buys table stakes and the race story. Slice 3 buys safety, availability and segments. The
 differentiators in 03 (O1, O3, O4, O5) are all protected by slice 1-2 work that is cheap precisely because the underlying
 machinery already ships.

@@ -1,5 +1,5 @@
 /**
- * Take the runner's data out of POC3.
+ * Take the runner's data out of Milebook.
  *
  * The product's pitch is that the calendar belongs to the runner. That is only literally true if the plan, the log and
  * the change history can leave the app. Two formats are enough for a PoC: a complete JSON bundle and an all-day ICS
@@ -19,7 +19,7 @@ export interface ExportProfile {
 }
 
 export interface ExportBundle {
-  app: "POC3";
+  app: "Milebook";
   exportedAt: string;
   profile: ExportProfile;
   sessions: TrainingSession[];
@@ -43,7 +43,7 @@ export interface ExportInput {
 
 export function buildExportBundle(input: ExportInput): ExportBundle {
   return {
-    app: "POC3",
+    app: "Milebook",
     exportedAt: input.exportedAt,
     profile: {
       userId: input.profile.userId,
@@ -116,7 +116,7 @@ export function buildCalendarIcs(input: {
   const lines: string[] = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//POC3//AI Coach Calendar//EN",
+    "PRODID:-//Milebook//AI Coach Calendar//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     icsLine("X-WR-CALNAME", icsText(input.calendarName)),
@@ -125,7 +125,7 @@ export function buildCalendarIcs(input: {
   for (const session of ordered) {
     lines.push(
       "BEGIN:VEVENT",
-      icsLine("UID", `${session.sessionId}@poc3`),
+      icsLine("UID", `${session.sessionId}@milebook`),
       icsLine("DTSTAMP", stamp),
       `DTSTART;VALUE=DATE:${icsDay(session.day)}`,
       `DTEND;VALUE=DATE:${icsDay(addOneDay(session.day))}`,

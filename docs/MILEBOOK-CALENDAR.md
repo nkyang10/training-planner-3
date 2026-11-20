@@ -1,12 +1,12 @@
-# POC3 ??Calendar-first AI coach
+# Milebook — Calendar-first AI coach
 
-**Status:** standalone proof of concept 繚 **Surface:** private calendar + training log + in-calendar coach bubble 繚 **Repo:** training-planner-3
+**Status:** standalone proof of concept 繚 **Surface:** private calendar + training log + in-calendar coach bubble 繚 **Repo:** training-planner-poc3
 
 ---
 
-## 1. What POC3 is
+## 1. What Milebook is
 
-POC3 keeps the conversation, memory and planning, but moves the **calendar to the centre of the product**. After signup and
+Milebook keeps the conversation, memory and planning, but moves the **calendar to the centre of the product**. After signup and
 login the runner lands on a private month calendar. The coach lives in a bubble on that page: the runner talks to it, and the calendar
 is the coach's working surface ??it books, moves and deletes sessions in front of the runner, with a page-wide animation.
 
@@ -24,7 +24,7 @@ workout. It is read-only: the past is a fact; the coach can discuss it and adjus
 The coach is not a human. It is an LLM behind a small server that validates every proposal before writing anything. The
 calendar is **system-owned**: it is not the runner's Google/Outlook calendar, and the runner never has to curate it by hand.
 
-POC3 is deliberately narrower than the earlier proofs:
+Milebook is deliberately narrower than the earlier proofs:
 
 - **Standalone product.** The calendar, the training log and the bubble are the product.
 - **Standalone accounts.** Multiple runners can sign up; every account has its own profile, calendar, conversations and
@@ -38,10 +38,10 @@ POC3 is deliberately narrower than the earlier proofs:
 
 ## 2. Why calendar-first
 
-| Problem with chat-first | POC3 answer |
+| Problem with chat-first | Milebook answer |
 |---|---|
 | A chat thread hides the plan; the runner has to remember what was booked | The plan is visible immediately: month grid, today ring, Garmin completions |
-| "Coach said it changed something" is hard to verify | Every change is a visible cell edit + animation + `poc3.changes` metadata |
+| "Coach said it changed something" is hard to verify | Every change is a visible cell edit + animation + `milebook.changes` metadata |
 | "Did I actually do the plan?" is a separate question | The **Training log** shows actual Garmin activities beside the planned session for each day |
 | Chat UIs are generic; a training plan has days, weeks and load | Calendar-native CRUD, batch edits, day detail |
 | Embedding a separate chat application is heavy (iframe, cookies, double login) | A same-origin bubble: no iframe, no second login, direct DOM access for animation |
@@ -89,7 +89,7 @@ The design decision is recorded in [`adr/0002-calendar-first-bubble.md`](adr/000
 ## 4. Architecture
 
 ```
-??????????????????????????????????????????????????????????????????????????Browser                                                             ???? :8091/calendar   month grid + plan/record pills                     ???? :8091/history    training log: week/month/year + load + bests       ???? period switch    Week | Month | Year + prev/next/picker             ???? :8091/activity   run + plan-vs-actual + metrics + splits + laps     ????                  + HR zones + PR badges                             ???? view switch      Plan | Training log                                ???? ? Coach bubble  self-implemented HTML/CSS/JS, same-origin          ????       ??POST /chat                                                  ????????????潑??????????????????????????????????????????????????????????????         ???????????????????????????       ??????????????????????????????????????????POC3 web (:8091)     ??       ??POC3 gateway (:8090)                ????src/web.ts           ?????????嗯? src/gateway.ts                      ????- signup/login/      ?? HTTP  ??- OpenAI-compatible /v1/chat/...    ????  profile/cookie     ??       ??- prompt (30 activities + plans)    ????- month/day render   ??       ??  + validate + apply CRUD           ????- /calendar/data     ??       ??- change sets + revert + suggestions????- /history + /activity??      ?????????????????砂?????????????????????????- /sync + auto-sync  ??                      ??????????????砂?????????????          ?????????????????????????????????           ??                      ??SQLite (node:sqlite)         ??           ??                      ??messages, memories,          ??           ??                      ??sessions, activities,        ??           ??                      ??sync_state, change_sets      ??           ??                      ?????????????????????????????????           ??   Garmin Personal API
+??????????????????????????????????????????????????????????????????????????Browser                                                             ???? :8091/calendar   month grid + plan/record pills                     ???? :8091/history    training log: week/month/year + load + bests       ???? period switch    Week | Month | Year + prev/next/picker             ???? :8091/activity   run + plan-vs-actual + metrics + splits + laps     ????                  + HR zones + PR badges                             ???? view switch      Plan | Training log                                ???? ? Coach bubble  self-implemented HTML/CSS/JS, same-origin          ????       ??POST /chat                                                  ????????????潑??????????????????????????????????????????????????????????????         ???????????????????????????       ??????????????????????????????????????????Milebook web (:8091)     ??       ??Milebook gateway (:8090)                ????src/web.ts           ?????????嗯? src/gateway.ts                      ????- signup/login/      ?? HTTP  ??- OpenAI-compatible /v1/chat/...    ????  profile/cookie     ??       ??- prompt (30 activities + plans)    ????- month/day render   ??       ??  + validate + apply CRUD           ????- /calendar/data     ??       ??- change sets + revert + suggestions????- /history + /activity??      ?????????????????砂?????????????????????????- /sync + auto-sync  ??                      ??????????????砂?????????????          ?????????????????????????????????           ??                      ??SQLite (node:sqlite)         ??           ??                      ??messages, memories,          ??           ??                      ??sessions, activities,        ??           ??                      ??sync_state, change_sets      ??           ??                      ?????????????????????????????????           ??   Garmin Personal API
    activities + activity summary/laps + detail samples
 ```
 
@@ -100,7 +100,7 @@ Key properties:
 - **No iframe.** The bubble is part of the calendar document (ADR-0002). It can read the month cells and animate them.
 - **Server-side validation.** The model proposes; `parseCoachTurn` validates day, horizon, kinds, counts and CRUD ids before
   any write (ADR-0001).
-- **Accounts are server-side.** `src/auth.ts` hashes passwords with scrypt and issues a signed `poc3_session` cookie; every
+- **Accounts are server-side.** `src/auth.ts` hashes passwords with scrypt and issues a signed `milebook_session` cookie; every
   route resolves the current user and scopes all reads/writes to that `userId`.
 - **The calendar is a projection.** The booking is stored in SQLite; the calendar page reads SQLite.
 - **The training log is a read-only projection.** It joins activities to sessions by day and groups them by week; it never
@@ -133,7 +133,7 @@ Key properties:
 | View switcher | Plan / Training log / Muscles | `layout()` in `src/web.ts` | sliding segmented control inside the app bar; rendered only on the pages that name a view (calendar, day detail, training log, activity detail, muscle tab) |
 | Muscle tab | `/muscle?day=…&activity=…` (`:8091`) | `src/web-muscle.ts` + `src/muscles.ts` + `src/muscle-map.ts` + `src/muscle-rig.ts` + `src/vendor/` (three.js r170, GLTFLoader, the real BodyParts3D muscle figure) + `src/styles.ts` | an interactive 3D muscle figure built from real BodyParts3D muscles-and-skeleton (CC BY 4.0, hover/click/orbit/pause on the real meshes, procedural rig as the automatic fallback); 0-10 anchored soreness with condition tags, deterministic readings (normal soreness → watch → warning → urgent), drill suggestions matched to the tags, per-muscle coach knowledge, one-tap pain/red-flag states, history; `POST /muscle/checkin` stores it; the muscles a run worked appear on the activity detail and can prefill a check-in |
 | Coach bubble | bottom-right of both views | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation; reloads the recent conversation on open |
-| Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `poc3-coach`; the only writer |
+| Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `milebook-coach`; the only writer |
 | Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
 | Profile | `/profile` | `src/web.ts` | display name, timezone, goal, optional password change |
 | Day detail | `/day/YYYY-MM-DD` | `src/web.ts` | one day's sessions and activities, with detail links |
@@ -308,7 +308,7 @@ result to the model:
 }
 ```
 
-The model gets one repair attempt (`POC3_MAX_ATTEMPTS`, default `2` total). It may correct the proposal or ask one short
+The model gets one repair attempt (`MILEBOOK_MAX_ATTEMPTS`, default `2` total). It may correct the proposal or ask one short
 clarifying question. The fallback is used only when the budget is exhausted or the model transport fails.
 
 The policy is intentionally conservative:
@@ -322,15 +322,15 @@ The policy is intentionally conservative:
 
 ### Idempotent turns and audit
 
-The browser sends an `x-poc3-request-id`; the web proxy forwards it to the gateway. The gateway records one
+The browser sends an `x-milebook-request-id`; the web proxy forwards it to the gateway. The gateway records one
 `coach_turns` row per request:
 
 - `in_progress` ??claimed before the first model call;
 - `completed` ??cached response, attempts, validation code and outcome;
 - `failed` ??transport/model failure; a retry with the same id may claim it again.
 
-A repeated completed id returns the cached response with `x-poc3-idempotent-replay: true`; an in-flight duplicate returns
-`409`. The `poc3` response block includes `attempts`, `outcome` (`committed`, `clarified` or `fallback`) and
+A repeated completed id returns the cached response with `x-milebook-idempotent-replay: true`; an in-flight duplicate returns
+`409`. The `milebook` response block includes `attempts`, `outcome` (`committed`, `clarified` or `fallback`) and
 `validationCode`.
 
 ### Timezone and dated history
@@ -358,7 +358,7 @@ the UI:
 
 ```json
 {
-  "poc3": {
+  "milebook": {
     "sessions": 4,
     "memories": 1,
     "changes": [
@@ -624,7 +624,7 @@ The browser sends a **typed intent**, never hidden prose:
 }
 ```
 
-The web server resolves the referenced activity/day/week and forwards `poc3.directive` to the gateway. The gateway
+The web server resolves the referenced activity/day/week and forwards `milebook.directive` to the gateway. The gateway
 validates it again, loads the referenced rows from the store (a missing or foreign reference is `404 reference-not-found`
 before the model is called), and renders a clearly separated **Turn directive** section into the system prompt. The visible
 message remains the user message.
@@ -728,12 +728,12 @@ through `stateProposals` or set by the runner on `/coach-states`.
   `/day/<day>` a **Garmin workouts** card. The calendar fills the visible month's missing workouts (up to 6 per render, 2.5 s
   budget, 60 s throttle) so a run is paired on the grid as soon as its workout is known.
 - **Plan boundary:** the Personal API has no `workout-service`, `trainingplan-service` or `calendar-service` endpoints, so
-  POC3 can show the workout a run followed but cannot import future scheduled workouts or the Garmin Coach / adaptive plan
+  Milebook can show the workout a run followed but cannot import future scheduled workouts or the Garmin Coach / adaptive plan
   into the calendar grid. That needs a Garmin account (SSO) session token for `connectapi.garmin.com`, which the personal
   API key cannot mint; the official Training API is publish-only. The full evidence and the future endpoint list are in
   [GARMIN-TRAINING-PROGRAMS.md](GARMIN-TRAINING-PROGRAMS.md).
 - HR zones: the list's `hrTimeInZone_1..5` seconds are stored; the detail page shows a stacked bar and legend. Zone
-  boundaries are defined in Garmin and are not stored in POC3.
+  boundaries are defined in Garmin and are not stored in Milebook.
 - `POST /sync`, the page-load auto-sync and the session-start sync share `src/garmin-sync.ts`: fetch up to **100** activities
   (the Garmin list endpoint's supported maximum), keep the last **90 days**, upsert by `(user_id, activity_id)` (a repeated
   sync updates and enriches instead of throwing; two runners may store the same Garmin activity independently), count new
@@ -745,7 +745,7 @@ through `stateProposals` or set by the runner on `/coach-states`.
   a page banner. The popup explains where to create a Garmin Personal API key, offers **Show** so the full pasted key can be
   checked, verifies the key against the token endpoint, then stores it per runner and syncs immediately. The menu's **Garmin
   key** item ??like the bell's footer link ??reopens the popup and shows the masked current key (`?ＴＴＴ?234`) when replacing.
-- A new browser session ??a login or a resumed `poc3_session` auth cookie without a live `poc3sid` session ??starts one
+- A new browser session ??a login or a resumed `milebook_session` auth cookie without a live `milebooksid` session ??starts one
   background pull when a key is saved. Page loads also pull when the last sync is older than **10 minutes**; a failure backs
   off for the same interval. Manual `/sync` and `/garmin/key` requests skip the session auto-sync so they cannot double-pull.
 - The top-bar notification bell polls `/notifications` and is the single sync feed. Explicit manual/key syncs always record
@@ -755,8 +755,8 @@ through `stateProposals` or set by the runner on `/coach-states`.
   to its month; the training-log review card appears only for a genuinely new activity. A 401/403 links back to the key
   popup; other errors link to the training log. `src/garmin-errors.ts` turns 401, 403, 429 and 400 responses into actionable
   text, including Garmin's `retryInSeconds` / `count` / `limit` rate-limit body.
-- The browser tab title carries the same unread count: `{page context} 繚 AI Coach Calendar (N)`, for example
-  `Training log 繚 AI Coach Calendar (3)`. The context starts with the active **Plan** / **Training log** nav, then the page
+- The browser tab title carries the same unread count: `{page context} 繚 Milebook (N)`, for example
+  `Training log 繚 Milebook (3)`. The context starts with the active **Plan** / **Training log** nav, then the page
   detail (`Training log 繚 Activity`, `Plan 繚 Fri, 6 Nov 2026`). `layout()` server-renders the count, caps it at `99+`, omits
   it at zero and on signed-out pages, and the bell poll keeps it current. Opening the bell marks notifications read and
   clears the title count.
@@ -773,13 +773,13 @@ through `stateProposals` or set by the runner on `/coach-states`.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/health` | liveness + model name |
-| `GET` | `/v1/models` | OpenAI-compatible model list (`poc3-coach`) |
-| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE); optional `x-poc3-request-id` for idempotency; optional `poc3.directive` from the trusted web proxy |
+| `GET` | `/v1/models` | OpenAI-compatible model list (`milebook-coach`) |
+| `POST` | `/v1/chat/completions` | one coach turn; `stream` supported (single-chunk SSE); optional `x-milebook-request-id` for idempotency; optional `milebook.directive` from the trusted web proxy |
 
-The gateway binds `127.0.0.1` and trusts the internal `x-poc3-user` header set by the web server; the browser never talks to
+The gateway binds `127.0.0.1` and trusts the internal `x-milebook-user` header set by the web server; the browser never talks to
 it directly. The web surface is the authenticated entry point.
 
-A completed request id is replayed from `coach_turns` with `x-poc3-idempotent-replay: true`; a duplicate while the first
+A completed request id is replayed from `coach_turns` with `x-milebook-idempotent-replay: true`; a duplicate while the first
 request is still running gets `409 turn-in-progress`. A replay whose hidden directive hash differs from the original turn
 gets `409 directive-mismatch`. A directive reference that is missing or belongs to another runner gets
 `404 reference-not-found` before the model is called.
@@ -789,7 +789,7 @@ gets `409 directive-mismatch`. A directive reference that is missing or belongs 
 | Method | Path | Purpose |
 |---|---|---|
 | `GET`/`POST` | `/signup` | create a standalone account (username, display name, password, timezone, goal) |
-| `GET`/`POST` | `/login` | password login; sets the signed `poc3_session` cookie plus the browser `poc3sid` session cookie and starts a sync when a key is saved |
+| `GET`/`POST` | `/login` | password login; sets the signed `milebook_session` cookie plus the browser `milebooksid` session cookie and starts a sync when a key is saved |
 | `GET` | `/logout` | clears both cookies |
 | `GET`/`POST` | `/profile` | display name, timezone, goal, optional password change |
 | `GET` | `/calendar?month=YYYY-MM` | month grid (authenticated, user-scoped) |
@@ -799,12 +799,12 @@ gets `409 directive-mismatch`. A directive reference that is missing or belongs 
 | `GET` | `/session/<sessionId>/peek` | JSON for the calendar session-peek popup: title, day label, kind label, planned distance/duration, note, day outcome (`completed` / `unmatched` / `missed` / `upcoming` / `rest`) with the matched run, visible `coachPrompt`, typed `coachIntent` and `day`/`week`/`activity` links; user-scoped, 404 for a foreign or missing id |
 | `GET` | `/day/YYYY-MM-DD` | day detail |
 | `GET` | `/calendar/data?month=YYYY-MM` | JSON used by the in-place refresh: `{ month, days: { [day]: { items, html } } }`. `items` is the typed union `plan \| record \| pair` from `src/calendar-items.ts` (plan: `kind`, `kindLabel`, `sessionId`, `label`, `meta`, `tooltip`; record: `source`, `activityId`, `label`, `meta`, `tooltip`; pair: `activityId`, `run { label, meta }`, `workout { label }`, `tooltip`), and `html` is the server-rendered row fragment the client swaps into the cell. `sessionId` drives the session peek; the pair's `activityId` is its single click target and drives the integrated run+program peek |
-| `POST` | `/chat` | bubble proxy ??gateway; body `{ message, intent? }`; the web validates the typed intent, resolves references, builds the hidden directive and forwards it as `poc3.directive`; returns `{reply, sessions, changes, suggestions, failures, changeSetId, reverted, mode, writesAllowed, blockedWrites, directiveId, states, blockedByStates}` |
+| `POST` | `/chat` | bubble proxy ??gateway; body `{ message, intent? }`; the web validates the typed intent, resolves references, builds the hidden directive and forwards it as `milebook.directive`; returns `{reply, sessions, changes, suggestions, failures, changeSetId, reverted, mode, writesAllowed, blockedWrites, directiveId, states, blockedByStates}` |
 | `GET` | `/chat/history` | the signed-in runner's recent visible messages, oldest first (used to restore the bubble after refresh), plus active/observing states so a pending sensitive confirmation survives a reload; hidden directives are never included |
 | `GET` | `/coach-audit` | internal, unlinked page scoped to the signed-in runner: recent hidden directives, comment-only/blocked-writes stats, active coaching states, an immutable State activity log and legacy `mode:` memories |
 | `GET` | `/coach-states` | per-runner coaching-state manager: read stored active/proposed states, resolved history (last 100), a setup card when no Garmin key is saved and a set-state form; GET never writes |
 | `POST` | `/coach-states` | set a state (`key`, `ttlDays`, `note`); redirects to `/coach-states` or with a fixed `error` code (`invalid-key`, `invalid-ttl`, `invalid-note`) |
-| `POST` | `/coach-states/refresh` | run auto detection once, persist states, then redirect to `/coach-states`; disabled by `POC3_AUTO_STATES=false` |
+| `POST` | `/coach-states/refresh` | run auto detection once, persist states, then redirect to `/coach-states`; disabled by `MILEBOOK_AUTO_STATES=false` |
 | `POST` | `/coach-states/<id>/confirm` | observing ??active; scoped to the signed-in runner; expired states are rejected |
 | `POST` | `/coach-states/<id>/resolve` | active/observing ??resolved with source `user`; scoped to the signed-in runner |
 | `POST` | `/sync` | manual Garmin pull (last 90 days, upsert and metric enrichment); no saved key redirects to the popup; `next` selects `/calendar` or `/history`; the result renders inline as a `synced`/`syncError` flash |
@@ -835,12 +835,12 @@ pnpm install
 Set the minimum environment (PowerShell shown):
 
 ```powershell
-$env:POC3_AUTH_SECRET='<long random secret>'
-$env:POC3_DB='sqlite:data/poc3.sqlite'
-$env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
-$env:POC3_MODEL_API_KEY='<model key>'
-$env:POC3_MODEL_NAME='dgx/general'
-$env:POC3_MAX_ATTEMPTS='2'
+$env:MILEBOOK_AUTH_SECRET='<long random secret>'
+$env:MILEBOOK_DB='sqlite:data/milebook.sqlite'
+$env:MILEBOOK_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
+$env:MILEBOOK_MODEL_API_KEY='<model key>'
+$env:MILEBOOK_MODEL_NAME='dgx/general'
+$env:MILEBOOK_MAX_ATTEMPTS='2'
 pnpm dev
 ```
 
@@ -850,8 +850,8 @@ Then:
 - Calendar: `http://127.0.0.1:8091/calendar`
 - Gateway: `http://127.0.0.1:8090/health`
 
-Ports: `POC3_GATEWAY_PORT` (default `8090`), `POC3_WEB_PORT` (default `8091`). The live deployment uses
-`POC3_GATEWAY_PORT=8092` and `POC3_WEB_PORT=8093`.
+Ports: `MILEBOOK_GATEWAY_PORT` (default `8090`), `MILEBOOK_WEB_PORT` (default `8091`). The live deployment uses
+`MILEBOOK_GATEWAY_PORT=8092` and `MILEBOOK_WEB_PORT=8093`.
 
 After signing in, open the **account menu** (your display name, top right) and use **Sync Garmin now** once: with no saved key
 it opens the guide/popup, verifies the pasted Personal API key, stores it for that account, and syncs. **Garmin key** in the
@@ -862,31 +862,31 @@ key belongs in the environment.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `POC3_GATEWAY_PORT` | `8090` | gateway port |
-| `POC3_WEB_PORT` | `8091` | calendar port |
-| `POC3_DB` | `sqlite:data/poc3.sqlite` | SQLite spec; directory is created |
-| `POC3_AUTH_SECRET` | `poc3-dev-secret-change-me` | HMAC secret for the signed session cookie; set a strong value |
-| `POC3_USER_ID` | `demo-runner` | gateway fallback when no `x-poc3-user` header |
-| `POC3_MODEL_BASE_URL` | `http://192.168.1.202:8102/v1` | OpenAI-compatible endpoint |
-| `POC3_MODEL_API_KEY` | empty | model bearer; the live deploy reads it from the environment or `data/poc3-model.secret` |
-| `POC3_MODEL_NAME` | `dgx/general` | model name |
-| `POC3_MODEL_ID` | `poc3-coach` | id exposed by the gateway |
-| `POC3_MAX_ATTEMPTS` | `2` | initial proposal + repair calls per turn |
-| `POC3_AUTO_STATES` | `true` | deterministic auto-state detection; `false` keeps manual/chat states but disables auto detection |
-| `POC3_GATEWAY_URL` | `http://127.0.0.1:8090` | web ??gateway |
+| `MILEBOOK_GATEWAY_PORT` | `8090` | gateway port |
+| `MILEBOOK_WEB_PORT` | `8091` | calendar port |
+| `MILEBOOK_DB` | `sqlite:data/milebook.sqlite` | SQLite spec; directory is created |
+| `MILEBOOK_AUTH_SECRET` | `milebook-dev-secret-change-me` | HMAC secret for the signed session cookie; set a strong value |
+| `MILEBOOK_USER_ID` | `demo-runner` | gateway fallback when no `x-milebook-user` header |
+| `MILEBOOK_MODEL_BASE_URL` | `http://192.168.1.202:8102/v1` | OpenAI-compatible endpoint |
+| `MILEBOOK_MODEL_API_KEY` | empty | model bearer; the live deploy reads it from the environment or `data/milebook-model.secret` |
+| `MILEBOOK_MODEL_NAME` | `dgx/general` | model name |
+| `MILEBOOK_MODEL_ID` | `milebook-coach` | id exposed by the gateway |
+| `MILEBOOK_MAX_ATTEMPTS` | `2` | initial proposal + repair calls per turn |
+| `MILEBOOK_AUTO_STATES` | `true` | deterministic auto-state detection; `false` keeps manual/chat states but disables auto detection |
+| `MILEBOOK_GATEWAY_URL` | `http://127.0.0.1:8090` | web ??gateway |
 
 Never commit real keys or `.env` files; the live secrets stay in the gitignored `data/` directory.
 
 ### Deploying the live process (Windows)
 
 `pnpm deploy:live` restarts the live :8093/:8092 process. The script reads the auth secret from
-`data/poc3-auth.secret` and the model API key from `POC3_MODEL_API_KEY` or `data/poc3-model.secret`, uses
-`sqlite:data/poc3-auth.sqlite`, refuses to stop a process whose command line does not contain `src/index.ts`, starts
+`data/milebook-auth.secret` and the model API key from `MILEBOOK_MODEL_API_KEY` or `data/milebook-model.secret`, uses
+`sqlite:data/milebook-auth.sqlite`, refuses to stop a process whose command line does not contain `src/index.ts`, starts
 `pnpm dev` with the live model/env, and waits for the gateway `/health`, the calendar `/login` and the new stylesheet. It
 fails if the auth secret or model key is missing, if the deployed CSS lacks `.cal-pill.record`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program`, `.state-card`, `.state-form`, `.state-refresh`, `.account-menu` or `.account-item`, or if
 the login page does not reference `app.css?v=17`. Runtime logs:
-`data/poc3-live.out.log` and `data/poc3-live.err.log`; deploy history: `data/poc3-deploy.log`.
+`data/milebook-live.out.log` and `data/milebook-live.err.log`; deploy history: `data/milebook-deploy.log`.
 
 ---
 
@@ -924,9 +924,9 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 
 1. **No streaming in the bubble.** `/chat` waits for the whole reply; the gateway supports streaming, but idempotency is
    applied only to non-streaming completions.
-2. **Auth is PoC-grade.** The default `POC3_AUTH_SECRET` must be replaced; there is no email verification, password reset,
+2. **Auth is PoC-grade.** The default `MILEBOOK_AUTH_SECRET` must be replaced; there is no email verification, password reset,
    rate limit or session revocation list.
-3. **The gateway trusts `x-poc3-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
+3. **The gateway trusts `x-milebook-user`.** It binds localhost and is meant to sit behind the web server; do not expose it.
 4. **No manual session edit form.** The coach is the only writer of planned sessions by design; the runner can only ask it.
    A recorded run can be logged by hand on the day page, but that does not create or edit a planned session.
 5. **No external calendar sync.** Google/Outlook/CalDAV are out of scope.
@@ -947,7 +947,7 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
     it does not call the LLM or write a message without the runner's action.
 13. **Per-runner Garmin key, stored plaintext.** Each account saves its own Personal API key; there is no Garmin OAuth flow.
     The key is kept in SQLite in plaintext and sent over the private HTTP deployment, so use a trusted network and a private
-    server. The browser session cookie (`poc3sid`) lives in memory and lasts 24 hours; a server restart creates a new session
+    server. The browser session cookie (`milebooksid`) lives in memory and lasts 24 hours; a server restart creates a new session
     and triggers the session-start pull again.
 14. **History is a bounded period, not infinite scroll.** Month and year rows are summaries; drill down to a week for day
     details. There is no "load more" paging.
@@ -955,12 +955,12 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
     views include partial calendar weeks at the edges.
 16. **Garmin's list endpoint is capped at 100 activities per pull.** The last-90-days filter runs after that cap; a runner
     with more than 100 activities in 90 days will not see the oldest ones until a larger history sync exists.
-17. **Training load is Garmin's proprietary value.** The week card displays it; POC3 does not recompute Garmin's algorithm.
+17. **Training load is Garmin's proprietary value.** The week card displays it; Milebook does not recompute Garmin's algorithm.
     ACWR is a coupled 7/28-day rolling average and a soft signal, not an injury prediction. Hard/easy uses training-effect
     labels; activities without labels are left out of that split.
 18. **The weekly review is a prompt, not an automatic model turn.** The load card offers a one-tap prompt; the coach is not
     called until the runner taps it.
-19. **HR-zone time has no boundaries.** POC3 shows Garmin's seconds per zone as a stacked bar; it does not infer or edit
+19. **HR-zone time has no boundaries.** Milebook shows Garmin's seconds per zone as a stacked bar; it does not infer or edit
     zone thresholds. A zone chart with targets is later work.
 20. **PRs are stored-history bests.** The 100-activity/90-day sync window means a PR badge is a best among stored
     activities, not a complete lifetime record. A dedicated records page and longer history are later work.
@@ -976,7 +976,7 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
     throttle) and on demand from the detail page. A failed fetch is a muted note, never a broken page;
     an empty payload is a confirmed "no planned workout". A known workout pairs the run and the workout into one row with
     one click target; the run peek shows the read-only program. The workout card and program show Garmin's steps and notes; they
-    are not editable in POC3.
+    are not editable in Milebook.
 25. **Future Garmin plans cannot be imported with a Personal API key.** The Personal API has no scheduled-workout or
     training-plan endpoints, and the official Training API is publish-only. Importing the Garmin Coach plan or the upcoming
     Garmin calendar would need a separate Garmin SSO web session (`connectapi.garmin.com`) and a product/terms decision.
@@ -1017,5 +1017,5 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 - [`design/session-peek-demo.png`](design/session-peek-demo.png)
 - [`design/muscle-tab-demo.png`](design/muscle-tab-demo.png)
 
-POC3 is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog and the
+Milebook is a proof of concept, not a production plan. The next step is the owner's review of the feature backlog and the
 training-log plan.

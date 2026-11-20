@@ -180,7 +180,7 @@ const post = async (url: string, body: unknown): Promise<Response> =>
 
 interface Completion {
   choices: Array<{ message: { content: string } }>;
-  poc3: GatewayMeta;
+  milebook: GatewayMeta;
 }
 
 const seedSession = (
@@ -227,7 +227,7 @@ const moveA = (day = "2026-11-07", title = "Easy 4 km"): Record<string, unknown>
 describe("coach gateway", () => {
   it("writes memories, sessions and one change set from a validated turn", async () => {
     const { handle, url } = await base(modelFetch(VALID));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I want to run a 10k in 8 weeks" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "I want to run a 10k in 8 weeks" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
@@ -235,18 +235,18 @@ describe("coach gateway", () => {
     expect(handle.store.listSessions(USER, TODAY, "2026-11-30")).toHaveLength(1);
     expect(handle.store.listMessages(USER)).toHaveLength(2);
 
-    expect(body.poc3).toMatchObject({ sessions: 1, memories: 1, reverted: false });
-    expect(body.poc3.suggestions).toEqual(SUGGESTIONS);
-    expect(body.poc3.changeSetId).toMatch(/^change:/);
-    expect(body.poc3.changes).toHaveLength(1);
-    expect(body.poc3.changes[0]).toMatchObject({ action: "add", fromDay: null, toDay: "2026-11-06", title: "Easy 5 km", kind: "easy" });
-    expect(body.poc3.changes[0]?.before).toBeNull();
-    expect(body.poc3.changes[0]?.after?.day).toBe("2026-11-06");
-    expect("calendarEvents" in body.poc3).toBe(false);
+    expect(body.milebook).toMatchObject({ sessions: 1, memories: 1, reverted: false });
+    expect(body.milebook.suggestions).toEqual(SUGGESTIONS);
+    expect(body.milebook.changeSetId).toMatch(/^change:/);
+    expect(body.milebook.changes).toHaveLength(1);
+    expect(body.milebook.changes[0]).toMatchObject({ action: "add", fromDay: null, toDay: "2026-11-06", title: "Easy 5 km", kind: "easy" });
+    expect(body.milebook.changes[0]?.before).toBeNull();
+    expect(body.milebook.changes[0]?.after?.day).toBe("2026-11-06");
+    expect("calendarEvents" in body.milebook).toBe(false);
 
     const sets = handle.store.listChangeSets(USER);
     expect(sets).toHaveLength(1);
-    expect(sets[0]?.changeSetId).toBe(body.poc3.changeSetId);
+    expect(sets[0]?.changeSetId).toBe(body.milebook.changeSetId);
     expect(sets[0]?.entries).toHaveLength(1);
     expect(sets[0]?.summary).toContain("add");
     expect(sets[0]?.revertedAt).toBeNull();
@@ -255,20 +255,20 @@ describe("coach gateway", () => {
   it("writes nothing when the model books the past", async () => {
     const invalid = turn({ sessions: [{ day: "2026-11-04", title: "Past", kind: "easy", distanceKm: 5, durationMin: 30 }] });
     const { handle, url } = await base(modelFetch(invalid));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Change yesterday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Change yesterday" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("nothing was changed");
     expect(handle.store.listMemories(USER)).toHaveLength(0);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
-    expect(body.poc3).toMatchObject({ sessions: 0, memories: 0, changeSetId: null, reverted: false, suggestions: [] });
-    expect(body.poc3.changes).toEqual([]);
+    expect(body.milebook).toMatchObject({ sessions: 0, memories: 0, changeSetId: null, reverted: false, suggestions: [] });
+    expect(body.milebook.changes).toEqual([]);
   });
 
   it("streams the reply for the calendar bubble", async () => {
     const { handle, url } = await base(modelFetch(VALID));
-    const response = await post(url, { model: "poc3-coach", stream: true, messages: [{ role: "user", content: "Plan my week" }] });
+    const response = await post(url, { model: "milebook-coach", stream: true, messages: [{ role: "user", content: "Plan my week" }] });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/event-stream");
     const text = await response.text();
@@ -281,13 +281,13 @@ describe("coach gateway", () => {
     const { url } = await base(modelFetch(VALID));
     const response = await fetch(`${url}/v1/models`);
     const body = (await response.json()) as { data: Array<{ id: string }> };
-    expect(body.data[0]?.id).toBe("poc3-coach");
+    expect(body.data[0]?.id).toBe("milebook-coach");
   });
 
   it("does not duplicate the same booking across turns and does not append the calendar url", async () => {
     const { handle, url } = await base(modelFetch(VALID));
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Same plan again" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Same plan again" }] });
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
     const body = (await second.json()) as Completion;
@@ -301,12 +301,12 @@ describe("coach gateway", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(VALID);
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     const firstBody = (await first.json()) as Completion;
-    const changeSetId = firstBody.poc3.changeSetId;
+    const changeSetId = firstBody.milebook.changeSetId;
     expect(changeSetId).not.toBeNull();
     model.answers.push(turn({ reply: "Same plan again." }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "What did you just do?" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "What did you just do?" }] });
     expect(model.prompts).toHaveLength(2);
     expect(model.prompts[1]).toContain("recentChanges");
     expect(model.prompts[1]).toContain(changeSetId ?? "missing");
@@ -318,7 +318,7 @@ describe("coach gateway", () => {
     const model = queueModel();
     const { url } = await base(model.fetchImpl, { timezone: "Asia/Hong_Kong", goal: "Half marathon in March" });
     model.answers.push(VALID);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "What should I focus on?" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "What should I focus on?" }] });
     expect(model.prompts).toHaveLength(1);
     expect(model.prompts[0]).toContain('"goal":"Half marathon in March"');
   });
@@ -341,7 +341,7 @@ describe("coach gateway", () => {
       });
     }
     model.answers.push(turn({ reply: "Reviewed.", memories: [], sessions: [] }));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Review my month" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Review my month" }] });
     expect(response.status).toBe(200);
     expect(model.prompts).toHaveLength(1);
     expect(model.prompts[0]).toContain("recentActivities");
@@ -355,11 +355,11 @@ describe("coach schedule CRUD", () => {
     const answer = turn({ reply: "Moved it.", memories: [], sessions: [moveA()] });
     const { handle, url } = await base(modelFetch(answer));
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move Friday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move Friday" }] });
     const body = (await response.json()) as Completion;
-    expect(body.poc3.changes[0]).toMatchObject({ action: "update", fromDay: "2026-11-06", toDay: "2026-11-07" });
-    expect(body.poc3.changes[0]?.before?.title).toBe("Easy 5 km");
-    expect(body.poc3.changes[0]?.after?.title).toBe("Easy 4 km");
+    expect(body.milebook.changes[0]).toMatchObject({ action: "update", fromDay: "2026-11-06", toDay: "2026-11-07" });
+    expect(body.milebook.changes[0]?.before?.title).toBe("Easy 5 km");
+    expect(body.milebook.changes[0]?.after?.title).toBe("Easy 4 km");
     const sessions = handle.store.listSessions(USER, TODAY, "2026-12-31");
     expect(sessions).toHaveLength(1);
     expect(sessions[0]?.day).toBe("2026-11-07");
@@ -374,11 +374,11 @@ describe("coach schedule CRUD", () => {
     const answer = turn({ reply: "Removed Sunday.", memories: [], sessions: [{ action: "remove", sessionId: "session:a" }] });
     const { handle, url } = await base(modelFetch(answer));
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Remove Sunday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Remove Sunday" }] });
     const body = (await response.json()) as Completion;
-    expect(body.poc3.changes[0]).toMatchObject({ action: "remove", fromDay: "2026-11-06", toDay: null });
-    expect(body.poc3.changes[0]?.before?.title).toBe("Easy 5 km");
-    expect(body.poc3.changes[0]?.after).toBeNull();
+    expect(body.milebook.changes[0]).toMatchObject({ action: "remove", fromDay: "2026-11-06", toDay: null });
+    expect(body.milebook.changes[0]?.before?.title).toBe("Easy 5 km");
+    expect(body.milebook.changes[0]?.after).toBeNull();
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(1);
   });
@@ -386,15 +386,15 @@ describe("coach schedule CRUD", () => {
   it("does not invent a change when the session id is unknown", async () => {
     const answer = turn({ reply: "Changed it.", memories: [], sessions: [{ ...moveA(), sessionId: "session:missing" }] });
     const { handle, url } = await base(modelFetch(answer));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Change it" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Change it" }] });
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toBe("Changed it.");
-    expect(body.poc3.failures).toEqual([
+    expect(body.milebook.failures).toEqual([
       { action: "update", sessionId: "session:missing", title: "Easy 4 km", day: "2026-11-07", reason: "session-not-found" },
     ]);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
-    expect(body.poc3).toMatchObject({ sessions: 0, changeSetId: null, reverted: false });
+    expect(body.milebook).toMatchObject({ sessions: 0, changeSetId: null, reverted: false });
     const stored = handle.store.listMessages(USER, 10);
     expect(stored.some((message) => message.role === "assistant" && message.text.includes("Note: 1 item could not be found"))).toBe(true);
   });
@@ -410,11 +410,11 @@ describe("coach schedule CRUD", () => {
     });
     const { handle, url } = await base(modelFetch(answer));
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Delete the drill" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Delete the drill" }] });
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).not.toContain("Note:");
-    expect(body.poc3.sessions).toBe(1);
-    expect(body.poc3.failures).toEqual([
+    expect(body.milebook.sessions).toBe(1);
+    expect(body.milebook.failures).toEqual([
       { action: "remove", sessionId: "session:missing", title: "15 min drill", day: "2026-11-13", reason: "session-not-found" },
     ]);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
@@ -432,10 +432,10 @@ describe("coach schedule CRUD", () => {
       ],
     });
     const { handle, url } = await base(modelFetch(answer));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Delete the session on 2026-11-13." }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Delete the session on 2026-11-13." }] });
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toBe("好，我幫你刪咗個 drill。");
-    expect(body.poc3.failures).toHaveLength(1);
+    expect(body.milebook.failures).toHaveLength(1);
     const stored = handle.store.listMessages(USER, 10);
     expect(stored.some((message) => message.role === "assistant" && message.text.includes("註：有 1 個項目找不到"))).toBe(true);
   });
@@ -453,14 +453,14 @@ describe("batched CRUD across multiple days", () => {
     });
     const { handle, url } = await base(modelFetch(answer));
     seedTwo(handle);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move both days" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move both days" }] });
     const body = (await response.json()) as Completion;
-    expect(body.poc3.changes).toHaveLength(2);
-    expect(body.poc3.sessions).toBe(2);
+    expect(body.milebook.changes).toHaveLength(2);
+    expect(body.milebook.sessions).toBe(2);
     expect(daysOf(handle)).toEqual(["2026-11-08", "2026-11-09"]);
     const stored = handle.store.listChangeSets(USER);
     expect(stored).toHaveLength(1);
-    expect(stored[0]?.changeSetId).toBe(body.poc3.changeSetId);
+    expect(stored[0]?.changeSetId).toBe(body.milebook.changeSetId);
     expect(stored[0]?.entries.map((entry) => entry.action)).toEqual(["update", "update"]);
   });
 
@@ -476,9 +476,9 @@ describe("batched CRUD across multiple days", () => {
     });
     const { handle, url } = await base(modelFetch(answer));
     seedTwo(handle);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Batch" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Batch" }] });
     const body = (await response.json()) as Completion;
-    expect(body.poc3.changes).toHaveLength(3);
+    expect(body.milebook.changes).toHaveLength(3);
     expect(handle.store.getSession(USER, "session:b")).toBeUndefined();
     expect(daysOf(handle)).toEqual(["2026-11-08", "2026-11-10"]);
     const stored = handle.store.listChangeSets(USER);
@@ -498,9 +498,9 @@ describe("batched CRUD across multiple days", () => {
     });
     const { handle, url } = await base(modelFetch(answer));
     seedTwo(handle);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move then delete" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move then delete" }] });
     const body = (await response.json()) as Completion;
-    expect(body.poc3.changes).toHaveLength(2);
+    expect(body.milebook.changes).toHaveLength(2);
     expect(handle.store.getSession(USER, "session:a")).toBeUndefined();
     expect(daysOf(handle)).toEqual(["2026-11-07"]);
     const stored = handle.store.listChangeSets(USER);
@@ -526,20 +526,20 @@ describe("change history and revert", () => {
         ],
       }),
     );
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move both days" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move both days" }] });
     const firstBody = (await first.json()) as Completion;
-    const originalId = firstBody.poc3.changeSetId;
+    const originalId = firstBody.milebook.changeSetId;
     expect(originalId).not.toBeNull();
 
     model.answers.push(turn({ reply: "Put both back.", memories: [], sessions: [], suggestions: ["Plan next week"], revertChangeSetId: "last" }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     const secondBody = (await second.json()) as Completion;
-    expect(secondBody.poc3.reverted).toBe(true);
-    expect(secondBody.poc3.changes).toHaveLength(2);
-    expect(secondBody.poc3.changes.map((change) => change.action)).toEqual(["revert", "revert"]);
-    expect(secondBody.poc3.suggestions).toEqual(["Plan next week"]);
-    expect(secondBody.poc3.changeSetId).not.toBeNull();
-    expect(secondBody.poc3.changeSetId).not.toBe(originalId);
+    expect(secondBody.milebook.reverted).toBe(true);
+    expect(secondBody.milebook.changes).toHaveLength(2);
+    expect(secondBody.milebook.changes.map((change) => change.action)).toEqual(["revert", "revert"]);
+    expect(secondBody.milebook.suggestions).toEqual(["Plan next week"]);
+    expect(secondBody.milebook.changeSetId).not.toBeNull();
+    expect(secondBody.milebook.changeSetId).not.toBe(originalId);
     expect(secondBody.choices[0]?.message.content).toContain("Put both back.");
     expect(secondBody.choices[0]?.message.content).not.toContain("Your calendar");
 
@@ -547,7 +547,7 @@ describe("change history and revert", () => {
     expect(titlesOf(handle)).toEqual(["Easy 5 km", "Long 8 km"]);
     const sets = handle.store.listChangeSets(USER);
     expect(sets).toHaveLength(2);
-    expect(sets[0]?.changeSetId).toBe(secondBody.poc3.changeSetId);
+    expect(sets[0]?.changeSetId).toBe(secondBody.milebook.changeSetId);
     expect(sets[0]?.entries.map((change) => change.action)).toEqual(["revert", "revert"]);
     expect(sets[0]?.revertedAt).toBeNull();
     expect(sets[1]?.changeSetId).toBe(originalId);
@@ -559,14 +559,14 @@ describe("change history and revert", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
     model.answers.push(turn({ reply: "Moved it.", memories: [], sessions: [moveA()] }));
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move Friday" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move Friday" }] });
     const firstBody = (await first.json()) as Completion;
-    const changeSetId = firstBody.poc3.changeSetId ?? "missing";
+    const changeSetId = firstBody.milebook.changeSetId ?? "missing";
 
     model.answers.push(turn({ reply: "Back to Friday.", memories: [], sessions: [], revertChangeSetId: changeSetId }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     const secondBody = (await second.json()) as Completion;
-    expect(secondBody.poc3.reverted).toBe(true);
+    expect(secondBody.milebook.reverted).toBe(true);
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
     expect(titlesOf(handle)).toEqual(["Easy 5 km"]);
     expect(handle.store.getChangeSet(USER, changeSetId)?.revertedAt).toBe(`${TODAY}T08:00:00.000Z`);
@@ -576,15 +576,15 @@ describe("change history and revert", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(VALID);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book Friday" }] });
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
     model.answers.push(turn({ reply: "Removed it again.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     const body = (await second.json()) as Completion;
-    expect(body.poc3.reverted).toBe(true);
-    expect(body.poc3.changes[0]).toMatchObject({ action: "revert", fromDay: "2026-11-06", toDay: null });
-    expect(body.poc3.changes[0]?.before?.day).toBe("2026-11-06");
-    expect(body.poc3.changes[0]?.after).toBeNull();
+    expect(body.milebook.reverted).toBe(true);
+    expect(body.milebook.changes[0]).toMatchObject({ action: "revert", fromDay: "2026-11-06", toDay: null });
+    expect(body.milebook.changes[0]?.before?.day).toBe("2026-11-06");
+    expect(body.milebook.changes[0]?.after).toBeNull();
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
   });
 
@@ -593,14 +593,14 @@ describe("change history and revert", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
     model.answers.push(turn({ reply: "Removed it.", memories: [], sessions: [{ action: "remove", sessionId: "session:a" }] }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Remove Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Remove Friday" }] });
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     model.answers.push(turn({ reply: "Restored it.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     const body = (await second.json()) as Completion;
-    expect(body.poc3.reverted).toBe(true);
-    expect(body.poc3.changes[0]).toMatchObject({ action: "revert", fromDay: null, toDay: "2026-11-06" });
-    expect(body.poc3.changes[0]?.after?.title).toBe("Easy 5 km");
+    expect(body.milebook.reverted).toBe(true);
+    expect(body.milebook.changes[0]).toMatchObject({ action: "revert", fromDay: null, toDay: "2026-11-06" });
+    expect(body.milebook.changes[0]?.after?.title).toBe("Easy 5 km");
     expect(titlesOf(handle)).toEqual(["Easy 5 km"]);
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
   });
@@ -610,13 +610,13 @@ describe("change history and revert", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
     model.answers.push(turn({ reply: "Moved it.", memories: [], sessions: [moveA()] }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move Friday" }] });
     expect(daysOf(handle)).toEqual(["2026-11-07"]);
     model.answers.push(turn({ reply: "Back to Friday.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     const body = (await second.json()) as Completion;
-    expect(body.poc3.reverted).toBe(true);
-    expect(body.poc3.changes[0]).toMatchObject({ action: "revert", fromDay: "2026-11-07", toDay: "2026-11-06" });
+    expect(body.milebook.reverted).toBe(true);
+    expect(body.milebook.changes[0]).toMatchObject({ action: "revert", fromDay: "2026-11-07", toDay: "2026-11-06" });
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
     expect(titlesOf(handle)).toEqual(["Easy 5 km"]);
   });
@@ -626,14 +626,14 @@ describe("change history and revert", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
     model.answers.push(turn({ reply: "Moved it.", memories: [], sessions: [moveA()] }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move Friday" }] });
     model.answers.push(turn({ reply: "Back to Friday.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
     model.answers.push(turn({ reply: "Moved it again.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    const third = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo the undo" }] });
+    const third = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo the undo" }] });
     const body = (await third.json()) as Completion;
-    expect(body.poc3.reverted).toBe(true);
+    expect(body.milebook.reverted).toBe(true);
     expect(daysOf(handle)).toEqual(["2026-11-07"]);
     expect(titlesOf(handle)).toEqual(["Easy 4 km"]);
     expect(handle.store.listChangeSets(USER)).toHaveLength(3);
@@ -643,7 +643,7 @@ describe("change history and revert", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(VALID);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book Friday" }] });
     expect(handle.store.listChangeSets(USER)).toHaveLength(1);
     model.answers.push(
       turn({
@@ -653,12 +653,12 @@ describe("change history and revert", () => {
         revertChangeSetId: "last",
       }),
     );
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo and book" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo and book" }] });
     const body = (await second.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("nothing was changed");
     expect(body.choices[0]?.message.content).toContain("cannot share");
-    expect(body.poc3).toMatchObject({ sessions: 0, memories: 0, changeSetId: null, reverted: false, suggestions: [] });
-    expect(body.poc3.changes).toEqual([]);
+    expect(body.milebook).toMatchObject({ sessions: 0, memories: 0, changeSetId: null, reverted: false, suggestions: [] });
+    expect(body.milebook.changes).toEqual([]);
     expect(handle.store.listChangeSets(USER)).toHaveLength(1);
     expect(handle.store.listMemories(USER)).toHaveLength(1);
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
@@ -668,12 +668,12 @@ describe("change history and revert", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(VALID);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book Friday" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book Friday" }] });
     model.answers.push(turn({ reply: "Undone.", memories: [], sessions: [], revertChangeSetId: "change:missing" }));
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo the missing one" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo the missing one" }] });
     const body = (await second.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("could not find the change");
-    expect(body.poc3).toMatchObject({ reverted: false, changeSetId: null, sessions: 0 });
+    expect(body.milebook).toMatchObject({ reverted: false, changeSetId: null, sessions: 0 });
     expect(handle.store.listChangeSets(USER)).toHaveLength(1);
     expect(daysOf(handle)).toEqual(["2026-11-06"]);
   });
@@ -683,17 +683,17 @@ describe("change history and revert", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "session:a", "2026-11-06", "Easy 5 km", "easy");
     model.answers.push(turn({ reply: "Moved it.", memories: [], sessions: [moveA()] }));
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move Friday" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move Friday" }] });
     const firstBody = (await first.json()) as Completion;
-    const originalId = firstBody.poc3.changeSetId ?? "missing";
+    const originalId = firstBody.milebook.changeSetId ?? "missing";
     model.answers.push(turn({ reply: "Undone.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo that" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo that" }] });
     expect(handle.store.listChangeSets(USER)).toHaveLength(2);
     model.answers.push(turn({ reply: "Again.", memories: [], sessions: [], revertChangeSetId: originalId }));
-    const third = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo again" }] });
+    const third = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo again" }] });
     const body = (await third.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("already undone");
-    expect(body.poc3.reverted).toBe(false);
+    expect(body.milebook.reverted).toBe(false);
     expect(handle.store.listChangeSets(USER)).toHaveLength(2);
     expect(handle.store.getChangeSet(USER, originalId)?.revertedAt).not.toBeNull();
   });
@@ -702,11 +702,11 @@ describe("change history and revert", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(turn({ reply: "Nothing to undo.", memories: [], sessions: [], revertChangeSetId: "last" }));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo the last change" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo the last change" }] });
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("could not find the change");
-    expect(body.poc3.reverted).toBe(false);
-    expect(body.poc3.changeSetId).toBeNull();
+    expect(body.milebook.reverted).toBe(false);
+    expect(body.milebook.changeSetId).toBeNull();
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
   });
 });
@@ -723,7 +723,7 @@ describe("schema echo repair", () => {
     });
     model.answers.push(VALID);
     const { handle, url } = await base(model.fetchImpl);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Race on Jan 15" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Race on Jan 15" }] });
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
     expect(model.prompts).toHaveLength(2);
@@ -743,11 +743,11 @@ describe("validation feedback loop", () => {
     model.responses.push(modelResponse(VALID));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Change yesterday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Change yesterday" }] });
     const body = (await response.json()) as Completion;
 
     expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       attempts: 2,
       outcome: "committed",
       validationCode: null,
@@ -770,13 +770,13 @@ describe("validation feedback loop", () => {
     model.responses.push(textResponse("Do you want me to book the drill today, 12 Nov, or keep it unbooked?"));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "go" }] });
     const body = (await response.json()) as Completion;
 
     expect(body.choices[0]?.message.content).toContain("12 Nov");
-    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "clarified", validationCode: null, sessions: 0 });
-    expect(body.poc3.changeSetId).toBeNull();
-    expect(body.poc3.changes).toEqual([]);
+    expect(body.milebook).toMatchObject({ attempts: 2, outcome: "clarified", validationCode: null, sessions: 0 });
+    expect(body.milebook.changeSetId).toBeNull();
+    expect(body.milebook.changes).toEqual([]);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
     expect(handle.store.listMessages(USER)).toHaveLength(2);
@@ -793,12 +793,12 @@ describe("validation feedback loop", () => {
     model.responses.push(modelResponse(invalid));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "go" }] });
     const body = (await response.json()) as Completion;
 
     expect(body.choices[0]?.message.content).toContain("nothing was changed");
     expect(body.choices[0]?.message.content).toContain("already passed");
-    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "fallback", validationCode: "past-session", sessions: 0 });
+    expect(body.milebook).toMatchObject({ attempts: 2, outcome: "fallback", validationCode: "past-session", sessions: 0 });
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
     expect(handle.store.listMessages(USER)).toHaveLength(2);
@@ -809,11 +809,11 @@ describe("validation feedback loop", () => {
     model.responses.push(toolResponse(VALID));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     const body = (await response.json()) as Completion;
 
     expect(body.choices[0]?.message.content).toContain("Booked an easy Friday");
-    expect(body.poc3).toMatchObject({ attempts: 1, outcome: "committed", sessions: 1 });
+    expect(body.milebook).toMatchObject({ attempts: 1, outcome: "committed", sessions: 1 });
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
     expect(model.prompts[0]).toContain("propose_calendar_turn");
   });
@@ -829,10 +829,10 @@ describe("validation feedback loop", () => {
     model.responses.push(toolResponse(VALID, "call_2"));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "go" }] });
     const body = (await response.json()) as Completion;
 
-    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
+    expect(body.milebook).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
     expect(model.prompts[1]).toContain("past-session");
     expect(model.prompts[1]).toContain("tool:");
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
@@ -856,10 +856,10 @@ describe("validation feedback loop", () => {
       timezone: "Asia/Hong_Kong",
     });
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book today" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book today" }] });
     const body = (await response.json()) as Completion;
 
-    expect(body.poc3).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
+    expect(body.milebook).toMatchObject({ attempts: 2, outcome: "committed", sessions: 1 });
     expect(model.prompts[0]).toContain('"today":"2026-11-12"');
     expect(model.prompts[0]).toContain('"timezone":"Asia/Hong_Kong"');
     expect(handle.store.listSessions(USER, "2026-11-12", "2026-11-30")).toHaveLength(1);
@@ -885,7 +885,7 @@ describe("validation feedback loop", () => {
       createdAt: "2026-11-06T07:49:58.000Z",
     });
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "go" }] });
     expect(response.status).toBe(200);
 
     expect(model.prompts[0]).toContain("[2026-11-06 15:49] 今日（11月6日，星期五）做 15 分鐘 drill。");
@@ -898,10 +898,10 @@ describe("validation feedback loop", () => {
     model.responses.push(textResponse("Do you want the drill booked today, or just the drill instructions?"));
     const { handle, url } = await base(model.fetchImpl);
 
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "go" }] });
     const body = (await response.json()) as Completion;
 
-    expect(body.poc3).toMatchObject({ attempts: 1, outcome: "clarified", sessions: 0, validationCode: null });
+    expect(body.milebook).toMatchObject({ attempts: 1, outcome: "clarified", sessions: 0, validationCode: null });
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listMessages(USER)).toHaveLength(2);
   });
@@ -913,7 +913,7 @@ describe("idempotent coach turns", () => {
     model.responses.push(modelResponse(VALID));
     const { handle, url } = await base(model.fetchImpl);
     const request = {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-1",
       messages: [{ role: "user", content: "Plan my week" }],
     };
@@ -925,7 +925,7 @@ describe("idempotent coach turns", () => {
 
     expect(first.status).toBe(200);
     expect(second.status).toBe(200);
-    expect(second.headers.get("x-poc3-idempotent-replay")).toBe("true");
+    expect(second.headers.get("x-milebook-idempotent-replay")).toBe("true");
     expect(secondBody).toEqual(firstBody);
     expect(model.prompts).toHaveLength(1);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(1);
@@ -954,7 +954,7 @@ describe("idempotent coach turns", () => {
     });
 
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-busy",
       messages: [{ role: "user", content: "Plan my week" }],
     });
@@ -996,9 +996,9 @@ describe("hidden coach directives", () => {
     );
 
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How did my Morning run go?" }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,
@@ -1015,7 +1015,7 @@ describe("hidden coach directives", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("Keep the effort relaxed");
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 0,
       memories: 0,
       changes: [],
@@ -1027,7 +1027,7 @@ describe("hidden coach directives", () => {
       outcome: "clarified",
       validationCode: null,
     });
-    expect(body.poc3.directiveId).toMatch(/^directive:/);
+    expect(body.milebook.directiveId).toMatch(/^directive:/);
     expect(handle.store.listSessions(USER, TODAY, "2026-12-31")).toHaveLength(0);
     expect(handle.store.listChangeSets(USER)).toHaveLength(0);
     expect(handle.store.listCoachDirectives(USER)).toHaveLength(1);
@@ -1051,15 +1051,15 @@ describe("hidden coach directives", () => {
     model.responses.push(textResponse("Nice easy run. Keep the effort relaxed."));
 
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "What do you think?" }],
-      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
+      milebook: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
     });
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toBe("Nice easy run. Keep the effort relaxed.");
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 0,
       changes: [],
       changeSetId: null,
@@ -1088,9 +1088,9 @@ describe("hidden coach directives", () => {
     );
 
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Add an easy run on 2026-11-06." }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "plan",
           allowCalendarWrites: true,
@@ -1102,7 +1102,7 @@ describe("hidden coach directives", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 1,
       mode: "plan",
       writesAllowed: true,
@@ -1117,9 +1117,9 @@ describe("hidden coach directives", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     const missing = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How did my run go?" }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,
@@ -1146,9 +1146,9 @@ describe("hidden coach directives", () => {
       createdAt: `${TODAY}T00:00:00.000Z`,
     });
     const foreign = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How did my run go?" }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,
@@ -1167,18 +1167,18 @@ describe("hidden coach directives", () => {
     model.answers.push(turn({ reply: "Comment only.", memories: [], sessions: [] }));
 
     const first = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-directive",
       messages: [{ role: "user", content: "How did my run go?" }],
-      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "run-peek" } },
+      milebook: { directive: { mode: "review", allowCalendarWrites: false, source: "run-peek" } },
     });
     expect(first.status).toBe(200);
 
     const second = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-directive",
       messages: [{ role: "user", content: "How did my run go?" }],
-      poc3: { directive: { mode: "plan", allowCalendarWrites: true, source: "day-menu" } },
+      milebook: { directive: { mode: "plan", allowCalendarWrites: true, source: "day-menu" } },
     });
     expect(second.status).toBe(409);
     const body = (await second.json()) as { error?: { code?: string } };
@@ -1193,9 +1193,9 @@ describe("hidden coach directives", () => {
     model.answers.push(turn({ reply: "Noted.", memories: ["Should not be stored"], sessions: [] }));
 
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Comment only." }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,
@@ -1207,7 +1207,7 @@ describe("hidden coach directives", () => {
 
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3).toMatchObject({ memories: 0, sessions: 0, writesAllowed: false });
+    expect(body.milebook).toMatchObject({ memories: 0, sessions: 0, writesAllowed: false });
     expect(handle.store.listMemories(USER, 100)).toHaveLength(0);
   });
 
@@ -1215,9 +1215,9 @@ describe("hidden coach directives", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Hi" }],
-      poc3: { directive: { mode: "review", allowCalendarWrites: "no", source: "run-peek" } },
+      milebook: { directive: { mode: "review", allowCalendarWrites: "no", source: "run-peek" } },
     });
     expect(response.status).toBe(400);
     expect(model.prompts).toHaveLength(0);
@@ -1290,9 +1290,9 @@ describe("discuss directives", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     const missing = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Why did the plan change?" }],
-      poc3: { directive: discussChangeDirective("change:missing") },
+      milebook: { directive: discussChangeDirective("change:missing") },
     });
     expect(missing.status).toBe(404);
     const missingBody = (await missing.json()) as { error?: { code?: string; detail?: string } };
@@ -1304,9 +1304,9 @@ describe("discuss directives", () => {
 
     seedChangeSet(handle, "change:foreign", "someone-else");
     const foreign = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Why did the plan change?" }],
-      poc3: { directive: discussChangeDirective("change:foreign") },
+      milebook: { directive: discussChangeDirective("change:foreign") },
     });
     expect(foreign.status).toBe(404);
     expect(model.prompts).toHaveLength(0);
@@ -1317,9 +1317,9 @@ describe("discuss directives", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     const missing = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How should this state shape my week?" }],
-      poc3: { directive: discussStateDirective("state:missing") },
+      milebook: { directive: discussStateDirective("state:missing") },
     });
     expect(missing.status).toBe(404);
     const missingBody = (await missing.json()) as { error?: { code?: string; detail?: string } };
@@ -1330,9 +1330,9 @@ describe("discuss directives", () => {
 
     seedState(handle, "state:foreign", "someone-else");
     const foreign = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How should this state shape my week?" }],
-      poc3: { directive: discussStateDirective("state:foreign") },
+      milebook: { directive: discussStateDirective("state:foreign") },
     });
     expect(foreign.status).toBe(404);
     expect(model.prompts).toHaveLength(0);
@@ -1349,14 +1349,14 @@ describe("discuss directives", () => {
       ),
     );
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Why did my long run move?" }],
-      poc3: { directive: discussChangeDirective("change:9") },
+      milebook: { directive: discussChangeDirective("change:9") },
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("moved the long run");
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 0,
       memories: 0,
       changes: [],
@@ -1390,13 +1390,13 @@ describe("discuss directives", () => {
       ),
     );
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How should the heat shape this week?" }],
-      poc3: { directive: discussStateDirective("state:heat") },
+      milebook: { directive: discussStateDirective("state:heat") },
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 0,
       changes: [],
       changeSetId: null,
@@ -1432,14 +1432,14 @@ describe("discuss directives", () => {
     );
     model.responses.push(textResponse("The move kept the long run off your race day; nothing else changed."));
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "Why did my long run move?" }],
-      poc3: { directive: discussChangeDirective("change:9") },
+      milebook: { directive: discussChangeDirective("change:9") },
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
     expect(body.choices[0]?.message.content).toContain("nothing else changed");
-    expect(body.poc3).toMatchObject({
+    expect(body.milebook).toMatchObject({
       sessions: 0,
       writesAllowed: false,
       blockedWrites: 1,
@@ -1457,17 +1457,17 @@ describe("discuss directives", () => {
     seedChangeSet(handle, "change:9");
     model.responses.push(textResponse("It moved the long run past the race."));
     const request = {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-discuss-change",
       messages: [{ role: "user", content: "Why did my long run move?" }],
-      poc3: { directive: discussChangeDirective("change:9") },
+      milebook: { directive: discussChangeDirective("change:9") },
     };
     const first = await post(url, request);
     expect(first.status).toBe(200);
     const firstBody = (await first.json()) as Completion;
     const second = await post(url, request);
     expect(second.status).toBe(200);
-    expect(second.headers.get("x-poc3-idempotent-replay")).toBe("true");
+    expect(second.headers.get("x-milebook-idempotent-replay")).toBe("true");
     const secondBody = (await second.json()) as Completion;
     expect(secondBody).toEqual(firstBody);
     expect(model.prompts).toHaveLength(1);
@@ -1485,7 +1485,7 @@ describe("coaching states in the gateway", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedSession(handle, "race:1", "2026-11-08", "Half marathon", "race");
     model.answers.push(turn({ reply: "Race week noted.", memories: [], sessions: [] }));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "What should I do this week?" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "What should I do this week?" }] });
     expect(response.status).toBe(200);
     expect(model.prompts[0]).toContain("Active coaching states");
     expect(model.prompts[0]).toContain("race_week");
@@ -1493,8 +1493,8 @@ describe("coaching states in the gateway", () => {
     const states = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
     expect(states.some((state) => state.key === "race_week" && state.source === "auto")).toBe(true);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.states).toEqual([]);
-    expect(body.poc3.blockedByStates).toEqual([]);
+    expect(body.milebook.states).toEqual([]);
+    expect(body.milebook.blockedByStates).toEqual([]);
   });
 
   it("refuses a tempo session in race week and accepts the repaired easy session", async () => {
@@ -1515,13 +1515,13 @@ describe("coaching states in the gateway", () => {
         sessions: [{ day: "2026-11-06", title: "Easy", kind: "easy", distanceKm: 5, durationMin: 30 }],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.attempts).toBe(2);
-    expect(body.poc3.sessions).toBe(1);
-    expect(body.poc3.validationCode).toBeNull();
-    expect(body.poc3.blockedByStates).toEqual([]);
+    expect(body.milebook.attempts).toBe(2);
+    expect(body.milebook.sessions).toBe(1);
+    expect(body.milebook.validationCode).toBeNull();
+    expect(body.milebook.blockedByStates).toEqual([]);
     expect(model.prompts[1]).toContain("active coaching state");
     expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06").map((session) => session.kind)).toEqual(["easy"]);
   });
@@ -1537,12 +1537,12 @@ describe("coaching states in the gateway", () => {
     });
     model.answers.push(blocked);
     model.answers.push(blocked);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book a tempo run Friday" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.validationCode).toBe("mode-guardrail");
-    expect(body.poc3.blockedByStates).toEqual(["race_week"]);
-    expect(body.poc3.sessions).toBe(0);
+    expect(body.milebook.validationCode).toBe("mode-guardrail");
+    expect(body.milebook.blockedByStates).toEqual(["race_week"]);
+    expect(body.milebook.sessions).toBe(0);
     expect(body.choices[0]?.message.content).toContain("A coaching state is protecting your plan");
     expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06")).toHaveLength(0);
   });
@@ -1567,12 +1567,12 @@ describe("coaching states in the gateway", () => {
         ],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I am travelling next week" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "I am travelling next week" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.states).toHaveLength(1);
-    expect(body.poc3.states[0]).toMatchObject({ key: "travel", status: "active", action: "activate" });
-    expect(body.poc3.states[0]?.stateId).toMatch(/^state:/);
+    expect(body.milebook.states).toHaveLength(1);
+    expect(body.milebook.states[0]).toMatchObject({ key: "travel", status: "active", action: "activate" });
+    expect(body.milebook.states[0]?.stateId).toMatch(/^state:/);
     const active = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
     expect(active.find((state) => state.key === "travel")).toMatchObject({ source: "chat", confidence: 0.8 });
     expect(active.find((state) => state.key === "travel")?.evidence).toContain("Tokyo");
@@ -1599,10 +1599,10 @@ describe("coaching states in the gateway", () => {
         ],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "My knee hurts after runs" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "My knee hurts after runs" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
+    expect(body.milebook.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
     const active = handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z");
     expect(active.find((state) => state.key === "pain_injury")).toMatchObject({ status: "observing", source: "chat" });
   });
@@ -1637,12 +1637,12 @@ describe("coaching states in the gateway", () => {
         sessions: [{ day: "2026-11-06", title: "Rest", kind: "rest", distanceKm: null, durationMin: null }],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I have a fever" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "I have a fever" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.attempts).toBe(2);
-    expect(body.poc3.sessions).toBe(1);
-    expect(body.poc3.validationCode).toBeNull();
+    expect(body.milebook.attempts).toBe(2);
+    expect(body.milebook.sessions).toBe(1);
+    expect(body.milebook.validationCode).toBeNull();
     expect(model.prompts[0]).toContain("illness");
     expect(model.prompts[1]).toContain("active coaching state");
     expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06").map((session) => session.kind)).toEqual(["rest"]);
@@ -1681,10 +1681,10 @@ describe("coaching states in the gateway", () => {
         ],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "It is cooler now" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "It is cooler now" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.states[0]).toMatchObject({ key: "heat", status: "resolved", action: "resolve" });
+    expect(body.milebook.states[0]).toMatchObject({ key: "heat", status: "resolved", action: "resolve" });
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").some((state) => state.key === "heat")).toBe(false);
     expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "resolve" && event.key === "heat")).toBe(true);
   });
@@ -1700,11 +1700,11 @@ describe("coaching states in the gateway", () => {
         sessions: [{ day: "2026-11-10", title: "Tempo", kind: "tempo", distanceKm: 5, durationMin: 30 }],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book a tempo for after the race" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book a tempo for after the race" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.validationCode).toBeNull();
-    expect(body.poc3.sessions).toBe(1);
+    expect(body.milebook.validationCode).toBeNull();
+    expect(body.milebook.sessions).toBe(1);
     expect(handle.store.listSessions(USER, "2026-11-10", "2026-11-10").map((session) => session.kind)).toEqual(["tempo"]);
   });
 
@@ -1730,11 +1730,11 @@ describe("coaching states in the gateway", () => {
       ],
     });
     model.answers.push(blocked, blocked);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Move the race to Tuesday" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Move the race to Tuesday" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.validationCode).toBe("mode-guardrail");
-    expect(body.poc3.blockedByStates).toEqual(["race_week"]);
+    expect(body.milebook.validationCode).toBe("mode-guardrail");
+    expect(body.milebook.blockedByStates).toEqual(["race_week"]);
     expect(handle.store.listSessions(USER, "2026-11-08", "2026-11-08")).toHaveLength(0);
     expect(handle.store.getSession(USER, "race:1")?.day).toBe("2026-11-07");
   });
@@ -1784,11 +1784,11 @@ describe("coaching states in the gateway", () => {
       revertChangeSetId: "change:remove-tempo",
     });
     model.answers.push(blocked, blocked);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Undo removing the tempo" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Undo removing the tempo" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.validationCode).toBe("mode-guardrail");
-    expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
+    expect(body.milebook.validationCode).toBe("mode-guardrail");
+    expect(body.milebook.blockedByStates).toEqual(["pain_injury"]);
     expect(handle.store.getSession(USER, "tempo:1")).toBeUndefined();
     expect(handle.store.getChangeSet(USER, "change:remove-tempo")?.revertedAt).toBeNull();
   });
@@ -1817,10 +1817,10 @@ describe("coaching states in the gateway", () => {
         stateProposals: [{ key: "travel", action: "activate", confidence: 0.5, evidence: ["Model guess"], ttlDays: 3, note: null }],
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "I am travelling" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "I am travelling" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.states).toEqual([]);
+    expect(body.milebook.states).toEqual([]);
     expect(handle.store.getCoachState(USER, "state:user-travel")).toMatchObject({
       source: "user",
       confidence: 1,
@@ -1842,14 +1842,14 @@ describe("coaching states in the gateway", () => {
       }),
     );
     const response = await post(url, {
-      model: "poc3-coach",
-      poc3: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
+      model: "milebook-coach",
+      milebook: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
       messages: [{ role: "user", content: "I am travelling next week" }],
     });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.writesAllowed).toBe(false);
-    expect(body.poc3.states[0]).toMatchObject({ key: "travel", status: "active" });
+    expect(body.milebook.writesAllowed).toBe(false);
+    expect(body.milebook.states[0]).toMatchObject({ key: "travel", status: "active" });
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").some((state) => state.key === "travel")).toBe(true);
     expect(handle.store.listSessions(USER, "2026-11-05", "2026-11-30")).toHaveLength(0);
   });
@@ -1866,12 +1866,12 @@ describe("coaching states in the gateway", () => {
       ],
     });
     model.answers.push(blocked, blocked);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "My knee hurts; book a tempo" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "My knee hurts; book a tempo" }] });
     expect(response.status).toBe(200);
     const body = (await response.json()) as Completion;
-    expect(body.poc3.validationCode).toBe("mode-guardrail");
-    expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
-    expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
+    expect(body.milebook.validationCode).toBe("mode-guardrail");
+    expect(body.milebook.blockedByStates).toEqual(["pain_injury"]);
+    expect(body.milebook.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
     expect(body.choices[0]?.message.content).toContain("A coaching state is protecting your plan");
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").find((state) => state.key === "pain_injury")).toMatchObject({
       status: "observing",
@@ -1884,7 +1884,7 @@ describe("coaching states in the gateway", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl, { failStateRefresh: true });
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       request_id: "req-state-refresh-failure",
       messages: [{ role: "user", content: "Hello" }],
     });
@@ -1927,7 +1927,7 @@ describe("muscle check-ins in the gateway", () => {
     const { handle, url } = await base(model.fetchImpl);
     seedCheckIn(handle);
     model.answers.push(VALID);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     expect(response.status).toBe(200);
     expect(model.prompts).toHaveLength(1);
     expect(model.prompts[0]).toContain("Muscle status today (2026-11-05)");
@@ -1944,7 +1944,7 @@ describe("muscle check-ins in the gateway", () => {
     const model = queueModel();
     const { url } = await base(model.fetchImpl);
     model.answers.push(VALID);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Hello" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Hello" }] });
     expect(model.prompts[0]).not.toContain("Muscle status today");
     expect(model.prompts[0]).not.toContain("Muscle check-in (latest");
   });
@@ -1956,9 +1956,9 @@ describe("muscle check-ins in the gateway", () => {
     // A comment-only directive needs a plain-text answer: a write proposal would trigger the repair loop.
     model.responses.push(textResponse("Keep it easy today; an easy spin and calf mobility tomorrow."));
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "My calves are tight after the tempo — what should I do?" }],
-      poc3: { directive: reviewMusclesDirective("calves") },
+      milebook: { directive: reviewMusclesDirective("calves") },
     });
     expect(response.status).toBe(200);
     expect(model.prompts).toHaveLength(1);
@@ -1973,9 +1973,9 @@ describe("muscle check-ins in the gateway", () => {
     const model = queueModel();
     const { url } = await base(model.fetchImpl);
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "My nose is sore" }],
-      poc3: { directive: reviewMusclesDirective("nose") },
+      milebook: { directive: reviewMusclesDirective("nose") },
     });
     expect(response.status).toBe(404);
     const body = (await response.json()) as { error?: { code?: string; detail?: string } };
@@ -1993,33 +1993,33 @@ describe("prefill cache and context snapshots (LL-3)", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(quiet);
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     const body = (await response.json()) as Completion;
     const snapshots = handle.store.listPromptSnapshots(USER, 3);
     expect(snapshots).toHaveLength(1);
     expect(snapshots[0]?.reasons).toEqual(["first-turn"]);
     expect(snapshots[0]?.body).toContain("[Coach context - as of");
     expect(snapshots[0]?.body).toContain('"today":"2026-11-05"');
-    expect(body.poc3.prefill).toMatchObject({
+    expect(body.milebook.prefill).toMatchObject({
       refreshed: ["first-turn"],
       compacted: false,
       today: "2026-11-05",
     });
-    expect(body.poc3.prefill.epoch).toHaveLength(64);
+    expect(body.milebook.prefill.epoch).toHaveLength(64);
   });
 
   it("purely appends when nothing changed, so the next prompt reuses the cached prefix byte for byte", async () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(quiet, quiet);
-    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const first = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     const firstBody = (await first.json()) as Completion;
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book Sunday" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Book Sunday" }] });
     const secondBody = (await second.json()) as Completion;
     // One snapshot still, and the second meta reports a pure append.
     expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(1);
-    expect(secondBody.poc3.prefill.epoch).toBe(firstBody.poc3.prefill.epoch);
-    expect(secondBody.poc3.prefill.refreshed).toEqual([]);
+    expect(secondBody.milebook.prefill.epoch).toBe(firstBody.milebook.prefill.epoch);
+    expect(secondBody.milebook.prefill.refreshed).toEqual([]);
     // The provider sees the same bytes plus the new trailing turn: prompt 1 starts with prompt 0 exactly.
     expect((model.prompts[1] ?? "").startsWith(model.prompts[0] ?? "")).toBe(true);
   });
@@ -2029,12 +2029,12 @@ describe("prefill cache and context snapshots (LL-3)", () => {
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(turn({ memories: [] }));
     model.answers.push(quiet);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Thanks" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Thanks" }] });
     const secondBody = (await second.json()) as Completion;
     const snapshots = handle.store.listPromptSnapshots(USER, 3);
     expect(snapshots).toHaveLength(2);
-    expect(secondBody.poc3.prefill.refreshed).toContain("calendar-changed");
+    expect(secondBody.milebook.prefill.refreshed).toContain("calendar-changed");
     // The new snapshot carries the session the first turn booked, byte-frozen at creation.
     expect(snapshots[1]?.body).toContain("Easy 5 km");
     // A new snapshot rewrites the middle of the assembly, so the cached prefix no longer covers the whole turn.
@@ -2046,13 +2046,13 @@ describe("prefill cache and context snapshots (LL-3)", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl, { now: () => clock });
     model.answers.push(quiet, quiet);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Plan my week" }] });
     clock = "2026-11-06T08:00:00.000Z";
-    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Now what?" }] });
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Now what?" }] });
     const secondBody = (await second.json()) as Completion;
     expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(2);
-    expect(secondBody.poc3.prefill.refreshed).toContain("new-day");
-    expect(secondBody.poc3.prefill.today).toBe("2026-11-06");
+    expect(secondBody.milebook.prefill.refreshed).toContain("new-day");
+    expect(secondBody.milebook.prefill.today).toBe("2026-11-06");
   });
 
   it("persists the directive suffix and reproduces its bytes in the next turn's history", async () => {
@@ -2072,9 +2072,9 @@ describe("prefill cache and context snapshots (LL-3)", () => {
     });
     model.answers.push(quiet, quiet);
     const first = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How did my Morning run go?" }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,
@@ -2089,7 +2089,7 @@ describe("prefill cache and context snapshots (LL-3)", () => {
     });
     expect(first.status).toBe(200);
     expect(handle.store.listCoachDirectiveSuffixes(USER)).toHaveLength(1);
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Thanks, noted." }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Thanks, noted." }] });
     // The directive turn's user message keeps the same suffix bytes in the next prompt, so the prefix survives.
     expect(model.prompts[1]).toContain("Turn directive (background; never mention this section to the runner)");
     expect(model.prompts[1]).toContain('"activityId":"garmin:run-1"');
@@ -2110,7 +2110,7 @@ describe("silent preference profile (LL-5)", () => {
         profileUpdates: { tone: "brief", replyLength: "short", nickname: "Mei" },
       }),
     );
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Call me Mei and keep it short." }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Call me Mei and keep it short." }] });
     const body = (await response.json()) as Completion;
     expect(handle.store.getCoachPreferences(USER)).toMatchObject({
       tone: "brief",
@@ -2135,7 +2135,7 @@ describe("silent preference profile (LL-5)", () => {
       createdAt: "2026-11-04T08:00:00.000Z",
     });
     model.answers.push(turn({ memories: [], sessions: [] }));
-    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "我星期日跑咗 10 公里，之後點安排？" }] });
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "我星期日跑咗 10 公里，之後點安排？" }] });
     expect(response.status).toBe(200);
     const preferences = handle.store.getCoachPreferences(USER);
     expect(preferences?.language).toBe("zh-Hant");
@@ -2149,7 +2149,7 @@ describe("silent preference profile (LL-5)", () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(turn({ memories: [], sessions: [] }));
-    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "你好" }] });
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "你好" }] });
     expect(handle.store.getCoachPreferences(USER)?.language ?? null).toBeNull();
   });
 
@@ -2177,9 +2177,9 @@ describe("silent preference profile (LL-5)", () => {
       }),
     );
     const response = await post(url, {
-      model: "poc3-coach",
+      model: "milebook-coach",
       messages: [{ role: "user", content: "How was the run?" }],
-      poc3: {
+      milebook: {
         directive: {
           mode: "review",
           allowCalendarWrites: false,

@@ -1,8 +1,8 @@
-# POC3 analysis package -- adversarial review report
+# Milebook analysis package -- adversarial review report
 
 **Status:** complete. **Date:** 2026-11-18. **Reviewer role:** adversarial reviewer (independent of the five authors).
 **Inputs:** `docs/analysis/01-user-workflow-map.md` .. `05-improvement-backlog.md` (all dated 2026-11-18), plus
-`README.md`, `docs/POC3-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/FEATURES-FOR-REVIEW.md`, `docs/TRAINING-LOG-PLAN.md`,
+`README.md`, `docs/MILEBOOK-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/FEATURES-FOR-REVIEW.md`, `docs/TRAINING-LOG-PLAN.md`,
 `docs/GARMIN-TRAINING-PROGRAMS.md`, ADR-0001..0003, and the working tree `src/` at HEAD `b87ed2f`.
 **Deliverable:** this file only, plus surgical factual corrections to 04 (see section 4). No source, test, data, tool or
 product doc was modified; no server was started or stopped; no SQLite file was touched.
@@ -60,7 +60,7 @@ reader would rely on is wrong, unsupported or unreachable; **minor** = precision
 | F-04 | 04 | section 1.1 row 22; G-10 row | major | Wrong-line anchor for the day page. `src/web.ts:2182-2185` is the day-menu click handler (`openSessionPeek`/`openDayMenu`), not a `<li>` list | Read `src/web.ts:2182-2187`; the training-log day render is `renderDay` at `:3446-3460`, which emits `<p>` rows | **Corrected** in 04 |
 | F-05 | 04 | section 7 security paragraph | major | Wrong-line anchor for "error page leaks the raw exception". `src/web.ts:3330-3334` is the `?month=` validator (`/^\d{4}-\d{2}$/`) | Read `:3328-3334`; the raw exception reaches HTML at `:3891` and JSON detail at `:3312`; 05 QW-8 cites `:3330-3334` correctly as the validated sibling, which proves the mis-anchor | **Corrected** in 04 |
 | F-06 | 04 | G-27 row; section 7 accessibility paragraph | major | "no `aria-modal`" is false, and "no labelled title at open" is contradicted by the cited line | `src/web.ts:1482` sets `aria-modal="true"` on the Garmin modal; `:2304` sets `aria-labelledby="activity-peek-title"` on the peek | **Corrected** in 04: claim narrowed to the peek |
-| F-07 | 04 | section 1.1 row 14 and mismatch list M2 | major | False positive. The code supports the doc, not the mismatch. `/sync` and `/garmin/key` do not "skip `resolveSession`"; they call it with `syncOnStart=false` | `src/web.ts:2932-2935` (`!ownsSync`) -> `:2886-2901` (`startSession(userId, today, syncOnStart)`), so no session-start auto-sync; `docs/POC3-CALENDAR.md:789` is accurate | **Corrected** in 04: M2 withdrawn |
+| F-07 | 04 | section 1.1 row 14 and mismatch list M2 | major | False positive. The code supports the doc, not the mismatch. `/sync` and `/garmin/key` do not "skip `resolveSession`"; they call it with `syncOnStart=false` | `src/web.ts:2932-2935` (`!ownsSync`) -> `:2886-2901` (`startSession(userId, today, syncOnStart)`), so no session-start auto-sync; `docs/MILEBOOK-CALENDAR.md:789` is accurate | **Corrected** in 04: M2 withdrawn |
 | F-08 | 04 | section 1.1 row 15 and M3 | minor | Overreach. The audit route is scoped by `user.userId`; there is no admin role, so "owner-only" reads as "only the data owner sees it", which is true | `src/web.ts:3063-3069` passes `user.userId` to every query | **Corrected** in 04: reworded, not a mismatch |
 | F-09 | 04 | mismatch paragraph | minor | "all four product docs" for a list of five mismatches (M1-M5) spanning three docs | Text count vs M1-M5 list | **Corrected** in 04 |
 | F-10 | 04 | G-18 competitive column | major | Cross-doc contradiction. 04 says "Garmin/Runna/NRC all fail app-versus-reality"; 03 says the opposite for Runna | 03 L398: "Runna gives post-run Workout Insights (AI feedback)"; 03 S28 row; fetched Runna support page confirms planned-vs-actual feedback | **Corrected** in 04 |
@@ -129,7 +129,7 @@ All edits are in `docs/analysis/04-gap-analysis.md`; no other file was modified.
    Why: F-07, F-08, F-09.
 5. **G-18 competitive column.** Before: "Garmin/Runna/NRC all fail 'app versus reality' per 02 section 8". After:
    "Runna's Workout Insights already compares planned with actual post-run (03 section 1.5, S28), so the gap is the
-   missing judgement on POC3's own review surface, not competitor absence". Why: F-10.
+   missing judgement on Milebook's own review surface, not competitor absence". Why: F-10.
 6. **G-27 row.** Before: "... buttons nested inside links, no `aria-modal`". After: "... no `aria-modal` on the peek
    (the Garmin modal at `src/web.ts:1482` does set it)". Why: F-06.
 7. **Section 7 accessibility paragraph.** Before: "no `aria-modal`, no focus trap and no labelled title at open".
@@ -158,8 +158,8 @@ F-17/F-18/F-21 03 ledger and glyph work, F-22 performance appendix -- all are co
 5. **Runtime unknowns that change gap severity:** whether the peek really loses focus on open, whether the animation
    blocks the main thread, whether `/sync` can stall past the platform timeout (no server timeout for Garmin calls).
 6. **Product-doc drift is only partly mapped.** M1/M4/M5 are real; M2 is withdrawn; M3 is wording. No one has swept
-   `docs/POC3-CALENDAR.md` (1,049 lines) for other claims of the same class.
-7. **Open question for the owner:** is `docs/COACH-STATES.md:265` + `README.md:133` + `POC3-CALENDAR.md:844` all saying
+   `docs/MILEBOOK-CALENDAR.md` (1,049 lines) for other claims of the same class.
+7. **Open question for the owner:** is `docs/COACH-STATES.md:265` + `README.md:133` + `MILEBOOK-CALENDAR.md:844` all saying
    "owner-only" a deliberate product term? If yes, define it once; if not, replace it with "per-runner, unlinked".
 
 ---
@@ -178,7 +178,7 @@ claim; the reminder item's feasibility; and every 02 need whose only support is 
 cannot be opened.
 
 **Do not trust:** 01's and 03's current byte content as deliverables (both fail ASCII-only), the "all four product docs"
-count (fixed), and any statement that POC3's audit page is access-controlled by role (it is per-user scoped, no roles).
+count (fixed), and any statement that Milebook's audit page is access-controlled by role (it is per-user scoped, no roles).
 
 ---
 
@@ -222,7 +222,7 @@ verdict.
 | F-12 | Mapping note added in 05 section 9 for G-08 and G-18. |
 | F-13 | The rank-15 claim was reworded; I-09 and I-10 are named as the infrastructure exceptions. |
 | F-14 | Ordering note added after the backlog table. |
-| F-15 | Deleted the stale root copies of 01, 02, 03 and POC3-CALENDAR.md after hash and path checks. |
+| F-15 | Deleted the stale root copies of 01, 02, 03 and MILEBOOK-CALENDAR.md after hash and path checks. |
 | F-16 | Kept the glyph legend; documented in 03 section 2.1 and the package README. |
 | F-17, F-18 | Fetch-limitation note added to 03's ledger intro; S21 and S30 reliability cells already mark them marketing or snippet-only. |
 | F-19 | 02 heading retitled "46 retained, 9 ids dropped"; resolvability note added. |

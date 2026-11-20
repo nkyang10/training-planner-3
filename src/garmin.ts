@@ -254,7 +254,7 @@ function averageHr(values: readonly number[]): number | null {
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
 }
 
-/** Map one raw Garmin activity to the POC3 Activity record; undefined when it has no usable day. */
+/** Map one raw Garmin activity to the Milebook Activity record; undefined when it has no usable day. */
 export function mapGarminActivity(activity: unknown, userId: string): Activity | undefined {
   const raw = record(activity);
   if (raw === undefined) return undefined;

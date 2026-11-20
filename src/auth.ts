@@ -1,5 +1,5 @@
 /**
- * Standalone accounts for POC3.
+ * Standalone accounts for Milebook.
  *
  * Passwords are stored as self-describing scrypt hashes. Sessions are stateless
  * signed cookies: the browser only holds a user id and an expiry, while the
@@ -10,7 +10,7 @@ import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import type { IncomingMessage } from "node:http";
 import type { Store, UserProfile, UserProfilePatch } from "./types";
 
-export const AUTH_COOKIE_NAME = "poc3_session";
+export const AUTH_COOKIE_NAME = "milebook_session";
 export const AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 const HASH_PREFIX = "scrypt";

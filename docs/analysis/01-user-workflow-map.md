@@ -1,7 +1,7 @@
-# POC3 — end-to-end user workflow map
+# Milebook — end-to-end user workflow map
 
 **Status:** complete (read-only analysis) · **Date:** 2026-11-18 · **Shared task:** `task-1` · **Owner:** product analysis
-**Product:** POC3, a calendar-first AI coach for runners (`poc3 web` :8093 live / :8091 default, `poc3 gateway` :8092 live / :8090 default).
+**Product:** Milebook, a calendar-first AI coach for runners (`milebook web` :8093 live / :8091 default, `milebook gateway` :8092 live / :8090 default).
 **Scope:** every runner-facing workflow and surface, from first landing to data/account management, plus the cross-cutting
 flows (auto-sync, coach turn, validation/repair, idempotency, undo, coaching states, notifications, timezone, auth, isolation).
 **Out of scope:** solutioning. This document is the factual map; the gap analysis is the next document.
@@ -46,17 +46,17 @@ file.
   wall-clock timing, Garmin payload shape or browser rendering is marked `[inference]` even when the code is unambiguous.
 - The Garmin `activity/workouts` DTO is not fully published (`docs/GARMIN-TRAINING-PROGRAMS.md:61-64`); workout content is
   only verifiable as "the mapper's contract", never as "what Garmin returns".
-- `test/` was not read line-by-line; the suite is treated as a claim (`README.md:253`, `docs/POC3-CALENDAR.md:939`).
+- `test/` was not read line-by-line; the suite is treated as a claim (`README.md:253`, `docs/MILEBOOK-CALENDAR.md:939`).
 
 ---
 
 ## 2. Personas and segments
 
-Eight segments. Each is a runner the workflow must serve; "fit" states what POC3 actually does, not what it aspires to.
+Eight segments. Each is a runner the workflow must serve; "fit" states what Milebook actually does, not what it aspires to.
 Segment selection is an inference from the feature set (calendar-first planning + Garmin completion + race/load states);
 the JTBD statements are analyst-authored.
 
-| ID | Segment | Primary job-to-be-done | POC3 fit today | Blocking gap |
+| ID | Segment | Primary job-to-be-done | Milebook fit today | Blocking gap |
 |---|---|---|---|---|
 | **P1** | First-5K beginner | "Tell me what to run this week and don't make me learn a training system." | Good: three starter prompts, eight session kinds, beginner coaching state | Goal typed at signup never reaches the coach (WF-01); no guided first plan |
 | **P2** | Half/marathon race-focused | "Build and protect a race block, then tell me how it went." | Strong: race kind, race day/week/taper/post-race states, hard guardrails | No goal race date, no countdown, no race-day briefing (WF-27) |
@@ -70,49 +70,49 @@ the JTBD statements are analyst-authored.
 ### P1 — First-5K beginner
 
 - **JTBD / needs:** "Tell me what to run this week"; a first plan without training vocabulary, walk breaks allowed, no punishment for a missed day.
-- **POC3 fit:** three starter prompts on first open (`src/web.ts:95`, `src/web.ts:1874-1877`); eight kinds with friendly labels (`src/web.ts:915-928`); a `beginner` state with walk-break guidance (`src/coach-state-catalog.ts:509-517`); the coach is told to build a periodic system from a training-related message (`src/coach.ts:238`).
+- **Milebook fit:** three starter prompts on first open (`src/web.ts:95`, `src/web.ts:1874-1877`); eight kinds with friendly labels (`src/web.ts:915-928`); a `beginner` state with walk-break guidance (`src/coach-state-catalog.ts:509-517`); the coach is told to build a periodic system from a training-related message (`src/coach.ts:238`).
 - **Break / confidence:** the signup "Training goal" (`src/web.ts:2740`, stored `src/web.ts:2984`) is absent from the prompt facts (`src/coach.ts:265-302`, `CoachPromptInput` `src/coach.ts:106-129`); its only consumer is `plan_stale` (`src/coach-states.ts:280`). High.
 
 ### P2 — Half/marathon race-focused runner
 
 - **JTBD / needs:** a race date on the calendar, taper logic, hard-session protection in race week, a post-race rebuild, and a review of the race itself.
-- **POC3 fit:** `race`/`racewalk` kinds (`src/coach.ts:26`); race day/week/taper detection with TTLs (`src/coach-states.ts:182-207`); post-race detection (`src/coach-states.ts:148-175`, `:209-219`); guardrails over the effective post-turn calendar (`src/coach-states.ts:631-685`).
+- **Milebook fit:** `race`/`racewalk` kinds (`src/coach.ts:26`); race day/week/taper detection with TTLs (`src/coach-states.ts:182-207`); post-race detection (`src/coach-states.ts:148-175`, `:209-219`); guardrails over the effective post-turn calendar (`src/coach-states.ts:631-685`).
 - **Break / confidence:** no goal-race object, no goal time, no countdown, no race briefing; a race beyond 180 days is refused by the validator (`src/coach.ts:465-467`). High.
 
 ### P3 — Garmin power user
 
 - **JTBD / needs:** automatic completion plus deep metrics: laps, zones, PRs, load, and the executed workout.
-- **POC3 fit:** paired pill (`src/web.ts:327-344`), workout brief (`src/web.ts:894-912`), detail step card (`src/web.ts:629-641`), splits (`src/web.ts:605-614`), laps (`src/web.ts:616-623`), zones (`src/web.ts:677-689`), PR badges (`src/web.ts:597-602`), load card (`src/training.ts:222-307`).
+- **Milebook fit:** paired pill (`src/web.ts:327-344`), workout brief (`src/web.ts:894-912`), detail step card (`src/web.ts:629-641`), splits (`src/web.ts:605-614`), laps (`src/web.ts:616-623`), zones (`src/web.ts:677-689`), PR badges (`src/web.ts:597-602`), load card (`src/training.ts:222-307`).
 - **Break / confidence:** PRs and best efforts are stored-history only — 100 activities / 90 days (`src/garmin-sync.ts:41-44`) — and the pages do not say so (`src/web.ts:691-696`); the trend keeps 12 runs (`src/web.ts:1184-1189`). High.
 
 ### P4 — Non-Garmin / manual runner
 
 - **JTBD / needs:** "I ran; put it on the calendar even though my watch isn't a Garmin."
-- **POC3 fit:** only the vocabulary: `Activity.source` allows `"chat"` (`src/types.ts:67`), the UI renders a "Reported" chip (`src/web.ts:393-395`), and the log header says "from Garmin and reported runs" (`src/web.ts:3581`).
+- **Milebook fit:** only the vocabulary: `Activity.source` allows `"chat"` (`src/types.ts:67`), the UI renders a "Reported" chip (`src/web.ts:393-395`), and the log header says "from Garmin and reported runs" (`src/web.ts:3581`).
 - **Break / confidence:** the only `store.appendActivity` caller in the tree is the Garmin sync (`src/garmin-sync.ts:165`), so the "Reported" branch is dead code and this segment cannot use the completion half at all. High (grep-verified single call site).
 
 ### P5 — Returning-from-injury runner
 
 - **JTBD / needs:** pain/return context, run/walk sessions, hard-session blocks, and a way to record a cautious 12-minute jog.
-- **POC3 fit:** `pain_injury` and `return_to_run` require confirmation and block intensity/racing (`src/coach-state-catalog.ts:283-366`); illness blocks everything but rest (`:304-320`); the gateway enforces with one repair (`src/gateway.ts:1011-1047`).
+- **Milebook fit:** `pain_injury` and `return_to_run` require confirmation and block intensity/racing (`src/coach-state-catalog.ts:283-366`); illness blocks everything but rest (`:304-320`); the gateway enforces with one repair (`src/gateway.ts:1011-1047`).
 - **Break / confidence:** the confirmation card is DOM-only and lost on refresh (`src/web.ts:1878-1959` vs `src/web.ts:1652-1668`); completed return-to-run sessions cannot be recorded without Garmin (WF-02). High.
 
 ### P6 — Time-crunched parent
 
 - **JTBD / needs:** three 30-minute sessions, a view of what is coming, reminders, phone-first use.
-- **POC3 fit:** `time_crunch` state (`src/coach-state-catalog.ts:397-405`); day-menu prefills "Add a session on …" / "Move a session to …" (`src/web.ts:2152-2153`).
+- **Milebook fit:** `time_crunch` state (`src/coach-state-catalog.ts:397-405`); day-menu prefills "Add a session on …" / "Move a session to …" (`src/web.ts:2152-2153`).
 - **Break / confidence:** no reminders (the bell is a Garmin feed, `src/types.ts:142`), the Plan surface is month-only (`src/web.ts:3601-3648`), and the grid stays seven columns with 104 px cells on a phone (`src/styles.ts:38`, `:70`). High.
 
 ### P7 — Masters / older runner
 
 - **JTBD / needs:** conservative progression, visible ramp warnings, more recovery, an explanation for fatigue.
-- **POC3 fit:** `masters` state (`src/coach-state-catalog.ts:537-545`); load card with ACWR, week change, hard/easy and signal chip (`src/web.ts:3546-3562`, `src/training.ts:268-307`); `sleep_debt`/`high_stress` states (`src/coach-state-catalog.ts:411-433`).
+- **Milebook fit:** `masters` state (`src/coach-state-catalog.ts:537-545`); load card with ACWR, week change, hard/easy and signal chip (`src/web.ts:3546-3562`, `src/training.ts:268-307`); `sleep_debt`/`high_stress` states (`src/coach-state-catalog.ts:411-433`).
 - **Break / confidence:** those states are chat/user-only — no wellness ingestion (`docs/COACH-STATES.md:318`); ACWR returns `insufficient` without a baseline (`src/training.ts:239-240`). High.
 
 ### P8 — Bilingual (zh-Hant/en) runner
 
 - **JTBD / needs:** Traditional Chinese coach replies and readable dates; bilingual key actions.
-- **POC3 fit:** the coach language rule (`src/coach.ts:232`); bilingual system lines (`src/web.ts:2005`, `:2013`, `:2044`); bilingual state headings (`src/web-coach-states.ts:229`).
+- **Milebook fit:** the coach language rule (`src/coach.ts:232`); bilingual system lines (`src/web.ts:2005`, `:2013`, `:2044`); bilingual state headings (`src/web-coach-states.ts:229`).
 - **Break / confidence:** nav, forms, empty/error copy and the whole log are English-only; the stored failure note picks Chinese vs English from the *reply* text (`src/gateway.ts:385-390`); dates are `en-GB` with a UTC day (`src/web.ts:404-407`). High for copy, Medium for the blocking claim (inference).
 
 ### 2.1 Segment coverage
@@ -166,13 +166,13 @@ flowchart TD
 
 | Field | Detail |
 |---|---|
-| **Trigger** | Runner opens the root URL with no valid `poc3_session` cookie; every page route redirects to `/login` (`src/web.ts:3010-3013`). |
+| **Trigger** | Runner opens the root URL with no valid `milebook_session` cookie; every page route redirects to `/login` (`src/web.ts:3010-3013`). |
 | **Surfaces / routes** | `GET /login` (`src/web.ts:2938-2945`), `GET /signup` (`src/web.ts:2967-2975`), `POST /signup`, `POST /login`, `GET /logout` (`src/web.ts:2999-3008`). Signed-out layout shows only Sign in / Sign up (`src/web.ts:1598-1601`). |
 | **User actions** | Username (`[a-z0-9_]{3,24}`), display name (1-60), password (≥8), timezone (form default `Asia/Hong_Kong`), optional goal (≤120). |
-| **System behavior** | `auth.signup` normalises/validates, hashes with scrypt, stores the profile and returns a signed cookie (`src/auth.ts:258-279`). Signup immediately starts a browser session and redirects to `/calendar` (`src/web.ts:2986-2988`), so no separate login is needed. `poc3sid` is in-memory, HttpOnly, 24 h (`src/web.ts:87-88`, `:159-160`); `poc3_session` is stateless HMAC, 30 days (`src/auth.ts:13-14`, `:240-246`). |
+| **System behavior** | `auth.signup` normalises/validates, hashes with scrypt, stores the profile and returns a signed cookie (`src/auth.ts:258-279`). Signup immediately starts a browser session and redirects to `/calendar` (`src/web.ts:2986-2988`), so no separate login is needed. `milebooksid` is in-memory, HttpOnly, 24 h (`src/web.ts:87-88`, `:159-160`); `milebook_session` is stateless HMAC, 30 days (`src/auth.ts:13-14`, `:240-246`). |
 | **Success feedback** | Landing on the calendar with the runner's display name in the welcome line (`src/web.ts:3639-3640`). |
 | **Failure / empty paths** | Validation errors redirect back with `?error=` and an escaped banner (`src/web.ts:2989-2992`, `:2712-2727`); duplicate username is `username-taken` (`src/auth.ts:265-267`). No "forgot password", no email verification, no rate limit (WF-21). |
-| **Friction** | The docs' journey says "create an account, then sign in" (`docs/POC3-CALENDAR.md:53-54`) but code signs the runner in during signup `[drift]`; the timezone default differs between form (`src/web.ts:2739`), route fallback (`:2983`) and auth layer (`UTC`, `src/auth.ts:262`). |
+| **Friction** | The docs' journey says "create an account, then sign in" (`docs/MILEBOOK-CALENDAR.md:53-54`) but code signs the runner in during signup `[drift]`; the timezone default differs between form (`src/web.ts:2739`), route fallback (`:2983`) and auth layer (`UTC`, `src/auth.ts:262`). |
 | **Evidence** | `src/web.ts:2938-3008`, `src/auth.ts:13-14`, `:258-279`, `src/web.ts:1598-1610`. |
 
 ### S2 — Profile, timezone, goal
@@ -259,7 +259,7 @@ flowchart TD
 |---|---|
 | **Trigger** | The runner says "move Tuesday", "delete Sunday", "I only have 30 minutes", or "undo that". |
 | **Surfaces / routes** | Bubble composer; day-menu "Delete a session here" (send-now) and prefilled add/move (`src/web.ts:2147-2157`). |
-| **User actions** | Type the change, use the day menu, or tap a suggestion chip. Undo is requested in conversation — there is no button (`docs/POC3-CALENDAR.md:426-428`). |
+| **User actions** | Type the change, use the day menu, or tap a suggestion chip. Undo is requested in conversation — there is no button (`docs/MILEBOOK-CALENDAR.md:426-428`). |
 | **System behavior** | The gateway applies a batch in order, records one change set with before/after snapshots (`src/gateway.ts:744-757`), and returns `changes` for the animation. A revert resolves `"last"` to the newest non-reverted set (`:393-398`), applies the inverse in reverse order (`src/history.ts:37-93`) and appends a new change set summarised "Undo: …". A revert cannot share a turn with edits (`:623-630`). |
 | **Success feedback** | Pills fly/land/bin animation with 140 ms stagger (`src/web.ts:1803-1846`), "Calendar updated · 日曆已更新". |
 | **Failure / empty paths** | Unknown/already-reverted change set → fallback reply explaining it (`src/gateway.ts:632-649`). A guardrail blocks the edit and the runner sees "Calendar unchanged — <state> · 日曆未有更改" (`src/web.ts:2011-2014`). |
@@ -312,7 +312,7 @@ flowchart TD
 | **Trigger** | The runner wants to change something durable: profile, Garmin key, coaching states, sign out — or (not possible) delete data. |
 | **Surfaces / routes** | Account menu (`src/web.ts:1308-1321`): Profile, Coaching states, Sync Garmin now, Garmin key, Sign out. `/coach-audit` by URL only (`:3060-3074`). |
 | **User actions** | Edit profile, replace key, set/confirm/resolve a state, refresh states, sign out, inspect hidden directives (if they know the URL). |
-| **System behavior** | Profile persists (`src/web.ts:3039-3055`); key upserts (`src/store.ts:583-585`); states are scoped to the signed-in runner and same-origin checked (`src/web.ts:2909-2912`, `:3100-3123`); sign-out clears `poc3sid` and the auth cookie (`:2999-3004`). |
+| **System behavior** | Profile persists (`src/web.ts:3039-3055`); key upserts (`src/store.ts:583-585`); states are scoped to the signed-in runner and same-origin checked (`src/web.ts:2909-2912`, `:3100-3123`); sign-out clears `milebooksid` and the auth cookie (`:2999-3004`). |
 | **Success feedback** | "Profile saved.", redirect to `/coach-states`, bell entries. |
 | **Failure / empty paths** | State-form errors map fixed codes to copy (`src/web-coach-states.ts:123-138`); an expired state cannot be confirmed (`src/coach-states.ts:473-482`). No account deletion, password reset, export or key deletion (CN-12, CN-13, CN-15, CN-26). |
 | **Friction** | `/coach-audit` is unlinked and not role-gated (WF-20); the signed auth cookie cannot be revoked (WF-21); memories are invisible (CN-25). |
@@ -351,9 +351,9 @@ flowchart TD
 |---|---|
 | **Purpose** | Give each runner an independent, private calendar. |
 | **Entry points** | `/signup`, `/login`, `/logout`; the signed-out layout offers only Sign in / Sign up (`src/web.ts:1598-1601`). |
-| **Data dependencies** | `users` table (`src/store.ts:51-57`), scrypt hashes (`src/auth.ts:142-163`), HMAC-signed `poc3_session` (`src/auth.ts:240-246`), in-memory `poc3sid` map (`src/web.ts:2855-2901`). |
+| **Data dependencies** | `users` table (`src/store.ts:51-57`), scrypt hashes (`src/auth.ts:142-163`), HMAC-signed `milebook_session` (`src/auth.ts:240-246`), in-memory `milebooksid` map (`src/web.ts:2855-2901`). |
 | **Visible states** | Login/signup forms with escaped error banners (`src/web.ts:2712-2747`); "Profile saved." (`:2754`). |
-| **Missing / awkward** | No password reset, email verification, rate limit or revocation list (`docs/POC3-CALENDAR.md:961-962`); the auth cookie has no `Secure` flag (PoC over HTTP, `src/auth.ts:245`); signup already signs in, so the documented "then sign in" step does not exist `[drift]` (`docs/POC3-CALENDAR.md:53-54` vs `src/web.ts:2986-2988`). |
+| **Missing / awkward** | No password reset, email verification, rate limit or revocation list (`docs/MILEBOOK-CALENDAR.md:961-962`); the auth cookie has no `Secure` flag (PoC over HTTP, `src/auth.ts:245`); signup already signs in, so the documented "then sign in" step does not exist `[drift]` (`docs/MILEBOOK-CALENDAR.md:53-54` vs `src/web.ts:2986-2988`). |
 | **Anchors** | `src/web.ts:2938-3008`, `src/auth.ts:13-14`, `:240-256`, `src/web.ts:2855-2901`. |
 
 ### SF-02 — Profile
@@ -375,7 +375,7 @@ flowchart TD
 | **Entry points** | `/calendar` (`src/web.ts:3601-3649`); Plan tab (`:1604`); any `/calendar?month=` link; day cells are anchors to `/day/<date>` (`:3628`). |
 | **Data dependencies** | `sessions`, `activities`, `activity_workouts` scoped to the month (`src/web.ts:3614-3618`); `calendarDayItems` shared by first render and refresh (`:346-361`). |
 | **Visible states** | Up to 4 pills + `+n more` (`src/web.ts:263-264`, `:383-390`); today ring (`:3628`); paired pill with two buttons (`:369-377`); tooltips with kind/distance/duration/note (`:276-292`); state chips (max 3, `no_key` hidden, `:3606-3613`). |
-| **Missing / awkward** | Month-only; no week/agenda/day-column view (CN-08). No drag-and-drop. No "today" button on the Plan surface. The day menu is the only direct manipulation, and every write option still goes through the coach (`docs/POC3-CALENDAR.md:544-557`). |
+| **Missing / awkward** | Month-only; no week/agenda/day-column view (CN-08). No drag-and-drop. No "today" button on the Plan surface. The day menu is the only direct manipulation, and every write option still goes through the coach (`docs/MILEBOOK-CALENDAR.md:544-557`). |
 | **Anchors** | `src/web.ts:3601-3649`, `:2022-2296`, `:3328-3356`, `:1670-1785`. |
 
 ### SF-04 — Run peek
@@ -386,7 +386,7 @@ flowchart TD
 | **Entry points** | Click/Enter on the green half of a paired pill or a plain green pill (`src/web.ts:2166-2210`); `GET /activity/<id>/peek` (`:3651-3677`). |
 | **Data dependencies** | Stored activity fields only; plan match (`src/training.ts:114-125`); PR set from stored history (`src/web.ts:809-815`); stored workout (`:3674`). |
 | **Visible states** | Header (title + full day), source chip Garmin/Reported, metrics line, plan chip, optional Garmin workout row, up to six training-first metrics, fastest efforts with PR badge, four actions (`src/web.ts:2407-2502`); loading and error states (`:2380-2406`). |
-| **Missing / awkward** | Stored fields only — no splits/laps/zones (documented, `docs/POC3-CALENDAR.md:1002-1004`). No "ask about a different run" affordance. The peek closes on page scroll (`src/web.ts:2681`). |
+| **Missing / awkward** | Stored fields only — no splits/laps/zones (documented, `docs/MILEBOOK-CALENDAR.md:1002-1004`). No "ask about a different run" affordance. The peek closes on page scroll (`src/web.ts:2681`). |
 | **Anchors** | `src/web.ts:844-876`, `:2407-2502`, `:2619-2666`. |
 
 ### SF-05 — Session peek
@@ -397,7 +397,7 @@ flowchart TD
 | **Entry points** | Click/Enter on a colored plan pill (`src/web.ts:2182-2209`); `GET /session/<id>/peek` (`:3679-3703`). |
 | **Data dependencies** | Stored session + same-day activities (`src/web.ts:3697-3701`); day-scoped matcher (`src/training.ts:57-101`). |
 | **Visible states** | Kind chip with friendly label (`src/web.ts:915-928`), planned distance/duration, note, outcome chip (`completed` / `unmatched` / `missed` / `upcoming` / `rest`), actions View day / Ask coach / Open run / Training log week (`:2503-2552`). |
-| **Missing / awkward** | No session detail page and no edit path; Ask coach is comment-only, so the peek can never change the plan (`docs/POC3-CALENDAR.md:1005-1006`). Only reachable from the calendar (WF-08). |
+| **Missing / awkward** | No session detail page and no edit path; Ask coach is comment-only, so the peek can never change the plan (`docs/MILEBOOK-CALENDAR.md:1005-1006`). Only reachable from the calendar (WF-08). |
 | **Anchors** | `src/web.ts:952-1059`, `:2503-2552`. |
 
 ### SF-06 — Workout brief
@@ -408,7 +408,7 @@ flowchart TD
 | **Entry points** | Click/Enter on the purple half of a paired pill (`src/web.ts:2174-2177`); `GET /workout/<activityId>/peek` (`:3705-3731`). |
 | **Data dependencies** | `activity_workouts` row; on-demand fetch when missing/failed (`src/web.ts:3724`, `:648-675`); mapper output (`src/garmin-workout.ts:392-433`). |
 | **Visible states** | Name or label, "Followed by: <run>", grouped summary, up to 8 steps with index/intensity/duration/target, "+n more steps", coach notes, actions Open activity / View day / Training log week (`src/web.ts:2553-2618`). |
-| **Missing / awkward** | Read-only and not a plan (`docs/POC3-CALENDAR.md:1007-1012`); 404 when the workout is `none`/`unavailable` (`src/web.ts:3725-3728`); the brief can block on a live Garmin call (WF-05). |
+| **Missing / awkward** | Read-only and not a plan (`docs/MILEBOOK-CALENDAR.md:1007-1012`); 404 when the workout is `none`/`unavailable` (`src/web.ts:3725-3728`); the brief can block on a live Garmin call (WF-05). |
 | **Anchors** | `src/web.ts:894-912`, `:2553-2618`, `:3705-3731`. |
 
 ### SF-07 — Day page
@@ -474,7 +474,7 @@ flowchart TD
 | **Entry points** | Week view only (`src/web.ts:3546-3562`). |
 | **Data dependencies** | Garmin `trainingLoad`, `trainingEffectLabel`, `anaerobicTrainingEffect` (`src/training.ts:207-216`); 7/28-day coupled ACWR (`:222-243`). |
 | **Visible states** | Load, ACWR, vs last week, hard/easy km (`src/web.ts:3549-3554`); signal chip Steady / Watch the ramp / High ramp / Not enough history / No load data (`src/training.ts:274-307`); "soft signal, not medical advice" note (`src/web.ts:3558-3560`); "Review my week with the coach" (`:3561`). |
-| **Missing / awkward** | Requires Garmin load; a manual runner sees "No load data". The button only opens the bubble — it never calls the model by itself (`docs/POC3-CALENDAR.md:994-995`). Hard/easy depends on Garmin labels; unlabelled activities drop out (`docs/POC3-CALENDAR.md:992-993`). |
+| **Missing / awkward** | Requires Garmin load; a manual runner sees "No load data". The button only opens the bubble — it never calls the model by itself (`docs/MILEBOOK-CALENDAR.md:994-995`). Hard/easy depends on Garmin labels; unlabelled activities drop out (`docs/MILEBOOK-CALENDAR.md:992-993`). |
 | **Anchors** | `src/web.ts:3546-3562`, `src/training.ts:222-307`, `src/web.ts:698-718`. |
 
 ### SF-13 — Activity detail
@@ -485,7 +485,7 @@ flowchart TD
 | **Entry points** | `/activity/<id>` from every peek and log row (`src/web.ts:3733-3814`); "Detail" chips. |
 | **Data dependencies** | Stored activity; same-day sessions; on-demand Garmin details (splits), summary (laps), workouts (`src/web.ts:3759-3780`); PR set over stored history (`:3781`). |
 | **Visible states** | Summary stats, Plan vs actual card with bars (`src/web.ts:748-761`), workout card, Run metrics card, per-km splits, Garmin laps, HR zones, Ask coach card, "Other planned sessions that day" (`:3794-3811`). Each section degrades independently (`:605-641`). |
-| **Missing / awkward** | Up to three serial Garmin calls before HTML is sent (WF-05); splits/laps are re-fetched on every visit (not stored, `docs/POC3-CALENDAR.md:244-246`); no RPE/feel/notes, no gear, no route. |
+| **Missing / awkward** | Up to three serial Garmin calls before HTML is sent (WF-05); splits/laps are re-fetched on every visit (not stored, `docs/MILEBOOK-CALENDAR.md:244-246`); no RPE/feel/notes, no gear, no route. |
 | **Anchors** | `src/web.ts:3733-3814`, `:605-689`, `src/garmin.ts:156-220`. |
 
 ### SF-14 — Coach bubble
@@ -496,13 +496,13 @@ flowchart TD
 | **Entry points** | Fixed 💬 Coach button on every signed-in page (`src/web.ts:1616`); opened by `show()` (`:1636`); also opened programmatically by every `[data-coach-message]` trigger (`:2685-2694`) and by day-menu choices (`:2152-2156`). |
 | **Composer** | `<textarea maxlength="1000">` + Send; Enter submits, Shift+Enter newline (`src/web.ts:1621`, `:2705-2707`). Server re-validates 1-1000 (`:3162`). |
 | **Starters / follow-ups** | Three starters (`src/web.ts:95`) on first open or when a turn has no suggestions (`:1874-1877`, `:2001`); otherwise 1-3 model suggestions as chips that send immediately (`:1847-1861`). A failed turn replaces the rail with a single "Try again" chip (`:1862-1873`). |
-| **Streaming absence** | No SSE consumption; the panel shows a "…" typing bubble until the full JSON returns (`src/web.ts:1965`, `:1989`). The gateway *can* stream but emits one chunk and skips idempotency (`src/gateway.ts:1114-1126`, `:821`); documented limit `docs/POC3-CALENDAR.md:959-960`. |
+| **Streaming absence** | No SSE consumption; the panel shows a "…" typing bubble until the full JSON returns (`src/web.ts:1965`, `:1989`). The gateway *can* stream but emits one chunk and skips idempotency (`src/gateway.ts:1114-1126`, `:821`); documented limit `docs/MILEBOOK-CALENDAR.md:959-960`. |
 | **History restore** | On open, `GET /chat/history` returns the last 40 messages and the bubble appends them once (`src/web.ts:1652-1668`, `:3317-3326`). Only role+text are restored: no suggestions, no state cards, no failure cards. |
 | **Typed intents** | The browser sends `{kind, activityId\|day\|weekStart, source?, focus?, style?}`; the web validates it against allowlists (`src/directives.ts:19-45`, `:169-207`) and builds the directive server-side (`:210-278`). The browser can never send hidden prose. |
 | **Hidden directives** | Six intents (`chat`, `review-activity`, `review-day`, `review-week`, `plan`, `undo`); review intents set `allowCalendarWrites: false` (`src/directives.ts:219-256`). The gateway re-validates, resolves references from the store (404 before the model, `src/gateway.ts:846-854`), renders a Turn directive block (`src/directives.ts:383-420`) and audits it (`src/gateway.ts:562-585`). |
 | **Comment-only enforcement** | Server-side, not prompt-level: a proposed write on a comment-only turn is rejected `comment-only-write`, repaired once, then replaced by the comment-only fallback (`src/gateway.ts:963-995`, `:314-317`); a second defence exists inside the transaction (`:615-621`). The UI adds "Calendar unchanged · 日曆未有更改" (`src/web.ts:2007-2009`). |
-| **Could not apply card** | Built from `poc3.failures`; lists action, title, day, reason, plus **Show {day}** (sends a review-day intent) and **Try again** (resends the same message+intent) (`src/web.ts:2038-2081`). A localized note is stored with the message so it survives a reload (`src/gateway.ts:384-390`, `:759`). |
-| **Undo** | Requested in chat only; no button, no history panel (`docs/POC3-CALENDAR.md:426-428`). `revertChangeSetId` accepts an id or `"last"` (`src/gateway.ts:393-398`), cannot mix with edits (`:623-630`), and the revert is a new audited change set (`src/history.ts:83-92`). |
+| **Could not apply card** | Built from `milebook.failures`; lists action, title, day, reason, plus **Show {day}** (sends a review-day intent) and **Try again** (resends the same message+intent) (`src/web.ts:2038-2081`). A localized note is stored with the message so it survives a reload (`src/gateway.ts:384-390`, `:759`). |
+| **Undo** | Requested in chat only; no button, no history panel (`docs/MILEBOOK-CALENDAR.md:426-428`). `revertChangeSetId` accepts an id or `"last"` (`src/gateway.ts:393-398`), cannot mix with edits (`:623-630`), and the revert is a new audited change set (`src/history.ts:83-92`). |
 | **Missing / awkward** | No cancel, no retry budget visible, no message editing, no latency feedback; the panel covers the bottom-right of the grid on desktop (`src/styles.ts:326`). |
 | **Anchors** | `src/web.ts:1615-2709`, `src/directives.ts:19-278`, `src/gateway.ts:876-1137`. |
 
@@ -572,14 +572,14 @@ sequenceDiagram
   autonumber
   actor R as Runner
   participant B as Bubble
-  participant W as poc3 web
-  participant G as poc3 gateway
+  participant W as milebook web
+  participant G as milebook gateway
   participant M as LLM
   participant DB as SQLite
   R->>B: message or suggestion tap (+ typed intent)
-  B->>W: POST /chat + x-poc3-request-id
+  B->>W: POST /chat + x-milebook-request-id
   W->>W: 1..1000 chars, parseCoachIntent, resolve refs, buildDirective
-  W->>G: /v1/chat/completions (x-poc3-user, poc3.directive)
+  W->>G: /v1/chat/completions (x-milebook-user, milebook.directive)
   G->>DB: getCoachTurn(requestId) → replay 200 / 409
   G->>DB: claimCoachTurn(in_progress)
   G->>DB: refreshCoachStates + read prompt facts
@@ -591,7 +591,7 @@ sequenceDiagram
   end
   G->>DB: one transaction: sessions, change set, memories, states, message
   G->>DB: completeCoachTurn(cached response)
-  G-->>W: completion + poc3 meta
+  G-->>W: completion + milebook meta
   W-->>B: reply, suggestions, changes, failures, states, blockedByStates
   B->>B: render reply + suggestions, animate changes
   B->>W: GET /calendar/data?month=…
@@ -601,7 +601,7 @@ sequenceDiagram
 
 ### X1 — Auto-sync on session start and page-load backoff
 
-- **Two independent triggers.** (a) A *new browser session* — login/signup, or an auth cookie with no live `poc3sid` —
+- **Two independent triggers.** (a) A *new browser session* — login/signup, or an auth cookie with no live `milebooksid` —
   calls `startSession(..., syncOnStart)`, which fires `syncService.syncInBackground` when a key exists
   (`src/web.ts:2878-2885`). (b) A *page load* of `/calendar` or `/history` calls `autoSync`, which returns immediately
   when there is no key or when `sync_state.last_synced_at` is younger than 10 minutes (`src/web.ts:2788-2796`, default at
@@ -616,7 +616,7 @@ sequenceDiagram
   (`src/garmin-sync.ts:199-207`); it never throws to the page. A workout error is swallowed separately (`:179-183`).
 - **Observable surface.** The bell only: automatic no-change checks are silent because `notifyWhenUnchanged` is false
   (`src/garmin-sync.ts:210-239` vs `src/web.ts:2795`).
-- **Known edge.** After a manual `/sync` that had no live `poc3sid` (server restart or >24 h), the redirect GET creates a
+- **Known edge.** After a manual `/sync` that had no live `milebooksid` (server restart or >24 h), the redirect GET creates a
   session and starts a *second* full pull; the in-flight dedupe cannot help because the first pull already finished
   (WF-12) `[inference]`.
 - **Anchors:** `src/web.ts:2788-2801`, `:2878-2901`, `:2930-2936`, `src/garmin-sync.ts:210-250`.
@@ -625,14 +625,14 @@ sequenceDiagram
 sequenceDiagram
   autonumber
   actor R as Runner
-  participant W as poc3 web
+  participant W as milebook web
   participant SS as session map (memory)
   participant SY as garmin-sync
   participant GA as Garmin Personal API
   participant DB as SQLite
   R->>W: GET /calendar (or /history)
-  W->>W: auth.read(poc3_session)
-  W->>SS: resolveSession(poc3sid)?
+  W->>W: auth.read(milebook_session)
+  W->>SS: resolveSession(milebooksid)?
   alt no live session (login, restart, 24 h expiry)
     W->>SS: startSession(24 h)
     W->>SY: syncInBackground() — no backoff check
@@ -670,7 +670,7 @@ sequenceDiagram
 - **Failure boundary.** Enrichment can never fail an activity sync (`src/garmin-sync.ts:179-183`); a failed brief shows the
   honest error (`src/web.ts:2393-2399`).
 - **Observable surface.** Paired pill, workout brief, detail step card, week-card line, day-page card, run-peek row
-  (`docs/POC3-CALENDAR.md:763-768`).
+  (`docs/MILEBOOK-CALENDAR.md:763-768`).
 - **Anchors:** `src/web.ts:2802-2839`, `src/garmin-sync.ts:111-148`, `src/web.ts:648-675`.
 
 ### X3 — Gateway validation and one bounded repair
@@ -681,7 +681,7 @@ sequenceDiagram
   `today ≤ day ≤ today+180`, title ≤80, kind in the eight, distance 0-60, duration 0-300, note ≤280) → suggestions (1-3,
   ≤120) → revert id → state proposals (`src/coach.ts:392-609`).
 - **Repair.** On failure the model gets structured `{code, issues, context, attempt, maxAttempts, policy}` plus a
-  policy-specific instruction (`src/coach.ts:352-389`, `src/gateway.ts:282-312`). Budget is `POC3_MAX_ATTEMPTS`
+  policy-specific instruction (`src/coach.ts:352-389`, `src/gateway.ts:282-312`). Budget is `MILEBOOK_MAX_ATTEMPTS`
   (default 2 total, `src/index.ts:17-18`, `src/gateway.ts:768`).
 - **Fallback.** Only after the budget: a deterministic reply with special text for `comment-only-write`, `mode-guardrail`,
   `past-session` and `session-too-far` (`src/gateway.ts:314-328`).
@@ -691,16 +691,16 @@ sequenceDiagram
 
 ### X4 — Idempotent request replay
 
-- **Key.** The bubble generates 16 random bytes per turn and sends `x-poc3-request-id` (`src/web.ts:1967-1978`); the web
+- **Key.** The bubble generates 16 random bytes per turn and sends `x-milebook-request-id` (`src/web.ts:1967-1978`); the web
   forwards it (`:3190-3198`); the gateway accepts a header or `request_id` (`src/gateway.ts:157-165`).
-- **Claim/replay.** A completed id replays the cached response with `x-poc3-idempotent-replay: true`; an in-flight id gets
+- **Claim/replay.** A completed id replays the cached response with `x-milebook-idempotent-replay: true`; an in-flight id gets
   409 `turn-in-progress`; a replay with a different directive hash gets 409 `directive-mismatch`
   (`src/gateway.ts:821-845`). The claim is taken before the model call (`:855-874`); a failed turn releases it
   (`:1074-1081`, `:1138-1147`).
 - **Client retry.** The bubble retries the *same* request id once on a network error, so a committed-but-lost response
   replays instead of double-booking (`src/web.ts:1979-1988`).
 - **Limit.** Streaming turns opt out of idempotency (`src/gateway.ts:821`), and `coach_turns` has no lease timeout, so a
-  crashed in-flight row needs manual cleanup (`docs/POC3-CALENDAR.md:966-967`).
+  crashed in-flight row needs manual cleanup (`docs/MILEBOOK-CALENDAR.md:966-967`).
 - **Anchors:** `src/gateway.ts:821-874`, `src/web.ts:1967-1988`, `docs/adr/0003-validation-feedback-loop.md:6`.
 
 ### X5 — Undo and change-set lifecycle
@@ -731,7 +731,7 @@ sequenceDiagram
   family, the rest secondary (`:580-590`); safety wins on conflict (`:609-613`).
 - **Prompt vs page.** The gateway refreshes before the prompt (`src/gateway.ts:881-883`); GET pages never write
   (`src/web.ts:3088-3098`); only **Refresh** or a turn persists detection (`:3076-3086`).
-- **Kill switch.** `POC3_AUTO_STATES=false` disables detection while manual/chat states still work (`src/index.ts:36`,
+- **Kill switch.** `MILEBOOK_AUTO_STATES=false` disables detection while manual/chat states still work (`src/index.ts:36`,
   `src/coach-states.ts:409`).
 - **Anchors:** `src/coach-states.ts:180-425`, `src/gateway.ts:881-883`, `docs/COACH-STATES.md:87-131`.
 
@@ -781,21 +781,21 @@ sequenceDiagram
 
 ### X10 — Auth cookie, session and multi-user isolation
 
-- **Two cookies.** `poc3_session` = base64url `{userId, exp}` + HMAC-SHA256, HttpOnly, SameSite=Lax, 30 days
-  (`src/auth.ts:13-14`, `:240-246`); `poc3sid` = random UUID in an in-process map, HttpOnly, 24 h (`src/web.ts:159-160`,
+- **Two cookies.** `milebook_session` = base64url `{userId, exp}` + HMAC-SHA256, HttpOnly, SameSite=Lax, 30 days
+  (`src/auth.ts:13-14`, `:240-246`); `milebooksid` = random UUID in an in-process map, HttpOnly, 24 h (`src/web.ts:159-160`,
   `:87-89`).
 - **Read path.** `auth.read` verifies signature and expiry, then loads the profile from the store, so a forged or stale
   cookie cannot invent a user (`src/auth.ts:1-8`, `src/web.ts:2930`); every store call is scoped by `userId`
   (`src/store.ts:429-500`, `:787-841`).
 - **CSRF.** SameSite=Lax plus an Origin-vs-Host check on every POST (`src/web.ts:2909-2912`, `:1287-1297`); the check
   passes when `Origin` is absent, so it stops browsers, not scripts.
-- **Gateway trust.** The web forwards `x-poc3-user`; the gateway believes it and binds `127.0.0.1` (`src/web.ts:3196`,
-  `src/gateway.ts:814`, `src/index.ts:47`, `docs/POC3-CALENDAR.md:963`). The gateway's CORS headers allow any origin
+- **Gateway trust.** The web forwards `x-milebook-user`; the gateway believes it and binds `127.0.0.1` (`src/web.ts:3196`,
+  `src/gateway.ts:814`, `src/index.ts:47`, `docs/MILEBOOK-CALENDAR.md:963`). The gateway's CORS headers allow any origin
   (`src/gateway.ts:118-127`), acceptable only because of the loopback bind.
 - **Cross-user boundaries observed in code.** Peek endpoints 404 a foreign id (`src/web.ts:3664-3667`, `:3692-3696`); the
   workout brief 404s a foreign activity (`:3718-3721`); directive references 404 before the model (`src/gateway.ts:846-854`);
   a change set from another user is rejected (`src/history.ts:43-45`); the same Garmin activity can be stored by two
-  accounts because the key is composite (`docs/POC3-CALENDAR.md:774-781`).
+  accounts because the key is composite (`docs/MILEBOOK-CALENDAR.md:774-781`).
 - **Revocation.** Logout deletes the in-memory session and clears both cookies (`src/web.ts:2999-3004`), but the signed
   cookie is stateless: a copied cookie stays valid for 30 days (WF-21).
 - **Anchors:** `src/auth.ts:1-14`, `:240-256`, `src/web.ts:2855-2936`, `:2999-3008`.
@@ -859,7 +859,7 @@ sequenceDiagram
 **S7 · medium · high** — **Observed** the "Review this run with the coach" card renders only when this page load's sync returned a genuinely new activity (`auto.newest`) or when the URL carries `?newest=`; within the 10-minute backoff `autoSync` returns an empty outcome, so the card disappears on refresh, and the notification for that activity links to `/calendar?month=…`, not to the review card. **Evidence** `src/web.ts:3569-3573`, `:2788-2796`, `src/garmin-sync.ts:195`. **Why it matters** the one proactive coaching moment in the product is the easiest thing to lose; a runner who refreshes or navigates away must remember to ask.
 
 #### WF-07 — Undo has no affordance, no history view, no revert animation
-**S8 · medium · high** — **Observed** undo is chat-only (no button, no `/calendar/history`) and the change log is invisible to the runner: `/coach-audit` shows directives and state events, not change sets; the animation checks `action === "remove"` to pick the bin and the red pulse, while revert entries carry `action: "revert"`, so undoing an *add* produces a ghost animating to its own start position with no cell pulse. **Evidence** `docs/POC3-CALENDAR.md:400-428`, `src/web.ts:3060-3074`, `:1816`, `:1833`, `src/history.ts:53-81`. **Why it matters** recovery is the trust mechanism for an LLM writer; the runner cannot inspect what a batch did, and undoing an add looks like nothing happened.
+**S8 · medium · high** — **Observed** undo is chat-only (no button, no `/calendar/history`) and the change log is invisible to the runner: `/coach-audit` shows directives and state events, not change sets; the animation checks `action === "remove"` to pick the bin and the red pulse, while revert entries carry `action: "revert"`, so undoing an *add* produces a ghost animating to its own start position with no cell pulse. **Evidence** `docs/MILEBOOK-CALENDAR.md:400-428`, `src/web.ts:3060-3074`, `:1816`, `:1833`, `src/history.ts:53-81`. **Why it matters** recovery is the trust mechanism for an LLM writer; the runner cannot inspect what a batch did, and undoing an add looks like nothing happened.
 
 #### WF-08 — Planned sessions are inert outside the calendar
 **S5, S6, S9 · medium · high** — **Observed** `sessionChip` renders a `<span>` with a tooltip — no link, no peek, no action — and it is used for the training log's planned line, the unmatched line and the detail page's "Other planned sessions"; `/day/<date>` lists sessions as plain `<li>` items; the session peek is reachable only by clicking a plan pill in the month grid. **Evidence** `src/web.ts:231-234`, `:3452-3455`, `:3796`, `:3832`, `:2182-2185`. **Why it matters** a runner reviewing the week ("did I do Tuesday?") cannot open the session they are looking at; they must go back to the month and find the day.
@@ -868,13 +868,13 @@ sequenceDiagram
 **S4 · medium · high · `[drift]`** — **Observed** the README says the 180-day horizon is "shown in the bubble header", but the bubble header contains only the title and the minimize button and the string "180"/"horizon" does not occur anywhere in `src/web.ts`; the limit lives in the validator and the model's rules, and the runner learns it only when a request exceeds it. **Evidence** `README.md:313` vs `src/web.ts:1617-1618` (grep: no matches), `src/coach.ts:40`, `:465-467`, `src/gateway.ts:324-326`. **Why it matters** a runner planning a spring marathon cannot tell whether the coach can book it; the refusal arrives as a surprise after the fact.
 
 #### WF-10 — No reduced-motion support
-**S5, S8 · medium · high · `[drift]`** — **Observed** the docs say reduced-motion users "get the grid update without the flourish", but there is no `prefers-reduced-motion` query and no `matchMedia` call anywhere in `src`; the grid does refresh before the animation, so the end state is correct, but the full-page flash, the flying ghost and the trash pop still run. **Evidence** `docs/POC3-CALENDAR.md:968` vs grep (no matches in `src`), `src/web.ts:1790-1846`, `src/styles.ts:417-421`. **Why it matters** the loudest visual feature is exactly the one motion-sensitive users cannot turn off; accessibility is also a stated open backlog item (`docs/FEATURES-FOR-REVIEW.md:52`).
+**S5, S8 · medium · high · `[drift]`** — **Observed** the docs say reduced-motion users "get the grid update without the flourish", but there is no `prefers-reduced-motion` query and no `matchMedia` call anywhere in `src`; the grid does refresh before the animation, so the end state is correct, but the full-page flash, the flying ghost and the trash pop still run. **Evidence** `docs/MILEBOOK-CALENDAR.md:968` vs grep (no matches in `src`), `src/web.ts:1790-1846`, `src/styles.ts:417-421`. **Why it matters** the loudest visual feature is exactly the one motion-sensitive users cannot turn off; accessibility is also a stated open backlog item (`docs/FEATURES-FOR-REVIEW.md:52`).
 
 #### WF-11 — Nested interactive elements and missing dialog semantics
 **S5 · medium · medium** — **Observed** each day cell is an `<a href="/day/…">` that contains `role="button"` pill spans, and the click handler `preventDefault`s and routes by the closest data attribute; the peek is `role="dialog"` with `tabIndex=-1`, no `aria-modal`, no focus trap and no labelled title until it is set; the day menu is `role="menu"` but its items are plain buttons with no roving focus. **Evidence** `src/web.ts:3628`, `:367-380`, `:2299-2304`, `:2022-2146`. **Why it matters** screen-reader users meet buttons inside a link and keyboard users can Tab out of an open dialog into the page behind it; `[inference]` on the exact AT behaviour, but the markup facts are certain.
 
 #### WF-12 — Manual sync can trigger a second full pull
-**S3 · low · medium** — **Observed** `/sync` and `/garmin/key` skip `resolveSession` (`ownsSync`), so they never create a browser session; the redirect GET then creates one if `poc3sid` is missing (server restart, >24 h) and `startSession` fires `syncInBackground`, which ignores the 10-minute backoff — the in-flight dedupe cannot help because the manual pull already finished, although the docs claim manual requests "cannot double-pull". **Evidence** `src/web.ts:2932-2936`, `:2878-2885`, `src/garmin-sync.ts:216-223`, `docs/POC3-CALENDAR.md:787-789`. **Why it matters** two 100-activity pulls for one click; harmless for data, wasteful against an unpublished Garmin quota.
+**S3 · low · medium** — **Observed** `/sync` and `/garmin/key` skip `resolveSession` (`ownsSync`), so they never create a browser session; the redirect GET then creates one if `milebooksid` is missing (server restart, >24 h) and `startSession` fires `syncInBackground`, which ignores the 10-minute backoff — the in-flight dedupe cannot help because the manual pull already finished, although the docs claim manual requests "cannot double-pull". **Evidence** `src/web.ts:2932-2936`, `:2878-2885`, `src/garmin-sync.ts:216-223`, `docs/MILEBOOK-CALENDAR.md:787-789`. **Why it matters** two 100-activity pulls for one click; harmless for data, wasteful against an unpublished Garmin quota.
 
 #### WF-13 — Observing state cards vanish on refresh
 **S10, S11 · high · high** — **Observed** a sensitive/safety proposal is stored as `observing` and shown as a bubble card with Confirm/Dismiss, but the card is DOM-only: history restore replays messages and nothing else, so after any refresh the confirmation control is gone and the runner must know to open `/coach-states`; the reply text may mention it, but the buttons are unreachable from the chat. **Evidence** `src/web.ts:1878-1959`, `:1652-1668`, `src/coach-states.ts:527`, `src/web-coach-states.ts:199-202`. **Why it matters** this is the safety-critical confirmation path for pain, illness, pregnancy and low energy availability; losing the confirm button invites the runner to ignore a state that was meant to protect them.
@@ -886,7 +886,7 @@ sequenceDiagram
 **S4, S8 · medium · high** — **Observed** review actions ("Ask coach" in every peek, "Review my week") are comment-only and state guardrails can veto a booking; both are enforced server-side and surfaced only in the reply, the fallback text or a system line ("Calendar unchanged …"), while nothing on the button or in the composer says the turn is read-only or that a state may block it. **Evidence** `src/directives.ts:219-256`, `src/gateway.ts:963-995`, `:314-320`, `src/web.ts:2007-2014`. **Why it matters** a runner who taps "Ask coach" expecting a reschedule gets a comment; a runner who asks for intervals in race week gets a refusal — both correct behaviour with a confusing affordance.
 
 #### WF-16 — Coach-only writes freeze the calendar during a model outage
-**S4, S8 · blocker · high** — **Observed** there is no edit form and no direct session API; the only writer is the gateway's validated turn, so a model transport failure returns 502, the bubble shows "The coach is unavailable right now." with a Try-again chip, and nothing can be booked, moved or deleted until the model recovers. **Evidence** `docs/POC3-CALENDAR.md:32`, `src/web.ts:3310-3313`, `:1990-1998`, `src/gateway.ts:1074-1081`, `docs/FEATURES-FOR-REVIEW.md:66`. **Why it matters** availability of the whole planning surface equals availability of one external model, and there is no deterministic fallback planner (`docs/FEATURES-FOR-REVIEW.md:66`).
+**S4, S8 · blocker · high** — **Observed** there is no edit form and no direct session API; the only writer is the gateway's validated turn, so a model transport failure returns 502, the bubble shows "The coach is unavailable right now." with a Try-again chip, and nothing can be booked, moved or deleted until the model recovers. **Evidence** `docs/MILEBOOK-CALENDAR.md:32`, `src/web.ts:3310-3313`, `:1990-1998`, `src/gateway.ts:1074-1081`, `docs/FEATURES-FOR-REVIEW.md:66`. **Why it matters** availability of the whole planning surface equals availability of one external model, and there is no deterministic fallback planner (`docs/FEATURES-FOR-REVIEW.md:66`).
 
 #### WF-17 — PR / best-effort scope is unstated
 **S9 · medium · high** — **Observed** best efforts and PR badges are computed over stored activities only (max 100 per pull, last 90 days), but the detail page, run peek and period best-efforts card present them as plain "Fastest 1 km" with a PR chip and no scope note; the caveat exists only in the docs. **Evidence** `src/garmin-sync.ts:41-44`, `:155-163`, `src/training.ts:147-176`, `src/web.ts:597-602`, `:691-696`, `README.md:344-345`. **Why it matters** a runner can be shown a "PR" that is slower than their real lifetime best, which erodes trust in every other number on the page.
@@ -898,10 +898,10 @@ sequenceDiagram
 **S5 · low · high** — **Observed** the bell renders `new Date(item.createdAt).toLocaleString()` (browser locale/zone), while the rest of the app formats in the profile timezone; a runner travelling, or using a device set to another zone, sees two clocks. **Evidence** `src/web.ts:1408-1412` vs `:3579`, `src/web-coach-states.ts:166`. **Why it matters** small, but it is the one place where "when did this happen" disagrees with the calendar's own day model.
 
 #### WF-20 — `/coach-audit` is unlinked and not role-gated
-**S12 · low · high** — **Observed** no element in `src` links to `/coach-audit` (grep); the page is scoped to the signed-in user and has no role check, so "owner-only" means "any account, its own rows"; it also cannot show change sets, so the calendar audit story stops at directives. **Evidence** `src/web.ts:3060-3074`, `src/web-coach-states.ts:17-94`, `README.md:133`, `docs/POC3-CALENDAR.md:691-693`. **Why it matters** transparency features that nobody can find do not build trust, and "owner-only" in the docs overstates the access control that exists.
+**S12 · low · high** — **Observed** no element in `src` links to `/coach-audit` (grep); the page is scoped to the signed-in user and has no role check, so "owner-only" means "any account, its own rows"; it also cannot show change sets, so the calendar audit story stops at directives. **Evidence** `src/web.ts:3060-3074`, `src/web-coach-states.ts:17-94`, `README.md:133`, `docs/MILEBOOK-CALENDAR.md:691-693`. **Why it matters** transparency features that nobody can find do not build trust, and "owner-only" in the docs overstates the access control that exists.
 
 #### WF-21 — Account lifecycle gaps
-**S1, S12 · medium · high** — **Observed** no password reset, email verification, rate limit, account deletion or session revocation list; logout deletes the in-memory `poc3sid` and clears both cookies, but the signed `poc3_session` is stateless and stays valid for 30 days if copied. **Evidence** `src/auth.ts:13-14`, `:240-256`, `src/web.ts:2999-3004`, `docs/POC3-CALENDAR.md:961-962`. **Why it matters** a runner who shares a laptop or loses a cookie cannot invalidate access, and a runner who wants their data gone has no path.
+**S1, S12 · medium · high** — **Observed** no password reset, email verification, rate limit, account deletion or session revocation list; logout deletes the in-memory `milebooksid` and clears both cookies, but the signed `milebook_session` is stateless and stays valid for 30 days if copied. **Evidence** `src/auth.ts:13-14`, `:240-256`, `src/web.ts:2999-3004`, `docs/MILEBOOK-CALENDAR.md:961-962`. **Why it matters** a runner who shares a laptop or loses a cookie cannot invalidate access, and a runner who wants their data gone has no path.
 
 #### WF-22 — No installable/offline app; seven-column grid on phones
 **S5 · medium · high** — **Observed** the layout head has no manifest, theme-color or service worker, and the month grid stays seven columns with 104 px minimum cell height at every width; only the coach panel and the peek adapt (bottom sheet ≤640 px). **Evidence** `src/web.ts:1609-1610`, `src/styles.ts:38`, `:70`, `:412-414`, `src/web.ts:2345-2349`. **Why it matters** the product is described as a phone-first calendar (`docs/FEATURES-FOR-REVIEW.md:51`); at 360 px a cell is ~45 px wide, so pills truncate to a few characters and the tooltip is the only full text.
@@ -913,7 +913,7 @@ sequenceDiagram
 **S7 · low · high** — **Observed** the review card is driven by `?newest=<activityId>` without checking that the activity is actually new, so a bookmarked or crafted URL shows "New run synced" for an old run. **Evidence** `src/web.ts:3421-3422`, `:3569-3573`. **Why it matters** low, but it is the same card that carries the product's only proactive prompt, and a false "new" weakens it.
 
 #### WF-25 — No streaming, no cancel, no client fetch timeout
-**S4 · medium · high** — **Observed** the bubble shows a "…" typing bubble until the full JSON returns; there is no abort button and the client fetch has no timeout, so the perceived wait equals the gateway's 120 s model timeout plus any repair call (up to two model calls per turn). **Evidence** `src/web.ts:1965-1989`, `:1974-1978`, `src/gateway.ts:213`, `:927`, `docs/POC3-CALENDAR.md:959-960`. **Why it matters** a two-attempt turn can take a long time with no progress signal; the runner's only options are wait or reload, which loses the in-flight turn's UI (though not its idempotent result).
+**S4 · medium · high** — **Observed** the bubble shows a "…" typing bubble until the full JSON returns; there is no abort button and the client fetch has no timeout, so the perceived wait equals the gateway's 120 s model timeout plus any repair call (up to two model calls per turn). **Evidence** `src/web.ts:1965-1989`, `:1974-1978`, `src/gateway.ts:213`, `:927`, `docs/MILEBOOK-CALENDAR.md:959-960`. **Why it matters** a two-attempt turn can take a long time with no progress signal; the runner's only options are wait or reload, which loses the in-flight turn's UI (though not its idempotent result).
 
 #### WF-26 — Malformed `month`/`period` returns the 500 error page
 **S5, S9 · low · high** — **Observed** `/calendar` does not validate `?month=` (unlike `/calendar/data`), so `?month=abc` or `2026-13` reaches `addDays` with an invalid date and throws; the catch-all renders the 500 page with the raw exception message, and week periods have the same exposure via an invalid date string. **Evidence** `src/web.ts:3602-3604`, `:222-225`, `:212-216`, `:3330-3334` (the validated sibling), `:3890-3893`. **Why it matters** robustness/URL hygiene rather than a main path, but the error page is the only page that leaks an exception string.
@@ -932,8 +932,8 @@ task is not possible. "Closest evidence" is the nearest code, not a suggestion.
 |---|---|---|---|
 | CN-01 | Record a run without Garmin (form or "log my run") | **absent** | `src/garmin-sync.ts:165` is the only `appendActivity` caller; `src/types.ts:67` types the unused `"chat"` source |
 | CN-02 | Mark a planned session complete / skipped / partial by hand | **absent** | Outcomes are derived from Garmin activities only (`src/web.ts:952-1003`) |
-| CN-03 | Edit or delete a session without the coach | **absent (by design)** | No edit route in `src/web.ts:2903-3893`; `docs/POC3-CALENDAR.md:32` |
-| CN-04 | Undo via a button or a change-history panel | **absent** | Chat-only revert (`src/gateway.ts:632-665`); no `/calendar/history` (`docs/POC3-CALENDAR.md:426`) |
+| CN-03 | Edit or delete a session without the coach | **absent (by design)** | No edit route in `src/web.ts:2903-3893`; `docs/MILEBOOK-CALENDAR.md:32` |
+| CN-04 | Undo via a button or a change-history panel | **absent** | Chat-only revert (`src/gateway.ts:632-665`); no `/calendar/history` (`docs/MILEBOOK-CALENDAR.md:426`) |
 | CN-05 | Get a reminder or notification for an upcoming session | **absent** | `NotificationSource = "garmin"` only (`src/types.ts:142`); no scheduler outside page loads |
 | CN-06 | Import the future Garmin plan / Garmin Coach plan | **absent** | `docs/GARMIN-TRAINING-PROGRAMS.md:11-14`; no plan endpoint in `src/garmin.ts` |
 | CN-07 | Start from a plan template ("10k in 8 weeks") | **absent** | Backlog `docs/FEATURES-FOR-REVIEW.md:71`; no template code |
@@ -966,7 +966,7 @@ never by the prompt) and **undo** (works through chat, but the runner cannot ins
 
 ---
 
-## 8. POC3 strengths to protect
+## 8. Milebook strengths to protect
 
 These are workflow properties, not feature-list items; each is unusually good and easy to lose in a redesign.
 
@@ -986,7 +986,7 @@ These are workflow properties, not feature-list items; each is unusually good an
 | ST-12 | **Timezone-correct "today" end to end** | One day definition for the grid, the prompt, the validator and state expiry. | `src/time.ts:1-63`, `src/gateway.ts:877-883`, `src/coach.ts:265-271` |
 
 Two smaller properties belong in the same brief: the **read-only projections** (the past is never rewritten by the coach,
-`docs/POC3-CALENDAR.md:22`) and the **in-place refresh that cannot drift from the HTML** because both use the same server
+`docs/MILEBOOK-CALENDAR.md:22`) and the **in-place refresh that cannot drift from the HTML** because both use the same server
 helpers (`src/web.ts:346-361`).
 
 ---
@@ -1005,7 +1005,7 @@ helpers (`src/web.ts:346-361`).
 | Q-06 | What is the intended mobile story: responsive month grid, week/agenda view, or PWA? | Three different answers imply different work (WF-22, CN-08, CN-16). |
 | Q-07 | Should PR/best-effort scope be labelled, or should history be extended? | The 100/90-day cap is a sync limit, not a product limit (WF-17). |
 | Q-08 | Is `/coach-audit` an operator tool or a runner-facing transparency page? | It is unlinked and not role-gated (WF-20). |
-| Q-09 | What is the account-lifecycle bar for this PoC: reset/verification/deletion now, or later? | Documented as PoC-grade (`docs/POC3-CALENDAR.md:961`), but it blocks real use (WF-21). |
+| Q-09 | What is the account-lifecycle bar for this PoC: reset/verification/deletion now, or later? | Documented as PoC-grade (`docs/MILEBOOK-CALENDAR.md:961`), but it blocks real use (WF-21). |
 | Q-10 | Should Garmin be disconnectable (key deletion) even without OAuth? | No delete path exists (CN-26); the key is plaintext. |
 | Q-11 | Which missing surfaces are deliberately out of scope (reminders, export, records page) versus deferred? | Backlog mixes "later slice" and "not in scope" (`docs/FEATURES-FOR-REVIEW.md`, `README.md:308-309`). |
 | Q-12 | Does the plan need non-running kinds (strength, mobility) for `strength_focus` to be coherent? | The state promises sessions the calendar cannot express (WF-27). |
@@ -1023,7 +1023,7 @@ helpers (`src/web.ts:346-361`).
 
 ### 9.3 Method trace (for review)
 
-1. Read `README.md`, `docs/README.md`, `docs/POC3-CALENDAR.md` (all 1,049 lines), `docs/COACH-STATES.md`,
+1. Read `README.md`, `docs/README.md`, `docs/MILEBOOK-CALENDAR.md` (all 1,049 lines), `docs/COACH-STATES.md`,
    `docs/TRAINING-LOG-PLAN.md`, `docs/GARMIN-TRAINING-PROGRAMS.md`, `docs/FEATURES-FOR-REVIEW.md`, and the three ADRs.
 2. Read the route table (`src/web.ts:2903-3903`), the inline client scripts (bubble, calendar, bell, account menu, Garmin
    modal), the peek builders, the training-log renderers and the trend/load cards.

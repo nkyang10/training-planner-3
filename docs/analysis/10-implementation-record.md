@@ -1,4 +1,4 @@
-# POC3 - implementation record for the coach-relationship slice
+# Milebook - implementation record for the coach-relationship slice
 
 **Status:** complete: three workstreams implemented and verified (107/107, 30/30, 103/103 targeted), adversarially
 reviewed (verdict: safe after should-fixes, both triaged), full gate green (375/375, 15 files), live redeploy OK

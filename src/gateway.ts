@@ -1,5 +1,5 @@
 /**
- * The POC3 coach gateway: an OpenAI-compatible endpoint the calendar's coach bubble talks to as a "model".
+ * The Milebook coach gateway: an OpenAI-compatible endpoint the calendar's coach bubble talks to as a "model".
  *
  * The gateway is where the coach gets memory and a calendar: it loads the runner's memories, upcoming sessions, Garmin
  * activities and recent change sets, asks the local model for one structured turn, validates it, then writes the
@@ -104,7 +104,7 @@ export interface GatewayPrefill {
   latestActivityId: string | null;
 }
 
-/** The `poc3` block the calendar UI reads from a completion. */
+/** The `milebook` block the calendar UI reads from a completion. */
 export interface GatewayMeta {
   /** How many sessions the turn wrote (a batch) or restored/deleted (a revert). */
   sessions: number;
@@ -207,7 +207,7 @@ const REQUEST_ID = /^[A-Za-z0-9._:-]{1,100}$/;
 
 /** Accept an idempotency key from the web proxy header or the OpenAI-compatible body. */
 function requestIdFrom(request: IncomingMessage, body: Record<string, unknown>): string | null {
-  const header = request.headers["x-poc3-request-id"];
+  const header = request.headers["x-milebook-request-id"];
   const raw = typeof header === "string" ? header : typeof body["request_id"] === "string" ? body["request_id"] : "";
   const value = raw.trim();
   return REQUEST_ID.test(value) ? value : null;
@@ -384,7 +384,7 @@ function completionBody(id: string, model: string, reply: string, created: numbe
     model,
     choices: [{ index: 0, message: { role: "assistant", content: reply }, finish_reason: "stop" }],
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    poc3: meta,
+    milebook: meta,
   };
 }
 
@@ -561,10 +561,10 @@ interface DirectiveRequest {
 function directiveFromBody(
   body: Record<string, unknown>,
 ): { ok: true; request: DirectiveRequest } | { ok: false; detail: string } {
-  const poc3 = body["poc3"];
-  if (poc3 === undefined) return { ok: true, request: { directive: undefined, hash: null } };
-  if (!isObject(poc3)) return { ok: false, detail: "poc3 must be an object" };
-  const raw = poc3["directive"];
+  const milebook = body["milebook"];
+  if (milebook === undefined) return { ok: true, request: { directive: undefined, hash: null } };
+  if (!isObject(milebook)) return { ok: false, detail: "milebook must be an object" };
+  const raw = milebook["directive"];
   if (raw === undefined) return { ok: true, request: { directive: undefined, hash: null } };
   const parsed = parseCoachDirective(raw);
   if (!parsed.ok) return { ok: false, detail: parsed.detail };
@@ -855,7 +855,7 @@ function applyParsedTurn(
 
 export function createGateway(options: GatewayOptions): Gateway {
   const now = options.now ?? (() => new Date().toISOString());
-  const modelId = options.modelId ?? "poc3-coach";
+  const modelId = options.modelId ?? "milebook-coach";
   const maxAttempts = Math.max(1, options.maxAttempts ?? 2);
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
@@ -864,7 +864,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (method === "OPTIONS") {
         response.writeHead(204, {
           "access-control-allow-origin": "*",
-          "access-control-allow-headers": "authorization, content-type, x-poc3-user",
+          "access-control-allow-headers": "authorization, content-type, x-milebook-user",
           "access-control-allow-methods": "GET, POST, OPTIONS",
         });
         response.end();
@@ -877,7 +877,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       if (url.pathname === "/v1/models" && method === "GET") {
         sendJson(response, 200, {
           object: "list",
-          data: [{ id: modelId, object: "model", created: Math.floor(Date.now() / 1000), owned_by: "poc3" }],
+          data: [{ id: modelId, object: "model", created: Math.floor(Date.now() / 1000), owned_by: "milebook" }],
         });
         return;
       }
@@ -902,7 +902,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         sendJson(response, 400, { error: { code: "no-question", detail: "the last user message is empty" } });
         return;
       }
-      const userId = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : options.userId;
+      const userId = typeof request.headers["x-milebook-user"] === "string" ? request.headers["x-milebook-user"] : options.userId;
       const directiveResult = directiveFromBody(body);
       if (!directiveResult.ok) {
         sendJson(response, 400, { error: { code: "invalid-directive", detail: directiveResult.detail } });
@@ -922,7 +922,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           response.writeHead(200, {
             "content-type": "application/json; charset=utf-8",
             "cache-control": "no-store",
-            "x-poc3-idempotent-replay": "true",
+            "x-milebook-idempotent-replay": "true",
           });
           response.end(existing.responseJson);
           return;

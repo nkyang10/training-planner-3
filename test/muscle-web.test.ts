@@ -416,7 +416,7 @@ describe("the muscle tab page", () => {
 
   it("renders the worked card in Chinese when the language cookie is zh-HK", async () => {
     const { base, cookie } = await start();
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/activity/${encodeURIComponent("garmin:today-1")}`, { headers: { cookie: zh } })).text();
     expect(html).toContain("訓練到的肌肉");
     expect(html).toContain("回報感覺");
@@ -512,7 +512,7 @@ describe("the muscle status layer", () => {
 
   it("renders the muscle tab in Chinese when the language cookie is zh-HK", async () => {
     const { base, cookie } = await start();
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie: zh } })).text();
     expect(html).toContain("肌肉回報");
     expect(html).toContain("肌肉狀態");
@@ -532,7 +532,7 @@ describe("the muscle status layer", () => {
       ["soreness", "6"],
       ["conditions", "tight"],
     ]);
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     // The status row renders the localized muscle name inside a <strong>; the English name
@@ -552,7 +552,7 @@ describe("the muscle status layer", () => {
       ["soreness", "6"],
       ["conditions", "tight"],
     ]);
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     // A soreness-6 tight calves check-in yields a watch card carrying the mobility and activation drills.
@@ -577,7 +577,7 @@ describe("the muscle status layer", () => {
 
   it("localizes the interactive editor payload to Cantonese — drill names, how-text, condition labels and muscle names", async () => {
     const { base, cookie } = await start();
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     // The serialized editor payload is embedded in the page source. Scope assertions to the MUSCLES/CONDITIONS
@@ -609,7 +609,7 @@ describe("the muscle status layer", () => {
       { muscleId: "calves", soreness: 2, conditions: [] },
     ]);
     await postCheckIn(base, cookie, [["day", TODAY], ["musclesJson", payload]]);
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     // English guidance still rides inside the editor script/JSON payloads, so the absence check is scoped to the
@@ -775,13 +775,13 @@ describe("the coach's view of muscle check-ins", () => {
       void (async (): Promise<void> => {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(chunk as Buffer);
-        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { poc3?: { directive?: unknown } };
-        seen.directive = body.poc3?.directive;
+        const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { milebook?: { directive?: unknown } };
+        seen.directive = body.milebook?.directive;
         response.writeHead(200, { "content-type": "application/json" });
         response.end(
           JSON.stringify({
             choices: [{ message: { content: "Keep it easy today." } }],
-            poc3: { sessions: 0, memories: 0, changes: [], suggestions: ["Plan tomorrow with me"], failures: [] },
+            milebook: { sessions: 0, memories: 0, changes: [], suggestions: ["Plan tomorrow with me"], failures: [] },
           }),
         );
       })().catch(() => {

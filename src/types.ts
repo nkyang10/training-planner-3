@@ -1,4 +1,4 @@
-/** Shared POC3 records. Every record belongs to exactly one runner. */
+/** Shared Milebook records. Every record belongs to exactly one runner. */
 
 import type { MuscleCheckIn } from "./muscles";
 import type { MuscleStatusControl } from "./muscle-status";
@@ -8,7 +8,7 @@ export type { MuscleCheckIn, MuscleStatusControl };
 export type MessageRole = "user" | "assistant";
 
 /**
- * A standalone POC3 account. The profile is deliberately separate from the training rows: the account is created
+ * A standalone Milebook account. The profile is deliberately separate from the training rows: the account is created
  * once (signup), while messages, memories, sessions and activities all hang off the same `userId`.
  */
 export interface UserProfile {
@@ -118,7 +118,7 @@ export interface ActivityWorkoutStep {
 export type ActivityWorkoutStatus = "ok" | "none" | "unavailable";
 
 /**
- * The Garmin workout a completed activity followed, normalized for POC3. Garmin's Personal API returns this through
+ * The Garmin workout a completed activity followed, normalized for Milebook. Garmin's Personal API returns this through
  * `GET /activity-service/activity/{id}/workouts`; the field names of that payload are not fully published, so the
  * mapper accepts the observed shape plus close variants. It is a read-only overlay: it never changes the activity.
  */

@@ -386,7 +386,7 @@ function toDisplayStep(step: ParsedStep): ActivityWorkoutStep {
 }
 
 /**
- * Map one `/activity-service/activity/{id}/workouts` payload to the POC3 record. An empty or unreadable payload is a
+ * Map one `/activity-service/activity/{id}/workouts` payload to the Milebook record. An empty or unreadable payload is a
  * confirmed "none": the run followed no planned workout.
  */
 export function mapGarminWorkout(raw: unknown, activity: Activity, fetchedAt: string): ActivityWorkout {

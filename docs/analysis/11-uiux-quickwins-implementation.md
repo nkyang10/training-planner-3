@@ -1,4 +1,4 @@
-# POC3 - UI/UX quick wins: implementation record
+# Milebook - UI/UX quick wins: implementation record
 
 **Status:** implemented and verified on 2026-11-19; **not deployed** (see section 5). **Parent:** [10-uiux-design-review.md](10-uiux-design-review.md) section 5.
 **Scope:** the 12 quick wins from the review's ready-to-ship table - CSS and client-script level only, no engine, gateway or schema change. Runs on top of the concurrent workflow pass's in-flight tree (see section 4).

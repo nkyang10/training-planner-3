@@ -20,8 +20,8 @@ const sessionCookieFrom = (response: Response): string => {
   const setCookies =
     typeof response.headers.getSetCookie === "function"
       ? response.headers.getSetCookie()
-      : (response.headers.get("set-cookie") ?? "").split(/,\s*(?=poc3sid=)/);
-  return setCookies.find((value) => value.startsWith("poc3sid="))?.split(";")[0] ?? "";
+      : (response.headers.get("set-cookie") ?? "").split(/,\s*(?=milebooksid=)/);
+  return setCookies.find((value) => value.startsWith("milebooksid="))?.split(";")[0] ?? "";
 };
 
 const formBody = (values: Record<string, string>): string => new URLSearchParams(values).toString();
@@ -223,7 +223,7 @@ interface MockGateway {
 
 interface MockGatewayOptions {
   failures?: unknown[];
-  poc3?: Record<string, unknown>;
+  milebook?: Record<string, unknown>;
 }
 
 const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockGateway> => {
@@ -237,18 +237,18 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
       for await (const chunk of request) chunks.push(chunk as Buffer);
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as {
         messages?: Array<{ role?: string; content?: string }>;
-        poc3?: { directive?: unknown };
+        milebook?: { directive?: unknown };
       };
-      seenUser = typeof request.headers["x-poc3-user"] === "string" ? request.headers["x-poc3-user"] : undefined;
+      seenUser = typeof request.headers["x-milebook-user"] === "string" ? request.headers["x-milebook-user"] : undefined;
       seenMessage = body.messages?.[0]?.content;
-      seenDirective = body.poc3?.directive;
+      seenDirective = body.milebook?.directive;
       seenRequestId =
-        typeof request.headers["x-poc3-request-id"] === "string" ? request.headers["x-poc3-request-id"] : undefined;
+        typeof request.headers["x-milebook-request-id"] === "string" ? request.headers["x-milebook-request-id"] : undefined;
       response.writeHead(200, { "content-type": "application/json" });
       response.end(
         JSON.stringify({
           choices: [{ message: { content: "Booked two runs." } }],
-          poc3: {
+          milebook: {
             sessions: 2,
             memories: 1,
             changes: [{ action: "add", toDay: "2026-11-06", title: "Easy 5 km", kind: "easy" }],
@@ -256,7 +256,7 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
             reverted: false,
             suggestions: ["Book my long run for Sunday", "Move Thursday to Friday"],
             failures: options.failures ?? [],
-            ...options.poc3,
+            ...options.milebook,
           },
         }),
       );
@@ -330,7 +330,7 @@ describe("authentication pages", () => {
     expect(signup.status).toBe(303);
     expect(signup.headers.get("location")).toBe("/calendar");
     const signupCookie = cookieFrom(signup.headers.get("set-cookie") ?? "");
-    expect(signupCookie.startsWith("poc3_session=")).toBe(true);
+    expect(signupCookie.startsWith("milebook_session=")).toBe(true);
     expect(handle.store.getUserByUsername("new_runner")?.displayName).toBe("New Runner");
     expect(handle.store.getUserByUsername("new_runner")?.goal).toBe("10k in eight weeks");
 
@@ -1356,7 +1356,7 @@ describe("Garmin connection, notifications and session sync", () => {
     const firstHtml = await first.text();
     expect(firstHtml).toContain('id="notif-btn"');
     const sessionCookie = sessionCookieFrom(first);
-    expect(sessionCookie).toContain("poc3sid=");
+    expect(sessionCookie).toContain("milebooksid=");
     await web.whenSynced();
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(calls.count).toBe(1);
@@ -1386,7 +1386,7 @@ describe("Garmin connection, notifications and session sync", () => {
       redirect: "manual",
     });
     expect(response.status).toBe(303);
-    expect(sessionCookieFrom(response)).toContain("poc3sid=");
+    expect(sessionCookieFrom(response)).toContain("milebooksid=");
     await web.whenSynced();
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(calls.count).toBe(1);
@@ -1600,7 +1600,7 @@ describe("training log", () => {
         store.appendActivity({ ...baseActivity, activityId: "garmin:nov", day: "2026-11-02", title: "November fast", fastest1kSec: 290 });
       },
     });
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/history?view=month&period=2026-11`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     expect(html).toContain("最佳表現");
@@ -1682,7 +1682,7 @@ describe("training log", () => {
       },
     });
 
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/history`, { headers: { cookie: zh } })).text();
     // Load chrome localizes: stat labels, hard/easy split, split label, and the coach review button.
     expect(html).toContain("與教練檢視本週");
@@ -2674,7 +2674,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("failure-actions");
     expect(html).toContain("fetch('/chat'");
     expect(html).toContain("fetch('/chat/history'");
-    expect(html).toContain("x-poc3-request-id");
+    expect(html).toContain("x-milebook-request-id");
     expect(html).toContain("data-coach-intent");
     expect(html).toContain("parseIntent");
     expect(html).toContain("pendingIntent");
@@ -2709,7 +2709,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("before.length * 140");
     expect(html).toContain("app.css?v=");
     // Privacy-safe UI events: components mark the interaction; a host listens for the CustomEvent.
-    expect(html).toContain("poc3:track");
+    expect(html).toContain("milebook:track");
     expect(html).toContain('data-track="coach-open"');
     expect(html).toContain("track('coach-tab'");
     expect(html).toContain('data-track="coach-close"');
@@ -2805,7 +2805,7 @@ describe("in-calendar coach bubble", () => {
 
   it("localizes the dock tabs, footers and close control in Chinese", async () => {
     const { base, cookie } = await start();
-    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: `${cookie}; poc3_lang=zh-HK` } })).text();
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: `${cookie}; milebook_lang=zh-HK` } })).text();
     expect(html).toContain(">對話</button>");
     expect(html).toContain(">狀態<");
     expect(html).toContain(">變更<");
@@ -2835,7 +2835,7 @@ describe("in-calendar coach bubble", () => {
     const { base, cookie, user } = await start({ gatewayUrl: gateway.url });
     const response = await fetch(`${base}/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie, "x-poc3-request-id": "req-web-1" },
+      headers: { "content-type": "application/json", cookie, "x-milebook-request-id": "req-web-1" },
       body: JSON.stringify({ message: "Plan my week" }),
     });
     expect(response.status).toBe(200);
@@ -2887,7 +2887,7 @@ describe("in-calendar coach bubble", () => {
 
   it("builds directives from typed intents and forwards them", async () => {
     const gateway = await startMockGateway({
-      poc3: {
+      milebook: {
         sessions: 0,
         memories: 0,
         changes: [],
@@ -2996,7 +2996,7 @@ describe("in-calendar coach bubble", () => {
 
   it("forwards the prefill block so the typing line can explain a re-prefill (LL-4)", async () => {
     const gateway = await startMockGateway({
-      poc3: {
+      milebook: {
         prefill: {
           epoch: "e".repeat(64),
           refreshed: ["new-activities"],
@@ -3420,7 +3420,7 @@ describe("coach states page", () => {
 
   it("localizes the coaching states page chrome when the language cookie is zh-HK", async () => {
     const { base, cookie } = await start();
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/coach-states`, { headers: { cookie: zh } })).text();
     expect(html).toContain('<html lang="zh-HK" dir="ltr">');
     expect(html).toContain("教練狀態");
@@ -3440,7 +3440,7 @@ describe("coach states page", () => {
         seedCoachState(store, owner.userId, "heat");
       },
     });
-    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const zh = `${cookie}; milebook_lang=zh-HK`;
     const html = await (await fetch(`${base}/coach-states`, { headers: { cookie: zh } })).text();
     // Cantonese label and description must appear.
     expect(html).toContain("高溫");
@@ -3643,7 +3643,7 @@ describe("coach states page", () => {
 
   it("forwards state changes and blocked-state labels to the chat bubble", async () => {
     const gateway = await startMockGateway({
-      poc3: {
+      milebook: {
         states: [{ stateId: "state:web-travel", key: "travel", status: "active", action: "activate" }],
         blockedByStates: ["race_week"],
       },
@@ -3659,7 +3659,7 @@ describe("coach states page", () => {
     });
     const response = await fetch(`${base}/chat`, {
       method: "POST",
-      headers: { "content-type": "application/json", cookie, "x-poc3-request-id": "req-web-state" },
+      headers: { "content-type": "application/json", cookie, "x-milebook-request-id": "req-web-state" },
       body: JSON.stringify({ message: "I am travelling next week" }),
     });
     expect(response.status).toBe(200);
@@ -3799,28 +3799,28 @@ describe("page titles", () => {
     });
 
     const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
-    expect(calendar).toContain("<title>Plan · AI Coach Calendar (3)</title>");
-    expect(calendar).toContain('data-site-name="AI Coach Calendar"');
+    expect(calendar).toContain("<title>Plan · Milebook (3)</title>");
+    expect(calendar).toContain('data-site-name="Milebook"');
     expect(calendar).toContain('data-page-context="Plan"');
     expect(calendar).toContain("document.title =");
 
     const history = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
-    expect(history).toContain("<title>Training log · AI Coach Calendar (3)</title>");
+    expect(history).toContain("<title>Training log · Milebook (3)</title>");
 
     const activity = await (await fetch(`${base}/activity/a1`, { headers: { cookie } })).text();
-    expect(activity).toContain("<title>Training log · Activity · AI Coach Calendar (3)</title>");
+    expect(activity).toContain("<title>Training log · Activity · Milebook (3)</title>");
 
     const day = await (await fetch(`${base}/day/2026-11-06`, { headers: { cookie } })).text();
-    expect(day).toContain("<title>Plan · Fri, 6 Nov 2026 · AI Coach Calendar (3)</title>");
+    expect(day).toContain("<title>Plan · Fri, 6 Nov 2026 · Milebook (3)</title>");
 
     const profile = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
-    expect(profile).toContain("<title>Profile · AI Coach Calendar (3)</title>");
+    expect(profile).toContain("<title>Profile · Milebook (3)</title>");
 
     const states = await (await fetch(`${base}/coach-states`, { headers: { cookie } })).text();
-    expect(states).toContain("<title>Coaching states · AI Coach Calendar (3)</title>");
+    expect(states).toContain("<title>Coaching states · Milebook (3)</title>");
 
     const audit = await (await fetch(`${base}/coach-audit`, { headers: { cookie } })).text();
-    expect(audit).toContain("<title>Coach audit · AI Coach Calendar (3)</title>");
+    expect(audit).toContain("<title>Coach audit · Milebook (3)</title>");
   });
 
   it("shows the view switch inside the app bar only on pages that name a view", async () => {
@@ -3864,14 +3864,14 @@ describe("page titles", () => {
     });
 
     const before = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
-    expect(before).toContain("<title>Profile · AI Coach Calendar (99+)</title>");
+    expect(before).toContain("<title>Profile · Milebook (99+)</title>");
 
     await fetch(`${base}/notifications/read`, { method: "POST", headers: { cookie } });
     const after = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
-    expect(after).toContain("<title>Profile · AI Coach Calendar</title>");
+    expect(after).toContain("<title>Profile · Milebook</title>");
 
     const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
-    expect(calendar).toContain("<title>Plan · AI Coach Calendar</title>");
+    expect(calendar).toContain("<title>Plan · Milebook</title>");
   });
 
   it("shows the site name without a count on signed-out and error pages", async () => {
@@ -3880,13 +3880,13 @@ describe("page titles", () => {
     });
 
     const login = await (await fetch(`${base}/login`)).text();
-    expect(login).toContain("<title>Sign in · AI Coach Calendar</title>");
+    expect(login).toContain("<title>Sign in · Milebook</title>");
 
     const signup = await (await fetch(`${base}/signup`)).text();
-    expect(signup).toContain("<title>Create an account · AI Coach Calendar</title>");
+    expect(signup).toContain("<title>Create an account · Milebook</title>");
 
     const missing = await (await fetch(`${base}/missing-page`, { headers: { cookie } })).text();
-    expect(missing).toContain("<title>Not found · AI Coach Calendar (1)</title>");
+    expect(missing).toContain("<title>Not found · Milebook (1)</title>");
     expect(missing).not.toContain("<title>Plan · Not found");
   });
 });

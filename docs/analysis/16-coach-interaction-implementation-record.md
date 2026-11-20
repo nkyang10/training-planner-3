@@ -1,4 +1,4 @@
-# POC3 - coach-interaction implementation record: the peer voice, the cached prefill and the silent profile
+# Milebook - coach-interaction implementation record: the peer voice, the cached prefill and the silent profile
 
 **Status:** implemented and fixture-verified on 2026-11-20. **Scope:** what actually shipped from
 [15-coach-interaction-llm-plan.md](15-coach-interaction-llm-plan.md) (LL-1..LL-6), in which files, with which
@@ -38,7 +38,7 @@ owner decisions, and with what verification. The plan's findings (CI-01..CI-09) 
   purely appends. Snapshots are byte-frozen rows (`prompt_snapshots`, newest 3); the assembly compacts only past
   a ~8K-token budget, dropping oldest messages first and never below ten. The staleness contract is a rule: the
   newest snapshot is authoritative, older ones are history, and the runner's newer words beat the snapshot. The
-  completion meta gains `poc3.prefill` (`epoch`, `refreshed`, `compacted`, `today`, `latestChangeSetId`,
+  completion meta gains `milebook.prefill` (`epoch`, `refreshed`, `compacted`, `today`, `latestChangeSetId`,
   `latestActivityId`). `src/coach.ts` (`coachEpoch`, `epochReasons`), `src/gateway.ts`, `src/store.ts`,
   `src/types.ts`.
 - **LL-4 - the loading line with a reason.** The typing line keeps the bare ellipsis for cached-append turns and
@@ -72,7 +72,7 @@ owner decisions, and with what verification. The plan's findings (CI-01..CI-09) 
   directive kind; assembly stamping, snapshot interleaving, suffix byte-reproduction, prefix identity across a
   growing conversation, and budget compaction (fixture level); gateway-level - one snapshot on the first turn,
   pure append with a byte-identical prompt prefix when nothing changed (the queued prompts' prefix assertion),
-  `calendar-changed` and `new-day` epoch bumps, `poc3.prefill` contents, silent preference application, the
+  `calendar-changed` and `new-day` epoch bumps, `milebook.prefill` contents, silent preference application, the
   two-message zh-Hant heuristic (and no single-message false positive), the comment-only memory-write gate, and
   directive-suffix persistence reproduced in the next turn's prompt; store-level - snapshot append/prune/oldest
   first, preferences patch semantics, memory dedupe and the 24-cap, directive-suffix listing; web-level - the
@@ -93,7 +93,7 @@ owner decisions, and with what verification. The plan's findings (CI-01..CI-09) 
 ## 4. Honest deviations from the plan
 
 - The plan's reason list included `conversation-compacted` as a predicted line; compaction is reported in
-  `poc3.prefill.compacted` and on the audit page, but the typing line does not predict it (the client cannot
+  `milebook.prefill.compacted` and on the audit page, but the typing line does not predict it (the client cannot
   know the token budget ahead of the turn). The plan's `memories-updated` reason exists but is likewise not
   client-predictable; the server meta still records both.
 - The plan sketched segment B (profile) and segment C (facts) as separate messages; they ship as one snapshot
@@ -103,9 +103,9 @@ owner decisions, and with what verification. The plan's findings (CI-01..CI-09) 
 
 ## 5. Deployment and live verification
 
-Deployed with `tools/deploy-task.ps1` (the scheduled `\POC3-Live-Deploy` task, so the live process tree belongs
+Deployed with `tools/deploy-task.ps1` (the scheduled `\Milebook-Live-Deploy` task, so the live process tree belongs
 to Task Scheduler): gateway **:8092** and calendar **:8093** healthy, `app.css?v=28`, pid recorded in
-`data/poc3-deploy.log` (2026-11-20). One operational note for future deploys: launching `pnpm deploy:live`
+`data/milebook-deploy.log` (2026-11-20). One operational note for future deploys: launching `pnpm deploy:live`
 inside a harness background job is fine, but killing that job reaps the freshly started live process with it -
 use the scheduled task instead.
 
@@ -115,12 +115,12 @@ use the scheduled task instead.
   conversational Traditional Chinese at **99 characters**, one question, three tappable Chinese suggestion
   chips, no markdown; the second at **68 characters**. The 480-character voice contract visibly shaped the
   replies.
-- `poc3.prefill` end to end: turn 1 reported `refreshed: ["first-turn"]`; turn 2 reported
+- `milebook.prefill` end to end: turn 1 reported `refreshed: ["first-turn"]`; turn 2 reported
   `["memories-updated", "profile-updated"]` - the model's silent memory write plus the two-message zh-Hant
   heuristic, each named in the loading-line vocabulary.
 - The silently learned profile: `/coach-audit` shows **zh-Hant** under "What the coach has learned about you"
   and the snapshot window with its epoch reason chips. The runner's own chat never mentioned any of it.
-- The dock script ships the wait-line strings and the `poc3.coachPrefill` prediction hook on the live calendar
+- The dock script ships the wait-line strings and the `milebook.coachPrefill` prediction hook on the live calendar
   page, in both locales.
 - Not yet live-measured: the provider's own cache-hit effect (the gateway's `usage` passthrough is still
   stubbed to zeros); the byte-stability that makes caching possible is proven at the fixture and probe level.

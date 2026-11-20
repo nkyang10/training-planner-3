@@ -1,23 +1,23 @@
 # Tabs, panes and overlays: a research review of layout grammar for dense planning interfaces
 
-**Evidence review and heuristic audit of the POC3 coach dock and page regroup**
+**Evidence review and heuristic audit of the Milebook coach dock and page regroup**
 
 **Status:** secondary research + heuristic audit (no primary user study yet). P0 and P1/P2 implementation notes were
 added after the review (see §9.3 and §9.4). **Date:** 2026-11-20.
-**Scope:** web app, 390–1440 px, en / zh-HK, WCAG 2.2 AA. **Prepared for:** the POC3 calendar-first running coach.
+**Scope:** web app, 390–1440 px, en / zh-HK, WCAG 2.2 AA. **Prepared for:** the Milebook calendar-first running coach.
 
 ---
 
 ## Executive summary
 
-The evidence supports the direction shipped in POC3: a persistent coach should **reflow the page** rather than cover it, and page content should be **grouped by the job the runner is doing**. The dock, the Chat / States / Changes grouping, the history Days / Review switch and the activity and muscle two-column layouts all match documented guidance. The measured result is a large reduction in covered content and page length (overlap 242,572 px² → 0; history 2,198 → 1,547 px; states 1,722 → 1,231 px; activity 2,233 → 1,647 px).
+The evidence supports the direction shipped in Milebook: a persistent coach should **reflow the page** rather than cover it, and page content should be **grouped by the job the runner is doing**. The dock, the Chat / States / Changes grouping, the history Days / Review switch and the activity and muscle two-column layouts all match documented guidance. The measured result is a large reduction in covered content and page length (overlap 242,572 px² → 0; history 2,198 → 1,547 px; states 1,722 → 1,231 px; activity 2,233 → 1,647 px).
 
 The evidence also sets limits that the current implementation does not yet fully respect:
 
 1. **Tabs are not a density cure.** They hide content, add a click and a memory burden, and are the wrong control when users must compare sections, read in order, or notice safety-relevant status. They work best for **2–4 clearly labelled, mutually exclusive sections**, with the most important section first and visible active state [6][16][17].
 2. **Side-by-side is justified by comparison or reference, not by page length.** Two columns help when the runner needs both sets of information in view; they hurt when the runner must integrate sources that should have been one unit (split-attention effect) [3][38]. They must reflow without two-dimensional scrolling at 320 CSS px [3].
 3. **A persistent assistant should be non-modal.** Modal overlays interrupt the task, hide context and force recovery; they are appropriate for short, focused, high-consequence tasks, not for ongoing assistance [8][21][29][31]. If an overlay is used at narrow widths, focus must not be obscured: trap or inert the background, close on Escape and restore focus [1][4].
-4. **POC3 had three material gaps**, all fixable without another redesign:
+4. **Milebook had three material gaps**, all fixable without another redesign:
    - the drawer/sheet locked scroll but did **not** make the background inert, so keyboard focus could move behind the overlay (WCAG 2.4.11 risk) [4];
    - the in-page `.seg-tabs` control was a **radio group / segmented control**, not the ARIA tabs pattern, while the dock's tabs are ARIA tabs — the same visual grammar behaved differently for keyboard and screen-reader users [2][30];
    - the history **Review** tab hid training load, a safety-relevant metric, with no always-visible load summary [6][9][15].
@@ -37,7 +37,7 @@ This review answers four questions:
 - **RQ3.** Which accessibility semantics and responsive behaviours are required for those choices to be usable by keyboard and screen-reader users?
 - **RQ4.** How should the resulting design be validated empirically?
 
-The scope is the POC3 web interface: a calendar-first running coach with a persistent assistant, a training log, activity detail, muscle check-ins and coaching states. Native mobile apps, visual branding and dark mode are out of scope. The review covers English and zh-HK labels because tab width and label length are part of the layout problem.
+The scope is the Milebook web interface: a calendar-first running coach with a persistent assistant, a training log, activity detail, muscle check-ins and coaching states. Native mobile apps, visual branding and dark mode are out of scope. The review covers English and zh-HK labels because tab width and label length are part of the layout problem.
 
 ---
 
@@ -55,9 +55,9 @@ This is a **narrative literature review plus a heuristic audit**, not a systemat
 
 **Inclusion:** English-language standards, design-system documentation, research syntheses and peer-reviewed work; sources current in 2024–2026, with classic HCI/psychology work where it remains the primary reference. **Exclusion:** undated listicles, marketing pages and vendor comparisons without a design rationale.
 
-**Analysis:** thematic synthesis, then a structured heuristic audit of the POC3 implementation against the resulting rules. The audit uses the rendered pages and measurements recorded in [the layout review](13-layout-review.md), not a new user sample.
+**Analysis:** thematic synthesis, then a structured heuristic audit of the Milebook implementation against the resulting rules. The audit uses the rendered pages and measurements recorded in [the layout review](13-layout-review.md), not a new user sample.
 
-**Limitations of the method** are stated in §12. In particular, most evidence comes from web navigation, content pages and instructional design, not from persistent AI coach panels in a calendar app. Transfer to POC3 is an inference that needs empirical confirmation.
+**Limitations of the method** are stated in §12. In particular, most evidence comes from web navigation, content pages and instructional design, not from persistent AI coach panels in a calendar app. Transfer to Milebook is an inference that needs empirical confirmation.
 
 ---
 
@@ -210,9 +210,9 @@ Side-by-side layouts must also preserve **meaningful reading order** when they c
 
 Material 3’s adaptive layout guidance uses window size classes: compact, medium, expanded, large and extra-large. Large and extra-large begin at **1200 dp**; expanded covers roughly **840–1199 dp** [23][25]. Material’s navigation-drawer guidance uses **standard drawers in expanded widths 840–1199 dp** and modal drawers primarily in compact and medium widths [20]. Material’s navigation rail is the mid-sized-device counterpart: a narrow side rail with 3–7 destinations [22]. It is a navigation control, not a content pane, but it shows the same principle: at intermediate widths, a persistent side surface can be cheaper than an overlay. Apple’s split views manage multiple adjacent panes, with sidebars for deeper hierarchies and tab bars at the bottom edge for compact navigation [26]–[28].
 
-These are starting points, not universal truths. The right breakpoint depends on **content density**, not only device class. A 340 px coach column at 1024 px would leave about 77 px per calendar cell in a seven-column month grid, which is below a usable cell width; that is why POC3 overlays at 1024 and docks at 1200. The design-system classes explain the neighbourhood; the content explains the exact line.
+These are starting points, not universal truths. The right breakpoint depends on **content density**, not only device class. A 340 px coach column at 1024 px would leave about 77 px per calendar cell in a seven-column month grid, which is below a usable cell width; that is why Milebook overlays at 1024 and docks at 1200. The design-system classes explain the neighbourhood; the content explains the exact line.
 
-#### 5.2.5 POC3 application
+#### 5.2.5 Milebook application
 
 | Surface | Breakpoint | Layout | Why it matches the evidence |
 |---|---|---|---|
@@ -237,7 +237,7 @@ Material’s side sheets make the same distinction in component form: **standard
 
 WCAG 2.2 SC 2.4.11 (Focus Not Obscured, Minimum, AA) requires that when a component receives keyboard focus, it is not entirely hidden by author-created content [4]. The Understanding document discusses persistent user-opened content explicitly: a chat window is a persistent disclosure that “has the potential to fail” the criterion if it covers the focused item. It lists ways the pattern can pass: the additional content **displaces** existing content (accordion), existing content **reflows** (the WCAG site’s own pop-out sidebar), focus is constrained to the new content until dismissal, the disclosure opens into an unpopulated area, or the content can be hidden/collapsed by a keyboard command such as Escape [4]. A properly constructed modal dialog passes because it takes focus and constrains interaction [4].
 
-This is the most important accessibility finding for POC3’s narrow-width drawer and phone sheet. The page behind the overlay is scroll-locked (`body.coach-open { overflow: hidden }`), but it is not `inert`, and the panel is not a modal dialog. A keyboard user can tab from the panel into the obscured page behind it. At 390 px the sheet covers essentially the whole viewport, so a focused background control can be entirely hidden. That is a 2.4.11 risk, and it also weakens the “visible close” benefit: the user may not know where focus went.
+This is the most important accessibility finding for Milebook’s narrow-width drawer and phone sheet. The page behind the overlay is scroll-locked (`body.coach-open { overflow: hidden }`), but it is not `inert`, and the panel is not a modal dialog. A keyboard user can tab from the panel into the obscured page behind it. At 390 px the sheet covers essentially the whole viewport, so a focused background control can be entirely hidden. That is a 2.4.11 risk, and it also weakens the “visible close” benefit: the user may not know where focus went.
 
 The fix is not necessarily to make the panel modal. The dock is a non-modal assistant by design. At narrow widths, the cleanest options are:
 
@@ -245,7 +245,7 @@ The fix is not necessarily to make the panel modal. The dock is a non-modal assi
 - implement a **focus trap** in the panel and restore focus to the launcher on close; or
 - make the overlay a **proper modal dialog** (`role="dialog"`, `aria-modal="true"`, focus moved in, Escape, focus return), accepting the modality cost [2][4][8].
 
-WCAG also warns that fixed/sticky content can obstruct zoomed content and recommends making such content static or dismissible at smaller sizes [3]. The POC3 drawer is fixed; the sheet is fixed; both should be tested at 200% and 400% zoom.
+WCAG also warns that fixed/sticky content can obstruct zoomed content and recommends making such content static or dismissible at smaller sizes [3]. The Milebook drawer is fixed; the sheet is fixed; both should be tested at 200% and 400% zoom.
 
 #### 5.3.3 When an overlay is the right answer
 
@@ -261,7 +261,7 @@ Apple’s modality guidance is blunt: present content modally only when there is
 
 #### 5.3.4 Invocation and dismissal as first-class design
 
-Microsoft’s Guidelines for Human-AI Interaction include **G7: Support efficient invocation** and **G8: Support efficient dismissal** [39][40]. For a persistent assistant, these are layout requirements: the launcher must be easy to find and reach, opening must be one action, closing must be one action, and the state must be obvious. POC3’s launcher, visible close, Escape handling and focus return are aligned. The missing piece is the disclosure semantics: the launcher does not currently expose `aria-expanded` or `aria-controls`, so assistive technology cannot tell whether the panel is open or what it controls. That is a small, high-value fix.
+Microsoft’s Guidelines for Human-AI Interaction include **G7: Support efficient invocation** and **G8: Support efficient dismissal** [39][40]. For a persistent assistant, these are layout requirements: the launcher must be easy to find and reach, opening must be one action, closing must be one action, and the state must be obvious. Milebook’s launcher, visible close, Escape handling and focus return are aligned. The missing piece is the disclosure semantics: the launcher does not currently expose `aria-expanded` or `aria-controls`, so assistive technology cannot tell whether the panel is open or what it controls. That is a small, high-value fix.
 
 ---
 
@@ -273,7 +273,7 @@ Tabs are one implementation of progressive disclosure. The evidence in §5.1 sho
 
 The accordion evidence adds a second caution: hiding content behind headings **diminishes awareness** and adds interaction cost [9]. The NN/g eyetracking result (about 80% of attention above the fold, 20% below) is often misused to justify hiding everything below the fold; the same article says users do scroll when the content is relevant [9]. The practical rule is to **prioritise**, not to hide.
 
-For POC3, this produces a specific critique of the history Review tab. Training load is not merely “advanced”; it is a safety-relevant signal (ramp, ACWR, hard/easy split). Putting it behind a tab and leaving only runs/distance/time/longest visible reduces awareness of the very thing the coach may warn about. The fix is not to remove the tab; it is to keep a **compact load summary** in the always-visible summary row (for example, a “Load 320 · rising” chip) and let the Review tab hold the explanation. That preserves the tab’s density benefit without hiding the signal.
+For Milebook, this produces a specific critique of the history Review tab. Training load is not merely “advanced”; it is a safety-relevant signal (ramp, ACWR, hard/easy split). Putting it behind a tab and leaving only runs/distance/time/longest visible reduces awareness of the very thing the coach may warn about. The fix is not to remove the tab; it is to keep a **compact load summary** in the always-visible summary row (for example, a “Load 320 · rising” chip) and let the Review tab hold the explanation. That preserves the tab’s density benefit without hiding the signal.
 
 ---
 
@@ -281,7 +281,7 @@ For POC3, this produces a specific critique of the history Review tab. Training 
 
 ### 6.1 Breakpoints are content hypotheses
 
-Material’s window size classes are a vocabulary, not a prescription: compact, medium, expanded, large, extra-large; layouts typically move from a single pane to two or three panes as the window grows [23][24]. The exact transition points are opinionated and platform-specific. POC3 uses 1200 px for the dock because that is where a 340 px column leaves a usable month grid; it uses 1024 px for activity and muscle columns because those pages can afford narrower cards; it uses 720 px for the phone sheet because that is where a two-column workspace stops being credible.
+Material’s window size classes are a vocabulary, not a prescription: compact, medium, expanded, large, extra-large; layouts typically move from a single pane to two or three panes as the window grows [23][24]. The exact transition points are opinionated and platform-specific. Milebook uses 1200 px for the dock because that is where a 340 px column leaves a usable month grid; it uses 1024 px for activity and muscle columns because those pages can afford narrower cards; it uses 720 px for the phone sheet because that is where a two-column workspace stops being credible.
 
 The lesson from the design systems is to **name the widths and test the content at each one**, not to copy a device category. A calendar grid has a hard minimum cell width; a card list does not. The breakpoint should be derived from the content’s minimum viable width, then verified with users.
 
@@ -289,7 +289,7 @@ The lesson from the design systems is to **name the widths and test the content 
 
 WCAG 2.2 SC 1.4.10 requires content to reflow at a width equivalent to **320 CSS pixels** (or 256 px height for horizontal writing) without two-dimensional scrolling, except for content that genuinely needs two-dimensional layout [3]. The Understanding document gives concrete techniques: media queries and grid CSS to reflow columns (C32), flexbox (C31), max-width/flexbox for labels and inputs (C38), and making sticky headers/footers static at small sizes (C34) [3]. It also warns that fixed-position or sticky content can obscure zoomed content and recommends static positioning or a user toggle at smaller sizes [3].
 
-POC3 has been captured at 390 px but not yet at 320 px or 400% zoom. The CSS suggests it will reflow (the app shell is a single column below 1200; the activity/muscle grids collapse at 1024; the sheet is inset 6 px), but this is a hypothesis until tested. The tab labels wrap (`flex-wrap: wrap`), which avoids horizontal overflow but can produce a two-row segmented control; that is acceptable if it remains readable and the active state is clear.
+Milebook has been captured at 390 px but not yet at 320 px or 400% zoom. The CSS suggests it will reflow (the app shell is a single column below 1200; the activity/muscle grids collapse at 1024; the sheet is inset 6 px), but this is a hypothesis until tested. The tab labels wrap (`flex-wrap: wrap`), which avoids horizontal overflow but can produce a two-row segmented control; that is acceptable if it remains readable and the active state is clear.
 
 ### 6.3 Sticky content and focus
 
@@ -303,7 +303,7 @@ The dock is sticky at ≥1200 px. Sticky content is not inherently a problem whe
 
 ### 6.4 Container queries versus viewport queries
 
-The activity and muscle columns depend on the width of the **content area**, not the viewport. If the coach dock is open, the content area is 340 px narrower; a viewport breakpoint of 1024 px can therefore put two columns into a space that is really 684 px wide. POC3 currently uses viewport media queries. A more robust approach is a **container query** on the page content, or a `body.coach-open` override that raises the column breakpoint when the dock is open. This is a concrete responsive bug risk: at 1024 px with the dock open, the activity columns may be too narrow. The layout review captured 1024 with the dock open for the calendar, but not for activity/muscle; that is a gap to test.
+The activity and muscle columns depend on the width of the **content area**, not the viewport. If the coach dock is open, the content area is 340 px narrower; a viewport breakpoint of 1024 px can therefore put two columns into a space that is really 684 px wide. Milebook currently uses viewport media queries. A more robust approach is a **container query** on the page content, or a `body.coach-open` override that raises the column breakpoint when the dock is open. This is a concrete responsive bug risk: at 1024 px with the dock open, the activity columns may be too narrow. The layout review captured 1024 with the dock open for the calendar, but not for activity/muscle; that is a gap to test.
 
 ---
 
@@ -324,13 +324,13 @@ Do not leave the current hybrid undocumented: it is usable for sighted keyboard 
 
 ### 7.2 Keyboard and focus
 
-The APG keyboard contract is the baseline for tabs [2]. For the dock, POC3 implements arrow keys, Home/End, roving tabindex and Escape-to-launcher; that is aligned. For the page segmented controls, native radios provide Tab into the group and arrow selection, but not Home/End and not the tablist announcement. If the page control is kept as radios, that is acceptable for a segmented control; if it is meant to be tabs, it is incomplete.
+The APG keyboard contract is the baseline for tabs [2]. For the dock, Milebook implements arrow keys, Home/End, roving tabindex and Escape-to-launcher; that is aligned. For the page segmented controls, native radios provide Tab into the group and arrow selection, but not Home/End and not the tablist announcement. If the page control is kept as radios, that is acceptable for a segmented control; if it is meant to be tabs, it is incomplete.
 
 Focus return is implemented for the dock (Escape returns to the launcher), which is good. The drawer/sheet background is not inert, so focus can leave the panel into obscured content; that is the P0 gap. The launcher should also expose `aria-expanded` and `aria-controls` so the open/closed state is programmatic, not only visual.
 
 ### 7.3 Target size, contrast and motion
 
-WCAG 2.2 SC 2.5.8 requires pointer targets to be at least **24 × 24 CSS pixels**, or to have sufficient spacing; 2.5.5 (Enhanced) uses **44 × 44** [5]. POC3’s segmented labels are roughly 30 px high with 14 px horizontal padding; the dock tabs are similar; the close button is 32 px. These meet the 24 px minimum but not the 44 px enhanced target. That is acceptable for a desktop-first app, but the phone sheet should be tested with a thumb; 44 px is the safer target for the primary close and tab controls.
+WCAG 2.2 SC 2.5.8 requires pointer targets to be at least **24 × 24 CSS pixels**, or to have sufficient spacing; 2.5.5 (Enhanced) uses **44 × 44** [5]. Milebook’s segmented labels are roughly 30 px high with 14 px horizontal padding; the dock tabs are similar; the close button is 32 px. These meet the 24 px minimum but not the 44 px enhanced target. That is acceptable for a desktop-first app, but the phone sheet should be tested with a thumb; 44 px is the safer target for the primary close and tab controls.
 
 Contrast is not audited in this review. The active segmented label uses a white surface and a shadow, not colour alone, so it does not rely solely on colour to convey state (WCAG 1.4.1) [1]. The focus ring is ember on a light surface; it should be checked against 1.4.11 non-text contrast and 2.4.13 focus appearance.
 
@@ -353,7 +353,7 @@ The app supports en and zh-HK. Chinese labels are usually shorter, but other loc
 
 Microsoft’s 18 Guidelines for Human-AI Interaction are an evidence-based synthesis of more than 20 years of research [39][40]. The ones most relevant to layout are:
 
-| Guideline | Layout implication in POC3 |
+| Guideline | Layout implication in Milebook |
 |---|---|
 | **G1. Make clear what the system can do** | The launcher label and the empty chat state should say what the coach can change and what it cannot. |
 | **G2. Make clear how well it can do it** | The panel should not imply certainty; the existing “proposed” vs “active” state distinction helps. |
@@ -367,7 +367,7 @@ Google’s PAIR guidebook covers adjacent ground for mental models, explainabili
 
 ### 8.2 The side-panel pattern
 
-Industry pattern collections describe the AI assistant side panel as a persistent, resizable panel for copilot experiences and contextual assistance: assistant-ui ships a resizable assistant sidebar [41], and practitioner taxonomies list side-panel chat as a core copilot pattern [42]. The pattern is not a modal chat window; it is a **secondary workspace** that coexists with the primary task. That matches the dock, not the overlay. The pattern also implies that the panel should be **resizable or collapsible** when the main task needs width; POC3’s desktop dock is fixed at 340 px, with a minimize control. A future improvement is a drag handle or a small/medium/large width preference, but that is a refinement, not a correctness issue.
+Industry pattern collections describe the AI assistant side panel as a persistent, resizable panel for copilot experiences and contextual assistance: assistant-ui ships a resizable assistant sidebar [41], and practitioner taxonomies list side-panel chat as a core copilot pattern [42]. The pattern is not a modal chat window; it is a **secondary workspace** that coexists with the primary task. That matches the dock, not the overlay. The pattern also implies that the panel should be **resizable or collapsible** when the main task needs width; Milebook’s desktop dock is fixed at 340 px, with a minimize control. A future improvement is a drag handle or a small/medium/large width preference, but that is a refinement, not a correctness issue.
 
 ### 8.3 What the AI guidance adds to the layout debate
 
@@ -375,7 +375,7 @@ The AI guidance shifts the emphasis from “where does the panel go” to **“h
 
 ---
 
-## 9. Heuristic audit of POC3
+## 9. Heuristic audit of Milebook
 
 The audit uses the rendered pages, the DOM probes and the measurements in [the layout review](13-layout-review.md). Severity: **P0** blocks accessibility or safe use; **P1** harms discoverability or task success; **P2** polish/measurement.
 
@@ -396,7 +396,7 @@ The audit uses the rendered pages, the DOM probes and the measurements in [the l
 | 13 | 320 px and long-label reflow — **fixed 2026-11-20** | [3][18]; 320 px and pseudo-locale show 0 overflow | **Fixed** | 320 px is the 400% reflow equivalent at 1280; labels wrap and stack |
 | 14 | Activity/muscle breakpoint was viewport-based — **fixed 2026-11-20** | [23]; dock open reduces content width | **Fixed** | `body.coach-open` override stacks at 1024–1199 px; closed keeps columns |
 | 15 | Mobile activity figure is ~3,500 px down — **fixed 2026-11-20** | [11][36]; interaction cost | **Fixed** | “Muscles” chip in the head jumps to `#muscles-worked` |
-| 16 | No tab-switch/scroll-depth analytics — **hook shipped 2026-11-20** | [11]; cannot measure the layout hypothesis | **Fixed (hook)** | `poc3:track` CustomEvent + `data-track` taxonomy; collector/consent remains |
+| 16 | No tab-switch/scroll-depth analytics — **hook shipped 2026-11-20** | [11]; cannot measure the layout hypothesis | **Fixed (hook)** | `milebook:track` CustomEvent + `data-track` taxonomy; collector/consent remains |
 | 17 | Reduced motion is covered globally | [1]; `prefers-reduced-motion` block | Pass | Keep |
 | 18 | Target sizes meet 24 px, not 44 px | [5]; labels ~30 px, close 32 px | Pass with caveat | Use 44 px for phone close/tab targets |
 
@@ -442,7 +442,7 @@ The remaining codeable recommendations shipped after the P0 pass:
 - **1024 px density.** With the coach open at 1024–1199 px, activity and muscle stack (activity 988 px single column; muscle 988 px slots) instead of squeezing into ~330 px columns; with the coach closed they keep two columns (activity 524/446; muscle 360/610/360). At 1280 with the coach open they stay side-by-side (activity 459/391; muscle 360/490/360). Evidence: [1024 coach-open columns](../design/layout-review/tablet-columns-coach.png).
 - **Mobile Muscles jump.** The activity head now has a “Muscles” chip that jumps to `#muscles-worked` (`tabindex="-1"`), shortening the ~3,500 px path on the phone.
 - **Long-label reflow.** A 320 px pseudo-locale probe wraps and stacks the segmented labels with **0 horizontal overflow**; `.seg-labels` is a wrapping flex row and `.seg-label` allows `overflow-wrap: anywhere`.
-- **Privacy-safe analytics hook.** Components mark interactions with `data-track`; `renderTrackScript` dispatches `poc3:track` CustomEvents on `window` with `{ name, value, page }`. It sends nothing over the network and carries no health, chat or state text. Events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`.
+- **Privacy-safe analytics hook.** Components mark interactions with `data-track`; `renderTrackScript` dispatches `milebook:track` CustomEvents on `window` with `{ name, value, page }`. It sends nothing over the network and carries no health, chat or state text. Events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`.
 
 Probes confirm 0 horizontal overflow on the 320 px and 1024 px pages, Review/Set deep links, one `page-tab` event per change, and a `coach-tab` event for a keyboard ArrowRight switch. The remaining work is empirical: the study in §11, a production collector with consent, and a 200% text-zoom/screen-reader pass.
 
@@ -517,14 +517,14 @@ Probes confirm 0 horizontal overflow on the 320 px and 1024 px pages, Review/Set
 - Event taxonomy and dashboards should answer “which layout helps which job”, not “how many clicks”.
 - Do not send health details, chat text or state notes to analytics; aggregate and anonymise.
 - Obtain consent for sessions; allow deletion; follow the product’s privacy posture.
-- **Shipped hook (2026-11-20):** components mark interactions with `data-track`; `renderTrackScript` dispatches a `poc3:track` CustomEvent on `window` with `{ name, value, page }`. The event never leaves the page and carries no health, chat or state text. Current events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`. A production collector, consent gate and retention policy are still product work; the hook is the measurement seam, not a tracking service.
+- **Shipped hook (2026-11-20):** components mark interactions with `data-track`; `renderTrackScript` dispatches a `milebook:track` CustomEvent on `window` with `{ name, value, page }`. The event never leaves the page and carries no health, chat or state text. Current events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`. A production collector, consent gate and retention policy are still product work; the hook is the measurement seam, not a tracking service.
 
 ---
 
 ## 12. Limitations
 
 - **Secondary research only.** No primary user data were collected for this report; the audit is heuristic.
-- **Design-system guidance is consensus, not controlled evidence.** Material, Apple, Fluent, Carbon and GOV.UK encode platform conventions and research, but they are not experiments on POC3’s users.
+- **Design-system guidance is consensus, not controlled evidence.** Material, Apple, Fluent, Carbon and GOV.UK encode platform conventions and research, but they are not experiments on Milebook’s users.
 - **Split-attention evidence comes from learning.** The Sweller/Chandler work is about instructional materials, not web dashboards; its transfer to UI layout is an analogy, not a proof.
 - **NN/g articles are expert synthesis.** They are widely used and often grounded in eyetracking, but they are not a substitute for a local study.
 - **WCAG is accessibility, not usability.** Conformance does not prove the layout is efficient or pleasant; it only removes known barriers.
@@ -536,7 +536,7 @@ Probes confirm 0 horizontal overflow on the 320 px and 1024 px pages, Review/Set
 
 ## 13. Conclusion
 
-The evidence supports the **layout grammar** POC3 shipped: group by job, keep primary content visible, use tabs for a few mutually exclusive sections, use side-by-side only for peer content that must be referenced together, and keep persistent assistance non-modal. The measured reductions are real and in the expected direction.
+The evidence supports the **layout grammar** Milebook shipped: group by job, keep primary content visible, use tabs for a few mutually exclusive sections, use side-by-side only for peer content that must be referenced together, and keep persistent assistance non-modal. The measured reductions are real and in the expected direction.
 
 The remaining work is not “more regrouping”. It is:
 
@@ -598,7 +598,7 @@ All URLs accessed 2026-11-20. Evidence tier in brackets.
 
 ---
 
-## Appendix A — POC3 measurements used in the audit
+## Appendix A — Milebook measurements used in the audit
 
 Source: [the layout review](13-layout-review.md), headless-Chrome captures at 1280×900, 1024×768 and 390×844.
 

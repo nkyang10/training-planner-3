@@ -1,4 +1,4 @@
-<h1 align="center">??POC3</h1>
+<h1 align="center">⚡ Milebook</h1>
 
 <p align="center">
   <strong>A calendar-first AI coach for runners.</strong><br>
@@ -19,12 +19,12 @@
 </p>
 
 <p align="center">
-  <img src="docs/design/calendar-demo.png" alt="POC3 November calendar with fake demo data, colored plan rows, green run rows and paired green/purple run+workout rows" width="900">
+  <img src="docs/design/calendar-demo.png" alt="Milebook November calendar with fake demo data, colored plan rows, green run rows and paired green/purple run+workout rows" width="900">
 </p>
 
 <p align="center"><em>Planned rows are colored by kind; a green-and-purple row pairs a recorded run with the Garmin workout it followed. Every row adds the amount its title omits, so repeated titles stay distinct. All screenshots use a fake demo runner and synthetic training data.</em></p>
 
-> **POC3** is a proof of concept: a private training calendar owned by the system, with an LLM coach behind a validating
+> **Milebook** (formerly POC3) is a proof of concept: a private training calendar owned by the system, with an LLM coach behind a validating
 > gateway. Accounts are independent; every runner keeps their own profile, plan, training log and coach conversation.
 
 **Stack:** TypeScript 蝜?Node.js 24 蝜?SQLite (`node:sqlite`) 蝜?vanilla HTML/CSS/JS 蝜?Vitest 蝜?OpenAI-compatible gateway.
@@ -36,12 +36,12 @@
 ```powershell
 pnpm install
 
-$env:POC3_AUTH_SECRET='<long random secret>'
-$env:POC3_DB='sqlite:data/poc3.sqlite'
-$env:POC3_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
-$env:POC3_MODEL_API_KEY='<model key>'
-$env:POC3_MODEL_NAME='dgx/general'
-$env:POC3_MAX_ATTEMPTS='2'
+$env:MILEBOOK_AUTH_SECRET='<long random secret>'
+$env:MILEBOOK_DB='sqlite:data/milebook.sqlite'
+$env:MILEBOOK_MODEL_BASE_URL='http://192.168.1.202:8102/v1'
+$env:MILEBOOK_MODEL_API_KEY='<model key>'
+$env:MILEBOOK_MODEL_NAME='dgx/general'
+$env:MILEBOOK_MAX_ATTEMPTS='2'
 pnpm dev
 ```
 
@@ -55,7 +55,7 @@ PowerShell is shown above; on macOS/Linux use `export NAME=value` instead.
 | Gateway health | **http://127.0.0.1:8090/health** |
 
 The live deployment runs the calendar on **:8093** and the gateway on **:8092**; the defaults above are **:8091/:8090**.
-See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for every variable.
+See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference) for every variable.
 
 ## Commands
 
@@ -165,7 +165,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 - **Same grammar on four pages (2026-11-20):** the training log is **Days / Review** tabs with the week first (2,198 → 1,547 px); coaching states are **Current / Set a state / History** tabs (1,722 → 1,231 px); the activity detail pairs program/metrics/splits beside muscles/zones/laps and puts **Ask coach in the head** (2,233 → 1,647 px); the muscle page sets a **status/readings rail beside the 3D check-in figure** from 1024 px. The shared `.seg-tabs` control is radio inputs + sibling CSS, so it works without JavaScript; arrow keys move the group natively.
 - **Layout research (2026-11-20):** the evidence behind tabs vs side-by-side vs overlays — WCAG 2.2/APG semantics, Material/Apple/Fluent/Carbon/GOV.UK guidance, NN/g and human-AI research — plus a heuristic audit and an evaluation plan, is in [the UI/UX layout research](docs/analysis/14-uiux-layout-research.md).
 - **P0 accessibility pass (2026-11-20):** the coach launcher now exposes `aria-expanded`/`aria-controls` and the panel is a named region. Below 1200 px the open panel sets `inert` on the page main and footer; at ≤720 px it also inerts the app bar (the sheet covers it), with resize sync and Escape/close returning focus to the launcher. A 320 px capture shows **0 horizontal overflow**. The dock at ≥1200 px leaves the page focusable.
-- **P1/P2 layout pass (2026-11-20):** the week history summary keeps a `Load … · signal` chip visible and links it to Review/`#load-card`; history and states tabs are URL-addressable (`?tab=review`, `?tab=set`) with server rendering and back/forward; the states page has a “Set a state” head action; page tabs are explicit segmented controls (`role="radiogroup"`) while the dock keeps ARIA tabs; at 1024–1199 px with the coach open activity and muscle stack (988 px) and keep two columns when it is closed; activity has a “Muscles” jump chip; and `data-track` feeds a privacy-safe `poc3:track` event hook. 45 captures, 516/516 green.
+- **P1/P2 layout pass (2026-11-20):** the week history summary keeps a `Load … · signal` chip visible and links it to Review/`#load-card`; history and states tabs are URL-addressable (`?tab=review`, `?tab=set`) with server rendering and back/forward; the states page has a “Set a state” head action; page tabs are explicit segmented controls (`role="radiogroup"`) while the dock keeps ARIA tabs; at 1024–1199 px with the coach open activity and muscle stack (988 px) and keep two columns when it is closed; activity has a “Muscles” jump chip; and `data-track` feeds a privacy-safe `milebook:track` event hook. 45 captures, 516/516 green.
 - Add / move / delete / revert sessions; 1?? tappable follow-ups; starter prompts; a structured **Could not apply** card.
   Review requests are read-only and never write to the calendar.
 - **Peer voice with a cap (2026-11-20):** the reply contract is spoken, not written — 2-4 short sentences, no
@@ -206,9 +206,9 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
   states (pain, illness, medical red flag, pregnancy/postpartum, menstrual-cycle support, low energy availability) are
   never inferred and need confirmation. Active states appear as calendar chips and bubble cards; the gateway enforces
   hard, day-aware guardrails over the effective post-turn calendar (including reverts and moved races) instead of
-  trusting the prompt. Pages are read-only; **Refresh** persists auto states explicitly, and `POC3_AUTO_STATES=false`
+  trusting the prompt. Pages are read-only; **Refresh** persists auto states explicitly, and `MILEBOOK_AUTO_STATES=false`
   disables auto detection while keeping manual/chat states.
-- The OpenAI-compatible `poc3-coach` gateway validates every proposal before writing, with one bounded
+- The OpenAI-compatible `milebook-coach` gateway validates every proposal before writing, with one bounded
   repair/clarification loop and idempotent request replay.
 - The runner's profile goal is in the coach's facts, so the plan can be checked against it instead of being stored and
   ignored.
@@ -242,7 +242,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 - Notification bell is the sync feed: manual/key syncs confirm, automatic no-change checks stay silent, errors always
   appear. Routine "Auto-synced N" and "Garmin sync: N imported" banners are gone; the review card appears only for a
   genuinely new activity.
-- Browser tab titles follow the active nav and page, e.g. `Training log 蝜?AI Coach Calendar (2)`. The unread count is
+- Browser tab titles follow the active nav and page, e.g. `Training log 蝜?Milebook (2)`. The unread count is
   server-rendered, capped at `99+`, cleared when the bell is opened, and kept current by the bell poll.
 
 ## Architecture
@@ -250,14 +250,14 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 ```mermaid
 flowchart LR
     B["Browser<br/>calendar 蝜?training log 蝜?coach bubble"]
-    W["POC3 web<br/>:8093"]
-    G["POC3 gateway<br/>:8092"]
+    W["Milebook web<br/>:8093"]
+    G["Milebook gateway<br/>:8092"]
     M["LLM<br/>dgx/general"]
     S[("SQLite<br/>accounts, plan, activities, activity workouts, messages, change sets, coach states, state events")]
 
     B -->|"/calendar 蝜?/history"| W
     B -->|"/chat"| W
-    W -->|"x-poc3-user"| G
+    W -->|"x-milebook-user"| G
     G -->|"OpenAI-compatible"| M
     W --- S
     G --- S
@@ -265,9 +265,9 @@ flowchart LR
 
 One SQLite file, two processes:
 
-- **POC3 web** owns accounts, the calendar, the training log, activity detail, reported-run logging, export, Garmin sync
+- **Milebook web** owns accounts, the calendar, the training log, activity detail, reported-run logging, export, Garmin sync
   and the same-origin bubble proxy.
-- **POC3 gateway** owns the OpenAI-compatible contract, validates `propose_calendar_turn`, and writes validated change
+- **Milebook gateway** owns the OpenAI-compatible contract, validates `propose_calendar_turn`, and writes validated change
   sets through the same store.
 - The bubble is not an iframe: it can read and animate the grid directly (ADR-0002).
 
@@ -284,7 +284,7 @@ One SQLite file, two processes:
 
 | Document | What it answers |
 |---|---|
-| [Solution document](docs/POC3-CALENDAR.md) | Architecture, accounts, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, training log, activity detail, metric trend graph, Garmin workouts, auto-sync, Garmin, API, runbook and limits. |
+| [Solution document](docs/MILEBOOK-CALENDAR.md) | Architecture, accounts, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, training log, activity detail, metric trend graph, Garmin workouts, auto-sync, Garmin, API, runbook and limits. |
 | [Coaching states](docs/COACH-STATES.md) | The durable-state model, catalog, detectors, chat/user proposals, precedence, guardrails, UI/API, research citations and what is needed versus deliberately skipped. |
 | [Coach-interaction plan](docs/analysis/15-coach-interaction-llm-plan.md) | The LLM-architecture review of the coach's voice and fuel: the rebuilt-per-turn prompt (measured), the reply-style contract, the epoch rule for cached prefill, the explained loading line and the silent preference profile. |
 | [Coach-interaction record](docs/analysis/16-coach-interaction-implementation-record.md) | What shipped from the plan with which decisions (D19-D22), in which files, and with what verification, including the byte-stability probe. |
@@ -307,12 +307,12 @@ On Windows, every completed change is deployed by restarting the live :8093/:809
 pnpm deploy:live
 ```
 
-`tools/deploy.ps1` reads the auth secret from `data/poc3-auth.secret`, the model API key from `POC3_MODEL_API_KEY` or
-`data/poc3-model.secret`, uses `sqlite:data/poc3-auth.sqlite`, stops only the process whose command line contains
+`tools/deploy.ps1` reads the auth secret from `data/milebook-auth.secret`, the model API key from `MILEBOOK_MODEL_API_KEY` or
+`data/milebook-model.secret`, uses `sqlite:data/milebook-auth.sqlite`, stops only the process whose command line contains
 `src/index.ts`, starts `pnpm dev`, waits for `/health` and `/login`, and rejects a stylesheet without the calendar pill
 styles or the coaching-state card/form/refresh styles. The deploy fails when the auth secret or model key is missing, so a
-restart cannot silently drop the coach's model credentials. Logs are `data/poc3-live.out.log` and
-`data/poc3-live.err.log`; the deploy history is `data/poc3-deploy.log`.
+restart cannot silently drop the coach's model credentials. Logs are `data/milebook-live.out.log` and
+`data/milebook-live.err.log`; the deploy history is `data/milebook-deploy.log`.
 
 ## Status
 
@@ -322,7 +322,7 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the coach-interaction slice — the peer voice with the 480-character cap and markdown strip, the epoch-gated cached prefill with explained re-prefills, and the silent preference profile with merged memories — via the `\POC3-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=28`, 556/556 green. **Live-verified:** two real Chinese model turns at 99 and 68 characters with tappable Chinese suggestion chips; `prefill.refreshed` reported `first-turn` then `memories-updated, profile-updated`; `/coach-audit` shows the silently learned `zh-Hant` and the snapshot reason chips; the temporary account and its 14 rows were removed afterwards. Earlier the same day: the en/zh-HK localization slice, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
+| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the coach-interaction slice — the peer voice with the 480-character cap and markdown strip, the epoch-gated cached prefill with explained re-prefills, and the silent preference profile with merged memories — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=28`, 556/556 green. **Live-verified:** two real Chinese model turns at 99 and 68 characters with tappable Chinese suggestion chips; `prefill.refreshed` reported `first-turn` then `memories-updated, profile-updated`; `/coach-audit` shows the silently learned `zh-Hant` and the snapshot reason chips; the temporary account and its 14 rows were removed afterwards. Earlier the same day: the en/zh-HK localization slice, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
@@ -411,17 +411,17 @@ pipeline-proven path in [docs/MUSCLE-ANATOMY-3D-RESEARCH.md](docs/MUSCLE-ANATOMY
   external — the app guarantees byte-stable prefixes and reports what refreshed, it cannot force a particular
   backend to cache (the gateway's `usage` passthrough is still stubbed, so a live cache-hit measurement is a
   follow-up).
-- **Auth:** the cookie is signed with `POC3_AUTH_SECRET`; set a strong secret.
+- **Auth:** the cookie is signed with `MILEBOOK_AUTH_SECRET`; set a strong secret.
 - **State detection is heuristic:** ACWR, race-week and post-race detection are signals, not diagnoses. The runner can
   resolve any state; sensitive states are never inferred. The engine does not replace a clinician or coach.
 - **State pages are read-only:** auto detection is persisted by a gateway turn or the explicit **Refresh**
-  action, never by a GET. `POC3_AUTO_STATES=false` disables auto detection; manual/chat states still work.
+  action, never by a GET. `MILEBOOK_AUTO_STATES=false` disables auto detection; manual/chat states still work.
 - **State retention:** resolved rows and transition events older than 180 days are pruned; the manager keeps the last
   100 rows for resolved history. State writes are serialized with `BEGIN IMMEDIATE`/`busy_timeout`; a future
   multi-process writer would need a partial unique index on open `(user_id, state_key)`.
 - **No wellness or weather data:** sleep/HRV/readiness, heat, air quality and altitude are chat/user states until those
   data sources are integrated.
-- **Gateway trust:** the gateway trusts the internal `x-poc3-user` header; it binds to `127.0.0.1` and must stay on a
+- **Gateway trust:** the gateway trusts the internal `x-milebook-user` header; it binds to `127.0.0.1` and must stay on a
   private network. The web surface binds to `0.0.0.0` behind session auth and same-origin state POST checks.
 - **SQLite:** single-process; run one app process per database.
 - **Code shape:** the calendar-cell union and its single renderer live in `src/calendar-items.ts`; the state catalog in
@@ -447,7 +447,7 @@ pipeline-proven path in [docs/MUSCLE-ANATOMY-3D-RESEARCH.md](docs/MUSCLE-ANATOMY
 - **PRs:** PR badges and period best efforts are bests within stored history (100 activities / 90 days), not a lifetime
   record. A dedicated records page and zone charts are later slices.
 
-See the [solution document](docs/POC3-CALENDAR.md) and [training-log plan](docs/TRAINING-LOG-PLAN.md) for the full list.
+See the [solution document](docs/MILEBOOK-CALENDAR.md) and [training-log plan](docs/TRAINING-LOG-PLAN.md) for the full list.
 
 ## License
 

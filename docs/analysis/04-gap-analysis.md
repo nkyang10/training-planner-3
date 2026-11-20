@@ -1,10 +1,10 @@
-# POC3 - gap analysis: runner needs versus what the product does today
+# Milebook - gap analysis: runner needs versus what the product does today
 
-**Status:** complete, read-only analysis. **Date:** 2026-11-18. **Owner:** product gap analyst (POC3).
+**Status:** complete, read-only analysis. **Date:** 2026-11-18. **Owner:** product gap analyst (Milebook).
 **Inputs:** `docs/analysis/01-user-workflow-map.md` (P1-P8, S1-S12, SF-01..23, X1-X10, WF-01..27, CN-01..30, ST-01..12, Q-01..12);
 `docs/analysis/02-runner-needs-research.md` (S1-S55, J1-J11, N1-N43, C1-C8, ranked top 15, research gaps G1-G10);
 `docs/analysis/03-competitive-benchmark.md` (12 competitors, matrix, O1-O6, table stakes, non-goals, 90-day list);
-product docs (`README.md`, `docs/POC3-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/FEATURES-FOR-REVIEW.md`,
+product docs (`README.md`, `docs/MILEBOOK-CALENDAR.md`, `docs/COACH-STATES.md`, `docs/FEATURES-FOR-REVIEW.md`,
 `docs/TRAINING-LOG-PLAN.md`, `docs/GARMIN-TRAINING-PROGRAMS.md`, ADR-0001..0003) and `src/` at HEAD.
 
 **Method.** Read 01 sections 2.1/6/7/8/9, 02 sections 5/6/10/11, 03 sections 0.6/2.2/2.5/6/7; skimmed the rest only to
@@ -35,9 +35,9 @@ willingness to pay (02 G1/G2 stand), no clinical thresholds, no code changes. Fe
 | 11 | Only model call has a timeout (WF-05/WF-25) | `AbortController` + 120 s at `src/gateway.ts:212-213`; no signal in `src/garmin.ts` | confirmed |
 | 12 | Bell is sync-only (03 section 7.1) | `NotificationSource = "garmin"` `src/types.ts:142`; also success/error `:143` | mostly confirmed; "sync feed only" understates manual no-new and error items |
 | 13 | 180-day horizon "shown in the bubble header" (README:313) | header holds title + minimize only `src/web.ts:1617-1618`; `HORIZON_DAYS` `src/coach.ts:40` | **doc/code mismatch (WF-09)** |
-| 14 | Manual sync "cannot double-pull" (`docs/POC3-CALENDAR.md:787-789`) | `/sync` and `/garmin/key` pass `syncOnStart=false` to `resolveSession` (`src/web.ts:2932-2935` -> `:2886-2901`), so `startSession` does not auto-sync | confirmed (M2 withdrawn) |
+| 14 | Manual sync "cannot double-pull" (`docs/MILEBOOK-CALENDAR.md:787-789`) | `/sync` and `/garmin/key` pass `syncOnStart=false` to `resolveSession` (`src/web.ts:2932-2935` -> `:2886-2901`), so `startSession` does not auto-sync | confirmed (M2 withdrawn) |
 | 15 | `/coach-audit` is "owner-only" (`README.md:133`) | route is scoped by `user.userId` (`src/web.ts:3060-3070`); there is no admin role, so "owner-only" means per-data-owner and is accurate | confirmed (M3 reworded) |
-| 16 | Docs promise reduced-motion users skip the flourish (`docs/POC3-CALENDAR.md:968`) | no media query in `src/` | **mismatch (WF-10)** |
+| 16 | Docs promise reduced-motion users skip the flourish (`docs/MILEBOOK-CALENDAR.md:968`) | no media query in `src/` | **mismatch (WF-10)** |
 | 17 | zh-Hant/en copy mix (02 P8) | inline bilingual string `src/web.ts:3561`; `CoachLanguage = auto/en/zh-Hant` `src/types.ts:223` | confirmed |
 | 18 | Emoji in runner-facing chrome | `src/web.ts:1616` bubble label; also minimize glyph `:1618` | confirmed (relevant to i18n/ASCII policy) |
 | 19 | Training log trend truncates to 12 (WF-18) | `.slice(0, 12)` at `src/web.ts:1184-1189` (re-checked in review 06 F-20) | confirmed |
@@ -46,7 +46,7 @@ willingness to pay (02 G1/G2 stand), no clinical thresholds, no code changes. Fe
 | 22 | Sessions inert outside the grid (WF-08) | `sessionChip` is a span with tooltip `src/web.ts:231-234`; day page renders plain `<p>` rows `:3446-3460` (the old `:2182-2185` anchor was the day-menu click handler) | confirmed |
 
 **Doc/code mismatches (review 06 F-07/F-08/F-09).** M1 horizon claim (README:313 vs `src/web.ts:1617-1618`), M4
-reduced-motion claim (`docs/POC3-CALENDAR.md:968` vs no media query) and M5 "bell is sync feed only" (03 section 7.1 vs
+reduced-motion claim (`docs/MILEBOOK-CALENDAR.md:968` vs no media query) and M5 "bell is sync feed only" (03 section 7.1 vs
 `src/types.ts:142-143`) are real doc defects. M3 is a wording overreach: "owner-only" means per-data-owner; there is no
 admin role. M2 (manual sync double-pull) was withdrawn: `/sync` passes `syncOnStart=false` to `resolveSession`
 (`src/web.ts:2932-2935`). None is a code regression; all four are documentation drift and should be fixed in the product
@@ -60,7 +60,7 @@ docs before a demo.
 2. **G-09 Coach-only writes make one model the availability of the whole planner** -- no edit form, no fallback planner, so a 502 freezes add/move/delete (WF-16, `src/gateway.ts:1074-1081`, Q-03).
 3. **G-11 No mobile story: no PWA/offline and a fixed seven-column grid** -- "calendar-first is phone-first" while the phone view truncates pills to a few characters (WF-22, CN-16, 03 section 7.1 table stakes).
 4. **G-01 The goal the runner types never reaches the coach and there is no goal-race object** -- onboarding asks, then drops it; race phase starts from a conversation the runner must repeat (WF-01, CN-10, `src/coach.ts:265-302`).
-5. **G-05/G-06 The trust machinery is invisible: undo is chat-only, there is no change history and no diff before apply** -- POC3's strongest differentiator is felt as opacity (WF-07, CN-04/11, O1/O4, ST-06).
+5. **G-05/G-06 The trust machinery is invisible: undo is chat-only, there is no change history and no diff before apply** -- Milebook's strongest differentiator is felt as opacity (WF-07, CN-04/11, O1/O4, ST-06).
 6. **G-07 No durable consent surface for state proposals** -- sensitive confirm cards die on refresh and ordinary states activate silently, so the safety path depends on not reloading (WF-13/14, Q-04, ST-10).
 7. **G-10 No direct manipulation or re-flow: sessions cannot be moved, opened or edited outside chat** -- blocks the two highest-ranked needs N4 and N29 (WF-08, CN-03, 02 section 10 ranks 1-2).
 8. **G-03 Garmin connect is three dead ends and the sync result is discarded** -- the first-run task of a data product fails silently (WF-03/04/23, CN-26).
@@ -208,7 +208,7 @@ needed. Every row names the competitive baseline from 03 (who already does it).
 | G-05 | Undo is chat-only, the change journal has no runner-facing view and the revert animation cannot show a revert of an add, so recovery is real but invisible | P2 P3 P6 / S8 | WF-07; `src/history.ts:37-93`; `src/web.ts:1816`, `:1833`; CN-04 | D+F | high / high | No competitor shows an AI before/after change set (03 O4) - this is a protect-and-expose gap, not catch-up | N35; Q-08 |
 | G-06 | A multi-session coach write commits in one phase; there is no diff and no approve step, so a plausible but wrong rewrite silently becomes the plan | P2 P3 P7 / S4 S8 | CN-11; `src/gateway.ts:596-763`; `docs/FEATURES-FOR-REVIEW.md:44` | F | high / high | Intervals.icu plan editor and TrainingPeaks show edits before save; no AI diff anywhere (03 O4) | N36 N4 |
 | G-07 | State proposals have no durable consent surface: sensitive confirm cards are DOM-only and vanish on refresh, ordinary states activate silently and change guardrails for weeks | P5 P2 P7 / S10 S11 | WF-13, WF-14; `src/web.ts:1878-1959`; `src/coach-states.ts:527`; ST-10 | D | high / high | No competitor documents consent semantics; Garmin silently swaps sessions after poor sleep (03 O3) | N16 N40 N42 N43; Q-04 |
-| G-08 | Read-only turns and state guardrails are enforced server-side and explained only in the reply, so "Ask coach" looks like an edit button and a refusal arrives after the fact | all / S4 S8 | WF-15; `src/directives.ts:219-256`; `src/gateway.ts:963-995`; CN-03 | P | medium / high | No competitor has comment-only turns; the cost of the capability is an affordance debt unique to POC3 | N30 N33 N35 |
+| G-08 | Read-only turns and state guardrails are enforced server-side and explained only in the reply, so "Ask coach" looks like an edit button and a refusal arrives after the fact | all / S4 S8 | WF-15; `src/directives.ts:219-256`; `src/gateway.ts:963-995`; CN-03 | P | medium / high | No competitor has comment-only turns; the cost of the capability is an affordance debt unique to Milebook | N30 N33 N35 |
 | G-09 | The only writer is a validated model turn: during a model outage nothing can be added, moved or deleted, so planner availability equals model availability | all / S4 S8 | WF-16; `src/gateway.ts:1074-1081`; `docs/FEATURES-FOR-REVIEW.md:66` | P | blocker / high | Every competitor has a deterministic plan editor or fixed plan; none can be frozen by a model outage (03 O1 risk) | N1 N4 N29; Q-03 |
 | G-10 | Planned sessions cannot be opened, moved or edited outside chat: `sessionChip` is a span, `/day` lists plain items, no drag, no move button, no re-flow of the remaining week | P2 P6 P7 / S5 S6 S9 | WF-08; `src/web.ts:231-234`, `:2182-2185`; CN-03/08 | F | high / high | Runna praised for "really easy to change dates"; TrainingPeaks paywalls basic moves (03 O1) | N4 N18 N29; Q-06 |
 | G-11 | No manifest, service worker or offline shell and the month grid stays seven columns at 360 px, so the phone-first promise fails on the phone | P6 P1 P8 / S5 | WF-22; `src/web.ts:1609-1610`; `src/styles.ts:38`, `:70`; CN-16 | F | high / high | Every competitor except Intervals.icu ships mobile (03 section 7.1) | N5 N12 N27; Q-06 |
@@ -218,15 +218,15 @@ needed. Every row names the competitive baseline from 03 (who already does it).
 | G-15 | No beginner/returner/masters mode: no repeat-this-week, no walk-run kind, no age band or segment setting in plan generation, and no pace targets withheld for a runner without a baseline | P1 P5 P7 / S4 S5 | CN-09; `src/types.ts:9-24`; C1; 02 N38/N39 | F | high / high | Runna "idiot-proof" onboarding, Garmin beginner plans (03 section 1.5) | N38 N39 N13; Q-06 |
 | G-16 | No time budget or short-session variant: a session has distance/duration but no time-of-day, no "I have 35 minutes on Tuesday", no minimum viable version | P6 P1 P5 / S2 S4 S5 | 02 N27; `src/types.ts:44-55` | F | high / medium | Runna seven-day plans and Holiday Mode; TrainingPeaks session time fields (03 section 0.6 finding 5) | N27 N12 |
 | G-17 | The session peek cannot answer "what is this for?": no intent, effort target, pace/HR range, steps or fuel, and coach-authored sessions have no workout brief at all | P1 P2 P3 / S5 S6 | SF-05, SF-06; `src/web.ts:1020-1060`; 02 N5/N6/N7/N31 | F | high / high | Garmin DSW pushes structured steps to the watch; Runna pushes workouts (03 section 3.1) | N5 N6 N7 N28 N31 |
-| G-18 | Plan-versus-actual is a badge plus an optional chat: no judgement sentence at review time, no one-tap link/unlink when the match is wrong, and no correction path for a run that happened without a watch | P1 P2 P4 / S7 S9 | ST-07; `src/training.ts:57-125`; CN-02; WF-06 | F | high / high | Runna's Workout Insights already compares planned with actual post-run (03 section 1.5, S28), so the gap is the missing judgement on POC3's own review surface, not competitor absence | N8 N9 N24 |
+| G-18 | Plan-versus-actual is a badge plus an optional chat: no judgement sentence at review time, no one-tap link/unlink when the match is wrong, and no correction path for a run that happened without a watch | P1 P2 P4 / S7 S9 | ST-07; `src/training.ts:57-125`; CN-02; WF-06 | F | high / high | Runna's Workout Insights already compares planned with actual post-run (03 section 1.5, S28), so the gap is the missing judgement on Milebook's own review surface, not competitor absence | N8 N9 N24 |
 | G-19 | Missing a session reads as a failure: "No activity recorded", a missed outcome and no explicit "let it go, the block does not change" copy or coach line | P1 P5 P6 / S7 S8 | WF-08; `src/web.ts:3473`; 02 N13 rank 7 | D | medium / high | No competitor is evidenced to do this well; cheap differentiator for wellbeing (C8) | N13 N33 N43 |
 | G-20 | PR/best-effort scope is unstated on screen while badges are computed over stored history only (100 activities / 90 days), and the trend graph silently plots the last 12 runs | P2 P3 / S9 | WF-17, WF-18; `README.md:344`; `src/training.ts:147-176` | D | medium / high | Strava segments and Garmin PRs are lifetime and labelled (03 section 1.3) | N10 N15; Q-07 |
 | G-21 | No export, backup or ICS route: the ownership story ("private, SQLite, no lock-in") is not literally true, and a lost volume loses the plan | P3 P7 / S12 | CN-15; `docs/FEATURES-FOR-REVIEW.md:86`; C7 | F | high / high | Export exists in TrainingPeaks, Strava, Final Surge, COROS, Intervals.icu (03 section 7.1) | N34 N37; Q-11 |
 | G-22 | No password reset, email verification, rate limit, account deletion or session revocation list; the signed cookie stays valid 30 days if copied | P3 P7 / S1 S12 | WF-21; CN-12/13/14; `src/auth.ts:240-246` | F | high / high | Table stakes for any account product; none of the 12 ships without reset (03 section 7.1) | N34 N37; Q-09 |
-| G-23 | The Garmin API key is stored plaintext and cannot be disconnected or deleted; there is no way to withdraw a credential from a shared or lost device | P3 / S3 S12 | CN-26; `src/store.ts:110-113`, `:230-232`; `README.md:332` | D | high / high | OAuth with revocable tokens in Garmin/Runna/Strava; POC3 has no revoke path | N34 N41; Q-10 |
+| G-23 | The Garmin API key is stored plaintext and cannot be disconnected or deleted; there is no way to withdraw a credential from a shared or lost device | P3 / S3 S12 | CN-26; `src/store.ts:110-113`, `:230-232`; `README.md:332` | D | high / high | OAuth with revocable tokens in Garmin/Runna/Strava; Milebook has no revoke path | N34 N41; Q-10 |
 | G-24 | `/coach-audit` is unlinked and not role-gated, and raw memories cannot be listed or deleted, so the transparency machinery is unreachable and "owner-only" overstates control | P3 P7 / S12 | WF-20, CN-25; `src/web.ts:3060-3070`; `README.md:133` | D+P | medium / high | No competitor has an audit page; the gap is legibility, not capability (03 O4) | N35 N37; Q-08 |
 | G-25 | Page render blocks on Garmin I/O with no client or server timeout for Garmin calls, and there is no streaming, cancel or fetch timeout in the bubble | all / S5 S7 S9 | WF-05, WF-25; `src/gateway.ts:212-213`; `src/garmin.ts:75-180`; CN-29 | D | high / high | Mobile-first competitors never block the calendar on a third party (03 section 3.6) | N12 N24 |
-| G-26 | Bilingual copy is mixed inline with no locale switch and no date-format rule; the coach language field exists but the chrome is neither consistently zh-Hant nor consistently English | P8 / all | `src/web.ts:3561`, `:1616`; `src/types.ts:223`; `docs/FEATURES-FOR-REVIEW.md:73` | i18n | medium / high | Runna/NRC localise UI; POC3 has no locale at all (03 section 7.1) | N30 N37 |
+| G-26 | Bilingual copy is mixed inline with no locale switch and no date-format rule; the coach language field exists but the chrome is neither consistently zh-Hant nor consistently English | P8 / all | `src/web.ts:3561`, `:1616`; `src/types.ts:223`; `docs/FEATURES-FOR-REVIEW.md:73` | i18n | medium / high | Runna/NRC localise UI; Milebook has no locale at all (03 section 7.1) | N30 N37 |
 | G-27 | Accessibility: no reduced-motion path, no dialog focus trap, no roving focus in the day menu, buttons nested inside links, no `aria-modal` on the peek (the Garmin modal at `src/web.ts:1482` does set it) | P6 P7 P8 / S5 S8 | WF-10, WF-11; `src/web.ts:2299-2304`, `:2022-2146`; `docs/FEATURES-FOR-REVIEW.md:52` | platform | medium / medium | Table stakes; competitors ship OS-level motion settings for free | N5 N12 |
 | G-28 | Load/ACWR is a number with a band and no action sentence, and a run cannot be excluded from the trend, so a hot or trail run silently corrupts the read | P2 P3 P7 / S9 | SF-12; `src/training.ts:178-307`; 02 N11/N17/N26 | trust | high / medium | Intervals.icu and Runalyze offer exclusions and custom zones (03 section 1.10) | N11 N17 N26 |
 
@@ -376,7 +376,7 @@ main-thread cost of the CRUD animation, and the grid at 360/390/768 px. No such 
 
 ---
 
-## 8. What POC3 already does better - protect list
+## 8. What Milebook already does better - protect list
 
 | Protect | Why it is rare (03) | What must not break |
 |---|---|---|

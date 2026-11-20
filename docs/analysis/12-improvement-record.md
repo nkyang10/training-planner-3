@@ -1,4 +1,4 @@
-# POC3 - implementation record for the user-side improvement slice
+# Milebook - implementation record for the user-side improvement slice
 
 **Status:** complete. PR-16, PR-18 and the copy pass are implemented and live-verified; the muscle check-in
 feature (unspecced agent work, owner-approved) is shipped alongside. Full gate 446/446 across 18 files; live

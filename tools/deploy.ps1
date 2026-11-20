@@ -1,14 +1,15 @@
-# Deploy the live POC3 calendar + gateway on Windows.
+# Deploy the live Milebook calendar + gateway on Windows.
 #
 # Stops the process that currently owns the web/gateway ports, starts `pnpm dev` with the live environment, and waits
 # for both HTTP surfaces. The auth secret, model API key and SQLite file are read from the repository's data directory;
-# the script refuses to stop a process that does not look like this app.
+# the script refuses to stop a process that does not look like this app. On the first deploy after the POC3 -> Milebook
+# rename, legacy poc3-* data files are moved to their milebook-* names once the old process has released them.
 param(
     [int]$WebPort = 8093,
     [int]$GatewayPort = 8092,
-    [string]$Database = 'sqlite:data/poc3-auth.sqlite',
-    [string]$SecretFile = 'data/poc3-auth.secret',
-    [string]$ModelKeyFile = 'data/poc3-model.secret',
+    [string]$Database = 'sqlite:data/milebook-auth.sqlite',
+    [string]$SecretFile = 'data/milebook-auth.secret',
+    [string]$ModelKeyFile = 'data/milebook-model.secret',
     [string]$ModelBaseUrl = 'http://192.168.1.202:8102/v1',
     [string]$ModelName = 'dgx/general',
     [int]$MaxAttempts = 2,
@@ -19,37 +20,56 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Legacy renames, applied only when the destination is absent: legacy source => new destination.
+$renames = @{}
+
 $secretPath = Join-Path $root $SecretFile
+$secretLegacy = Join-Path $root 'data/poc3-auth.secret'
 if (-not (Test-Path $secretPath)) {
-    throw "Auth secret not found: $secretPath"
+    if (-not (Test-Path $secretLegacy)) {
+        throw "Auth secret not found: $secretPath (legacy $secretLegacy)"
+    }
+    $renames[$secretLegacy] = $secretPath
 }
-$secret = (Get-Content -Raw $secretPath).Trim()
+$secretSource = if (Test-Path $secretPath) { $secretPath } else { $secretLegacy }
+$secret = (Get-Content -Raw $secretSource).Trim()
 if ($secret.Length -lt 16) {
-    throw "Auth secret looks too short: $secretPath"
+    throw "Auth secret looks too short: $secretSource"
 }
 
-$modelKey = ([string]$env:POC3_MODEL_API_KEY).Trim()
+$modelKey = ([string]$env:MILEBOOK_MODEL_API_KEY).Trim()
 if ($modelKey.Length -eq 0) {
     $modelKeyPath = Join-Path $root $ModelKeyFile
+    $modelKeyLegacy = Join-Path $root 'data/poc3-model.secret'
     if (-not (Test-Path $modelKeyPath)) {
-        throw "Model API key not found: set POC3_MODEL_API_KEY or create $ModelKeyFile (the coach gateway needs it)."
+        if (-not (Test-Path $modelKeyLegacy)) {
+            throw "Model API key not found: set MILEBOOK_MODEL_API_KEY or create $ModelKeyFile (the coach gateway needs it)."
+        }
+        $renames[$modelKeyLegacy] = $modelKeyPath
+        $modelKey = (Get-Content -Raw $modelKeyLegacy).Trim()
+    } else {
+        $modelKey = (Get-Content -Raw $modelKeyPath).Trim()
     }
-    $modelKey = (Get-Content -Raw $modelKeyPath).Trim()
 }
 if ($modelKey.Length -lt 8) {
     throw "Model API key looks too short: $ModelKeyFile"
 }
 
 $dbPath = $Database -replace '^sqlite:', ''
-if (-not (Test-Path (Join-Path $root $dbPath))) {
-    throw "Database not found: $dbPath"
+$dbFile = Join-Path $root $dbPath
+if (-not (Test-Path $dbFile)) {
+    $dbLegacy = Join-Path $root 'data/poc3-auth.sqlite'
+    if (-not (Test-Path $dbLegacy)) {
+        throw "Database not found: $dbPath"
+    }
+    $renames[$dbLegacy] = $dbFile
 }
 
 $ports = @($WebPort, $GatewayPort)
-$outLog = Join-Path $root 'data/poc3-live.out.log'
-$errLog = Join-Path $root 'data/poc3-live.err.log'
-$deployLog = Join-Path $root 'data/poc3-deploy.log'
-$pidFile = Join-Path $root 'data/poc3-live.pid'
+$outLog = Join-Path $root 'data/milebook-live.out.log'
+$errLog = Join-Path $root 'data/milebook-live.err.log'
+$deployLog = Join-Path $root 'data/milebook-deploy.log'
+$pidFile = Join-Path $root 'data/milebook-live.pid'
 
 function Get-ListeningProcessIds {
     $connections = Get-NetTCPConnection -State Listen -LocalPort $ports -ErrorAction SilentlyContinue
@@ -59,7 +79,8 @@ function Get-ListeningProcessIds {
 
 # A live process counts as ours when its command line names this app, or — when the command line cannot be read
 # (detached launchers such as Task Scheduler query Win32_Process from a context that returns it empty) — when
-# the pid recorded at the last deploy sits in its ancestry. Anything else is refused.
+# the pid recorded at the last deploy sits in its ancestry. The legacy poc3-live.pid is also consulted, so the
+# first fully-rebranded deploy can still recognize a process recorded under the old name. Anything else is refused.
 function Test-IsThisApp {
     param([int]$ProcessId)
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
@@ -67,9 +88,11 @@ function Test-IsThisApp {
     $commandLine = [string]$process.CommandLine
     if ($commandLine -match 'src[\\/]index\.ts') { return $true }
     $recorded = 0
-    if (Test-Path $pidFile) {
-        $raw = (Get-Content -Raw $pidFile -ErrorAction SilentlyContinue)
+    foreach ($pidCandidate in @($pidFile, (Join-Path $root 'data/poc3-live.pid'))) {
+        if (-not (Test-Path $pidCandidate)) { continue }
+        $raw = (Get-Content -Raw $pidCandidate -ErrorAction SilentlyContinue)
         if ($raw) { [int]::TryParse($raw.Trim(), [ref]$recorded) | Out-Null }
+        if ($recorded -gt 0) { break }
     }
     if ($recorded -le 0) { return $false }
     $cursor = $process
@@ -89,7 +112,7 @@ foreach ($processId in $oldIds) {
         $commandLine = [string]$process.CommandLine
         throw "Port $WebPort/$GatewayPort is held by an unrelated process $processId ($commandLine); refusing to stop it."
     }
-    Write-Host "Stopping old POC3 process $processId..."
+    Write-Host "Stopping old Milebook process $processId..."
     & taskkill.exe /PID $processId /T /F | Out-Null
 }
 
@@ -101,17 +124,28 @@ if ((Get-ListeningProcessIds).Count -gt 0) {
     throw "Ports $WebPort/$GatewayPort are still held after stopping the old process."
 }
 
+# The old process has released the SQLite file: move the legacy data files into their milebook names.
+foreach ($source in @($renames.Keys)) {
+    $target = $renames[$source]
+    if ((Test-Path $source) -and -not (Test-Path $target)) {
+        Move-Item -LiteralPath $source -Destination $target
+        Write-Host "Renamed legacy $source -> $target"
+    }
+}
+if (-not (Test-Path $secretPath)) { throw "Auth secret not found: $secretPath (after legacy rename)" }
+if (-not (Test-Path $dbFile)) { throw "Database not found: $dbPath (after legacy rename)" }
+
 Remove-Item $outLog, $errLog -ErrorAction SilentlyContinue
 
-$env:POC3_AUTH_SECRET = $secret
-$env:POC3_DB = $Database
-$env:POC3_GATEWAY_PORT = [string]$GatewayPort
-$env:POC3_GATEWAY_URL = "http://127.0.0.1:$GatewayPort"
-$env:POC3_WEB_PORT = [string]$WebPort
-$env:POC3_MODEL_BASE_URL = $ModelBaseUrl
-$env:POC3_MODEL_API_KEY = $modelKey
-$env:POC3_MODEL_NAME = $ModelName
-$env:POC3_MAX_ATTEMPTS = [string]$MaxAttempts
+$env:MILEBOOK_AUTH_SECRET = $secret
+$env:MILEBOOK_DB = $Database
+$env:MILEBOOK_GATEWAY_PORT = [string]$GatewayPort
+$env:MILEBOOK_GATEWAY_URL = "http://127.0.0.1:$GatewayPort"
+$env:MILEBOOK_WEB_PORT = [string]$WebPort
+$env:MILEBOOK_MODEL_BASE_URL = $ModelBaseUrl
+$env:MILEBOOK_MODEL_API_KEY = $modelKey
+$env:MILEBOOK_MODEL_NAME = $ModelName
+$env:MILEBOOK_MAX_ATTEMPTS = [string]$MaxAttempts
 
 $startedAt = Get-Date
 $process = Start-Process -FilePath 'cmd.exe' `
@@ -170,18 +204,21 @@ try {
     if ($loginText -notmatch 'app\.css\?v=28') {
         throw 'The deployed login page does not reference app.css?v=28.'
     }
+    if ($loginText -notmatch 'Milebook') {
+        throw 'The deployed login page does not carry the Milebook brand.'
+    }
 
     $gatewayText = [string]$gateway.Content
     Write-Host "Deploy OK: gateway $($gateway.StatusCode) ($gatewayText), calendar $($login.StatusCode), pid $($process.Id)."
     Write-Host "  http://127.0.0.1:$WebPort/login"
     Write-Host "  http://127.0.0.1:$GatewayPort/health"
-    Write-Host "  logs: data/poc3-live.out.log, data/poc3-live.err.log"
+    Write-Host "  logs: data/milebook-live.out.log, data/milebook-live.err.log"
     exit 0
 } catch {
     Write-Host "Deploy FAILED: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host '--- data/poc3-live.err.log ---'
+    Write-Host '--- data/milebook-live.err.log ---'
     if (Test-Path $errLog) { Get-Content $errLog -Tail 40 }
-    Write-Host '--- data/poc3-live.out.log ---'
+    Write-Host '--- data/milebook-live.out.log ---'
     if (Test-Path $outLog) { Get-Content $outLog -Tail 40 }
     exit 1
 }
