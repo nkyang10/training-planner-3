@@ -11,6 +11,9 @@ relationship between the page and the coach overlay — judged page by page agai
 overlay covering the grid; UX-12/UX-14 measured the popup stack and state cards) and on the localization slice that
 landed the same day (en + zh-HK). This pass adds the missing **page-composition** review and ships the coach
 regrouping; it does not repeat the earlier contrast/touch-target work.
+**Research basis:** the evidence behind these choices — tabs, panes, overlays, WCAG 2.2/APG semantics and AI-assistant
+guidance — is reviewed in [14-uiux-layout-research.md](14-uiux-layout-research.md), with a heuristic audit of the
+remaining gaps.
 
 ## 1. Method and evidence
 
