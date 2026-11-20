@@ -322,7 +322,7 @@ restart cannot silently drop the coach's model credentials. Logs are `data/mileb
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the entry slice — the today-first hero, one primary action, states and freshness as quiet meta, and the row key at the grid — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=29`, 560/560 green. **Live-verified 19/19:** a temporary account saw the new entry; the hero's real plan turn returned a 111-character Chinese reply and booked 6 sessions / 6 changes; the account and its 16 rows were removed. Earlier the same day: the coach-interaction slice (peer voice, epoch-gated cached prefill, silent preference profile), the en/zh-HK localization, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: the real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
+| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the daily-pages slice — the training log's one period summary line and the day page's native log disclosure — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=30`, 560/560 green. **Live-verified 20/20:** the day disclosure, the removed subline, the period summary, and a real manual-run POST (5 km / 30 min) that appeared on the day and in the history line; the temporary account was removed. Earlier the same day: the entry slice (today-first hero, one primary action, row key), the coach-interaction slice (peer voice, epoch-gated cached prefill, silent preference profile), the en/zh-HK localization, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: the real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
@@ -356,6 +356,13 @@ grid; the duplicate empty/connect cards are gone. Measured at 1164x900: head 217
 above-grid targets 11 -> 7; phone grid 556 -> 461 px. The seeded booked/recorded/empty-month hero states were
 captured, and the live probe exercised the empty-month request with a real model turn (111 Chinese characters,
 6 sessions booked, 6 changes) before removing the temp account and its 16 rows.
+
+**Daily pages slice (2026-11-20):** the training log now opens with h1 + intro, one 17 px period summary line (runs,
+km, time, longest, planned) and the Days/Review tabs; the four stat cards and the eyebrow are gone, and the tabs start
+74 px higher. The day page drops the date/runner/profile subline and turns its five-field log form into a native
+disclosure whose summary is the one 44 px "Log a run" primary; the closed page fits one screen (1315 -> 900 px
+desktop, 1471 -> 856 px phone), and `/day/...#log-run` opens it. The live probe also logged a real 5 km / 30 min
+manual run through the form and read it back on the day and the history summary.
 
 **Live-verified Garmin:** a real personal-key pull of **100 activities** (the list endpoint's maximum); the 90-day
 filter/upsert; enriched load/cadence/elevation/effect/HR-zone fields; the current week's real load card; per-kilometre

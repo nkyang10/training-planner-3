@@ -1990,7 +1990,7 @@ function layout(
   const i18nScript = clientI18nScript(tx);
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=29"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=30"></head>
   <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
@@ -4568,9 +4568,9 @@ export function createWeb(options: WebOptions): WebApp {
         const currentMonth = today.slice(0, 7);
         const currentYear = today.slice(0, 4);
         const date = tx.date;
-        // The run summary line: "N runs · X km · D" with an optional planned-distance tail, kept as one shape.
-        const summaryLine = (count: number, distance: string, duration: string, plannedKm: number): string =>
-          `${tx.t("history.runCount", { count })} · ${distance} km · ${duration}${plannedKm > 0 ? tx.t("history.plannedSuffix", { distance: plannedKm }) : ""}`;
+        // The run summary line: "N runs · X km · D" with optional longest and planned tails, one shape for the period.
+        const summaryLine = (count: number, distance: string, duration: string, plannedKm: number, longest = 0): string =>
+          `${tx.t("history.runCount", { count })} · ${distance} km · ${duration}${longest > 0 ? ` · ${tx.t("history.statLongest")} ${longest} km` : ""}${plannedKm > 0 ? tx.t("history.plannedSuffix", { distance: plannedKm }) : ""}`;
 
         let periodStart = currentWeek;
         let periodEnd = addDays(currentWeek, 6);
@@ -4708,7 +4708,7 @@ export function createWeb(options: WebOptions): WebApp {
           const weekDays = Array.from({ length: 7 }, (_, index) => addDays(periodStart, index));
           const plannedKm = Math.round(sessions.reduce((total, session) => total + (session.distanceKm ?? 0), 0) * 10) / 10;
           const dayHtml = weekDays.map((day) => renderDay(day, sessions.filter((session) => session.day === day), activities.filter((activity) => activity.day === day), workouts.filter((workout) => workout.day === day))).join("");
-          content = `<section class="history-week"><header class="history-week-head"><h2>${tx.t("history.weekTitle", { period: escapeHtml(periodLabel) })}</h2><p class="muted small">${summaryLine(activities.length, String(sumDistance(activities)), formatMinutes(sumDuration(activities)), plannedKm)}</p></header>${dayHtml}</section>`;
+          content = `<section class="history-week"><header class="history-week-head"><h2>${tx.t("history.weekTitle", { period: escapeHtml(periodLabel) })}</h2></header>${dayHtml}</section>`;
           load = loadSummaryForWeek(allActivities, periodStart);
           volumeBuckets = weekDays.map((day, index) => ({
             label: date.weekdays()[index] ?? formatShortDate(day, date),
@@ -4824,15 +4824,10 @@ export function createWeb(options: WebOptions): WebApp {
         // (`?tab=review`) so the load chip, a reload and back/forward all land on the same panel.
         const periodTabLabel = view === "week" ? tx.t("history.tabDays") : view === "month" ? tx.t("history.tabWeeks") : tx.t("history.tabMonths");
         const historyTabs = `<div class="seg-tabs history-tabs" role="radiogroup" aria-label="${escapeHtml(tx.t("history.tabsAria"))}"><input class="seg-input" type="radio" name="history-tab" id="history-tab-period" value="period" data-track="page-tab"${periodChecked}><input class="seg-input" type="radio" name="history-tab" id="history-tab-review" value="review" data-track="page-tab"${reviewChecked}><div class="seg-labels"><label class="seg-label" for="history-tab-period">${escapeHtml(periodTabLabel)}</label><label class="seg-label" for="history-tab-review">${escapeHtml(tx.t("history.tabReview"))}</label></div><div class="seg-panels"><div class="seg-panel" data-seg-panel="period">${noActivities}${content}</div><div class="seg-panel" data-seg-panel="review">${manualReviewCard}${reviewCard}${loadCard}${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}${bestEffortsCard}</div></div></div>`;
-        const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("history.eyebrow"))}</p><h1>${escapeHtml(tx.t("history.heading"))}</h1><p class="muted">${escapeHtml(tx.t("history.intro"))}</p></header>
+        const body = `<header class="page-head"><h1>${escapeHtml(tx.t("history.heading"))}</h1><p class="muted">${escapeHtml(tx.t("history.intro"))}</p></header>
           ${periodBar}
           ${garminPanel}
-          <section class="history-summary">
-            <div class="stat"><strong>${activities.length}</strong><span>${escapeHtml(tx.t("history.statRuns"))}</span></div>
-            <div class="stat"><strong>${sumDistance(activities)} km</strong><span>${escapeHtml(tx.t("history.statDistance"))}</span></div>
-            <div class="stat"><strong>${formatMinutes(sumDuration(activities))}</strong><span>${escapeHtml(tx.t("history.statTime"))}</span></div>
-            <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>${escapeHtml(tx.t("history.statLongest"))}</span></div>
-          </section>
+          <p class="history-period-summary muted small">${summaryLine(activities.length, String(sumDistance(activities)), formatMinutes(sumDuration(activities)), Math.round(sessions.reduce((total, session) => total + (session.distanceKm ?? 0), 0) * 10) / 10, longest)}</p>
           <p class="muted small">${escapeHtml(lastImportText)}</p>
           ${loadLine}
           ${historyTabs}`;
@@ -5137,23 +5132,32 @@ export function createWeb(options: WebOptions): WebApp {
           ? ""
           : `<section class="card"><h2>${escapeHtml(tx.t("day.garminWorkouts"))}</h2><p class="muted small">${escapeHtml(tx.t("day.garminWorkoutsProse"))}</p>${dayWorkouts.map((workout) => `<p class="history-program"><span class="chip">${escapeHtml(tx.t("day.garminWorkoutChip"))}</span><span>${escapeHtml(workout.label)}${workout.summary.length === 0 ? "" : ` · ${escapeHtml(workout.summary)}`}</span></p>`).join("")}</section>`;
         const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams, tx);
-        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← ${escapeHtml(tx.t("day.backCalendar"))}</a></p><h1>${escapeHtml(formatDayLabel(day, tx.date))}</h1>
-          <p class="muted">${escapeHtml(day)} · ${escapeHtml(user.displayName)} · <a href="/profile">${escapeHtml(tx.t("account.profile"))}</a></p></header>
+        const body = `<header class="page-head"><p class="eyebrow"><a href="/calendar?month=${escapeHtml(day.slice(0, 7))}">← ${escapeHtml(tx.t("day.backCalendar"))}</a></p><h1>${escapeHtml(formatDayLabel(day, tx.date))}</h1></header>
           ${reviewCard}
           <section class="card"><h2>${escapeHtml(tx.t("day.bookedByCoach"))}</h2>${sessions.length === 0 ? `<p class="muted">${escapeHtml(tx.t("day.noSession"))}</p>` : `<ul class="sessions">${sessions.map((session) => `<li><strong>${escapeHtml(session.title)}</strong> <span class="chip kind-${escapeHtml(session.kind)}">${escapeHtml(sessionKindLabel(session.kind, tx))}</span>${session.distanceKm === null ? "" : ` · ${session.distanceKm} km`}${session.durationMin === null ? "" : ` · ${formatMinutes(session.durationMin)}`}${session.note === null ? "" : `<p class="note">${escapeHtml(session.note)}</p>`}${sessionIntentHtml(session, tx)}</li>`).join("")}</ul>`}</section>
           <section class="card"><h2>${escapeHtml(tx.t("day.recorded"))}</h2>${activities.length === 0 ? `<p class="muted">${escapeHtml(tx.t("day.recordedEmpty"))}</p>` : `<ul class="sessions">${activities.map((activity) => activityLine(activity, tx)).join("")}</ul>`}</section>
-          <section class="card" id="log-run"><h2>${escapeHtml(tx.t("day.logRun"))}</h2><p class="muted small">${escapeHtml(tx.t("day.logRunProse"))}</p>
-            <form method="post" action="/activities" class="stack log-form">
-              <input type="hidden" name="next" value="/day/${escapeHtml(day)}">
-              <input type="hidden" name="requestId" value="${escapeHtml(randomUUID())}">
-              <label for="log-day">${escapeHtml(tx.t("day.fieldDay"))}</label><input id="log-day" name="day" type="date" value="${escapeHtml(day)}" max="${escapeHtml(today)}" required>
-              <label for="log-title">${escapeHtml(tx.t("day.fieldTitle"))} <span class="muted small">${escapeHtml(tx.t("day.fieldTitleOptional"))}</span></label><input id="log-title" name="title" maxlength="80" placeholder="${escapeHtml(tx.t("day.titlePlaceholder"))}" autocomplete="off">
-              <div class="log-row"><div><label for="log-distance">${escapeHtml(tx.t("day.fieldDistance"))}</label><input id="log-distance" name="distanceKm" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="5"></div><div><label for="log-duration">${escapeHtml(tx.t("day.fieldDuration"))}</label><input id="log-duration" name="durationMin" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="30"></div></div>
-              <label for="log-rpe">${escapeHtml(tx.t("day.fieldRpe"))}</label><input id="log-rpe" name="rpe" type="number" min="0" max="10" step="0.5" inputmode="decimal" placeholder="7">
-              <button class="btn" type="submit">${escapeHtml(tx.t("day.submit"))}</button>
-            </form>
-          </section>
-          ${workoutCard}`;
+          <details class="log-disclosure" id="log-run">
+            <summary class="btn">${escapeHtml(tx.t("day.logRun"))}</summary>
+            <section class="card log-panel"><p class="muted small">${escapeHtml(tx.t("day.logRunProse"))}</p>
+              <form method="post" action="/activities" class="stack log-form">
+                <input type="hidden" name="next" value="/day/${escapeHtml(day)}">
+                <input type="hidden" name="requestId" value="${escapeHtml(randomUUID())}">
+                <label for="log-day">${escapeHtml(tx.t("day.fieldDay"))}</label><input id="log-day" name="day" type="date" value="${escapeHtml(day)}" max="${escapeHtml(today)}" required>
+                <label for="log-title">${escapeHtml(tx.t("day.fieldTitle"))} <span class="muted small">${escapeHtml(tx.t("day.fieldTitleOptional"))}</span></label><input id="log-title" name="title" maxlength="80" placeholder="${escapeHtml(tx.t("day.titlePlaceholder"))}" autocomplete="off">
+                <div class="log-row"><div><label for="log-distance">${escapeHtml(tx.t("day.fieldDistance"))}</label><input id="log-distance" name="distanceKm" type="number" min="0" max="100" step="0.01" inputmode="decimal" placeholder="5"></div><div><label for="log-duration">${escapeHtml(tx.t("day.fieldDuration"))}</label><input id="log-duration" name="durationMin" type="number" min="1" max="600" step="1" inputmode="numeric" placeholder="30"></div></div>
+                <label for="log-rpe">${escapeHtml(tx.t("day.fieldRpe"))}</label><input id="log-rpe" name="rpe" type="number" min="0" max="10" step="0.5" inputmode="decimal" placeholder="7">
+                <button class="btn" type="submit">${escapeHtml(tx.t("day.submit"))}</button>
+              </form>
+            </section>
+          </details>
+          ${workoutCard}
+          <script>
+          (() => {
+            const log = document.getElementById('log-run');
+            if (!(log instanceof HTMLDetailsElement)) return;
+            if (location.hash === '#log-run') log.open = true;
+          })();
+          </script>`;
         sendHtml(response, 200, pageLayout(formatDayLabel(day, tx.date), body, user, "calendar", flash));
         return;
       }

@@ -129,6 +129,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .history-summary .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
 .history-summary strong { display: block; font-size: 20px; letter-spacing: -.02em; }
 .history-summary span { display: block; margin-top: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+/* One period summary line replaces the four stat cards on the training log; the week rows keep their own lines. */
+.history-period-summary { margin: -2px 0 8px; }
 .history-load-line { margin: -4px 0 10px; }
 .history-load-chip { text-decoration: none; font-weight: 800; }
 .range-switch { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -737,6 +739,12 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .session-intent { margin: 4px 0 0; font-size: 13px; }
 .session-intent-effort { margin: 2px 0 0; }
 .log-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+/* The day page's log form is a native disclosure: the summary is the primary action, the form opens in place. */
+.log-disclosure { margin: 0 0 18px; }
+.log-disclosure > summary { display: inline-flex; align-items: center; min-height: 44px; list-style: none; cursor: pointer; }
+.log-disclosure > summary::-webkit-details-marker { display: none; }
+.log-disclosure > summary::marker { content: ""; }
+.log-panel { margin: 10px 0 0; }
 .best-scope, .trend-window { margin-top: 8px; }
 .key-delete-form { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 10px; }
 

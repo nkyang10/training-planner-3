@@ -200,12 +200,12 @@ try {
     if ($cssText -notmatch '\.seg-tabs' -or $cssText -notmatch '\.seg-panel' -or $cssText -notmatch '\.activity-columns' -or $cssText -notmatch '\.muscle-layout' -or $cssText -notmatch '\.history-load-chip' -or $cssText -notmatch 'body\.coach-open \.activity-columns') {
         throw 'The deployed stylesheet does not contain the pass-2/P1 page regroup styles.'
     }
-    if ($cssText -notmatch '\.cal-key' -or $cssText -notmatch '\.entry-context' -or $cssText -notmatch '\.calendar-head') {
-        throw 'The deployed stylesheet does not contain the entry-page key, context and header styles.'
+    if ($cssText -notmatch '\.cal-key' -or $cssText -notmatch '\.entry-context' -or $cssText -notmatch '\.calendar-head' -or $cssText -notmatch '\.log-disclosure' -or $cssText -notmatch '\.history-period-summary') {
+        throw 'The deployed stylesheet does not contain the entry-page and daily-page styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=29') {
-        throw 'The deployed login page does not reference app.css?v=29.'
+    if ($loginText -notmatch 'app\.css\?v=30') {
+        throw 'The deployed login page does not reference app.css?v=30.'
     }
     if ($loginText -notmatch 'Milebook') {
         throw 'The deployed login page does not carry the Milebook brand.'

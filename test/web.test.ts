@@ -502,6 +502,10 @@ describe("private calendar", () => {
     expect(ownDayHtml).not.toContain("Done (Garmin / reported)");
     expect(ownDayHtml).toContain('href="/profile"');
     expect(ownDayHtml).toContain("Demo Runner");
+    // The log form is a native disclosure, and the old date/runner/profile subline is gone.
+    expect(ownDayHtml).toContain('class="log-disclosure" id="log-run"');
+    expect(ownDayHtml).toContain('<summary class="btn">Log a run</summary>');
+    expect(ownDayHtml).not.toContain("2026-11-06 · Demo Runner");
 
     const otherDay = await fetch(`${base}/day/2026-11-07`, { headers: { cookie } });
     const otherDayHtml = await otherDay.text();
@@ -1463,6 +1467,11 @@ describe("training log", () => {
     expect(html).toContain("Past training");
     expect(html).toContain('data-active="history"');
     expect(html).toContain(">Training log</a>");
+    // One period summary line replaces the four stat cards; the week header no longer repeats it.
+    expect(html).toContain('class="history-period-summary muted small"');
+    expect(html).not.toContain('class="history-summary"');
+    expect(html).toContain("longest 5.2 km");
+    expect(html).toContain("planned 10 km");
     // The period rows come first; load/trend/review live behind the Review tab.
     expect(html).toContain('class="seg-tabs history-tabs" role="radiogroup"');
     expect(html).toContain('id="history-tab-period" value="period" data-track="page-tab" checked');
