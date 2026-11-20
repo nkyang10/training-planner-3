@@ -304,7 +304,7 @@ function readingsSection(checkIn: MuscleCheckIn, tx: Translator = defaultTransla
   const note = checkIn.note === null ? "" : `<p class="muted small">${tx.t("muscle.yourNote", { note: escapeHtml(checkIn.note) })}</p>`;
   const askCoach = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`I checked in on my muscles today (${summarizeCheckIn(checkIn)}) — how should that shape my next few days?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askCoachCheckIn"))}</button>`;
   return `<section class="card muscle-reading-card" id="latest-reading">
-    <div class="muscle-reading-head-row"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2>${readinessChipHtml(readiness)}</div>
+    <div class="muscle-reading-head-row"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2>${readinessChipHtml(readiness, tx)}</div>
     <p class="muted small">${escapeHtml(formatDayLabel(checkIn.day))}${linked}</p>
     ${note}
     <ul class="muscle-reading-list">${rows}</ul>
@@ -874,11 +874,11 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
   const attentionLine =
     count === 0
       ? ""
-      : `<p class="muted small">${escapeHtml(tx.t("muscle.attentionNow"))} <a href="#muscle-status"><span class="chip muscle-attention-chip">${escapeHtml(tx.t("muscle.needAttentionAria", { count }))}</span></a>${worstRow === null || worst === null ? "" : ` ${tx.t("muscle.attentionWorst", { name: escapeHtml(muscleShortName(worstRow.muscleId)), level: escapeHtml(LEVEL_CHIP[worst].label.toLowerCase()) })}`}</p>`;
+      : `<p class="muted small">${escapeHtml(tx.t("muscle.attentionNow"))} <a href="#muscle-status"><span class="chip muscle-attention-chip">${escapeHtml(tx.t("muscle.needAttentionAria", { count }))}</span></a>${worstRow === null || worst === null ? "" : ` ${tx.t("muscle.attentionWorst", { name: escapeHtml(txMuscleShortName(worstRow.muscleId, tx)), level: escapeHtml(tx.t(`muscle.level.${worst}` as MessageKey).toLowerCase()) })}`}</p>`;
   const readiness = input.dayCheckIn === null ? "" : readinessForCheckIn(input.dayCheckIn.muscles);
   const readinessLine = input.dayCheckIn === null
     ? ""
-    : `<p class="muted small">${escapeHtml(tx.t("muscle.latestReport"))} ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness)}</p>`;
+    : `<p class="muted small">${escapeHtml(tx.t("muscle.latestReport"))} ${escapeHtml(formatDayLabel(input.dayCheckIn.day))} · ${readinessChipHtml(readiness, tx)}</p>`;
   const readingSections = input.dayCheckIn === null
     ? `<section class="card"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.readingsEmptyProse"))}</p></section>`
     : `${careSection(input.dayCheckIn, tx)}${readingsSection(input.dayCheckIn, tx)}${drillSection(input.dayCheckIn, tx)}`;
@@ -949,12 +949,12 @@ export function musclesWorkedCard(
   }
   const chips = (ids: readonly string[], emphasis: "primary" | "secondary"): string =>
     ids
-      .map((id) => `<a class="chip worked-chip ${emphasis}" href="/muscle?focus=${encodeURIComponent(id)}#check-in">${escapeHtml(getMuscle(id)?.name ?? id)}</a>`)
+      .map((id) => `<a class="chip worked-chip ${emphasis}" href="/muscle?focus=${encodeURIComponent(id)}#check-in">${escapeHtml(txMuscleName(id, tx))}</a>`)
       .join("");
   const primaryLine = chips(work.primary, "primary");
   const secondaryLine = work.secondary.length === 0 ? "" : chips(work.secondary, "secondary");
-  const primaryNames = work.primary.map((id) => getMuscle(id)?.name ?? id).join(", ");
-  const secondaryNames = work.secondary.map((id) => getMuscle(id)?.name ?? id).join(", ");
+  const primaryNames = work.primary.map((id) => txMuscleName(id, tx)).join(", ");
+  const secondaryNames = work.secondary.map((id) => txMuscleName(id, tx)).join(", ");
   const spoken = `${tx.t("muscle.spokenPrimary")} ${primaryNames}.${work.secondary.length === 0 ? "" : ` ${tx.t("muscle.spokenSecondary")} ${secondaryNames}.`}`;
   const listHtml = `<div class="worked-list-tab"><p class="muted small"><strong>${escapeHtml(tx.t("muscle.primaryMovers"))}</strong></p><div class="muscle-list-chip-row">${primaryLine}</div>${work.secondary.length === 0 ? "" : `<p class="muted small"><strong>${escapeHtml(tx.t("muscle.helpers"))}</strong></p><div class="muscle-list-chip-row">${secondaryLine}</div>`}<p class="muted small">${escapeHtml(spoken)}</p></div>`;
   const panel = renderMuscleViewerPanel({
@@ -972,7 +972,7 @@ export function musclesWorkedCard(
   });
   const statusChips = active
     .map((status) => {
-      const name = muscleShortName(status.muscleId);
+      const name = txMuscleShortName(status.muscleId, tx);
       const fill = sorenessFill(status.current);
       return `<a class="chip muscle-worked-status" href="/muscle?focus=${encodeURIComponent(status.muscleId)}#check-in" title="${escapeHtml(tx.t("muscle.updateTitle"))}"><span class="muscle-attention-dot" style="background:${fill}" aria-hidden="true"></span>${escapeHtml(name)} · ${status.current}/10${status.hold ? ` · ${escapeHtml(tx.t("muscle.wordHeld"))}` : ""}</a>`;
     })

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 512 passing" src="https://img.shields.io/badge/tests-512%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 513 passing" src="https://img.shields.io/badge/tests-513%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (512 tests in 21 files). |
+| `pnpm test` | Run the Vitest suite (513 tests in 21 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -249,7 +249,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 512 Vitest tests across 21 files. |
+| `test/` | 513 Vitest tests across 21 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -289,11 +289,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 
 | Gate | State |
 |---|---|
-| Tests | **512 / 512** in 21 files |
+| Tests | **513 / 513** in 21 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the en/zh-HK localization slice, the coach dock and the four-page regroup: `app.css?v=27` carries `.coach-dock`, `.coach-tabs`, `body.coach-open`, `.seg-tabs`, `.activity-columns` and `.muscle-layout`; `/login` serves v27, gateway health 200, 512/512 green. Earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
+| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the en/zh-HK localization slice, the coach dock and the four-page regroup: `app.css?v=27` carries `.coach-dock`, `.coach-tabs`, `body.coach-open`, `.seg-tabs`, `.activity-columns` and `.muscle-layout`; `/login` serves v27, gateway health 200, 513/513 green. Earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout

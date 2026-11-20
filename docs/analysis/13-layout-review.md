@@ -3,7 +3,7 @@
 **Status:** review + two implemented slices. The coach bubble is a **docked coach column on wide screens** and a
 **tabbed sheet below 1200 px**; the panel is grouped into **Chat / States / Changes**. A second pass applied the same
 grammar — tabs when a page mixes jobs, side-by-side when cards are peers — to the **training log, coaching states,
-activity detail and muscle** pages. Verified 2026-11-20 with 512 tests, typecheck, lint and headless-Chrome captures
+activity detail and muscle** pages. Verified 2026-11-20 with 513 tests, typecheck, lint and headless-Chrome captures
 before and after. **Date:** 2026-11-20.
 **Lens:** 排版 — hierarchy, density, above-the-fold composition, scan path, responsive wrapping and the
 relationship between the page and the coach overlay — judged page by page against what a runner actually does.
@@ -244,9 +244,9 @@ Notes:
 
 ## 6. Verification
 
-- `pnpm check` green: lint, `tsc --noEmit`, **512 tests in 21 files**. One test is new (a Cantonese state-catalog
-  check from the concurrent localization pass); the dock, history, states, activity and muscle tests gained layout
-  assertions.
+- `pnpm check` green: lint, `tsc --noEmit`, **513 tests in 21 files**. Two tests are new (a Cantonese state-catalog
+  check and a Cantonese muscle-name/soreness check from the concurrent localization pass); the dock, history,
+  states, activity and muscle tests gained layout assertions.
 - Headless Chrome: 0 JS exceptions across **27 page states** in pass 1 and **34 captures (18 with DOM probes)** in
   pass 2; probes confirmed dock overlap 0, static panel, tab click and ArrowRight selection, badge clearing on the
   Changes tab, in-place undo marking **both** the dock card and the Recent changes card, Escape closing to the

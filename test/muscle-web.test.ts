@@ -523,6 +523,26 @@ describe("the muscle status layer", () => {
     expect(html).not.toContain("Save check-in");
   });
 
+  it("localizes muscle names, soreness and condition labels to Cantonese on a seeded check-in", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [
+      ["day", TODAY],
+      ["muscleIds", "calves"],
+      ["soreness", "6"],
+      ["conditions", "tight"],
+    ]);
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    // The status row renders the localized muscle name inside a <strong>; the English name
+    // also appears inside the editor <script> payload, so only the visible strong form is checked.
+    expect(html).toContain("<strong>小腿</strong>");
+    expect(html).not.toContain("<strong>Calves</strong>");
+    // 6/10 maps to the clearDoms soreness bucket; the tight condition label renders in Cantonese.
+    expect(html).toContain("6/10 明顯延遲性酸痛");
+    expect(html).toContain("緊繃／僵硬");
+  });
+
   it("claims all better and returns the muscle to perfect condition", async () => {
     const { base, cookie, handle, user } = await start();
     await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);

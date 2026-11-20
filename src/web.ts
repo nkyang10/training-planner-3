@@ -37,7 +37,6 @@ import {
   isMuscleConditionKey,
   isMuscleId,
   MAX_CHECKIN_NOTE_CHARS,
-  muscleShortName,
   musclesForRun,
   parseMuscleTagsJson,
   validateCheckInDay,
@@ -4154,7 +4153,7 @@ export function createWeb(options: WebOptions): WebApp {
             count: statuses.length,
             items: statuses.map((status) => ({
               muscleId: status.muscleId,
-              name: muscleShortName(status.muscleId),
+              name: tx.t(`muscle.short.${status.muscleId}` as MessageKey),
               current: status.current,
               level: status.level,
               hold: status.hold,
