@@ -230,6 +230,15 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .plan-bar-actual { background: var(--ember); }
 .plan-bar-row strong { text-align: right; font-size: 12px; }
 .detail-summary { margin-bottom: 14px; }
+/* The activity page's secondary cards pair up on wide screens: program beside muscles worked, metrics beside zones,
+   splits beside laps. Below 1024px the columns collapse back into one stack in reading order. */
+.activity-columns { display: block; }
+.activity-col { display: block; }
+@media (min-width: 1024px) {
+  .activity-columns { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 18px; align-items: start; margin-bottom: 18px; }
+  .activity-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .activity-col > .card { margin-bottom: 0; }
+}
 @media (max-width: 640px) {
   .trend-grid { grid-template-columns: 1fr; }
   .plan-compare-grid { grid-template-columns: 1fr; }
@@ -241,6 +250,26 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .period-mode { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 800; color: var(--muted); text-decoration: none; }
 .period-mode.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(27, 18, 12, .12); }
 .period-mode:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+/* In-page segmented tabs: radio inputs switch without script (the trend picker uses the same idea). One panel shows
+   at a time; with CSS disabled every panel is visible, so nothing is lost without script or :has support. */
+.seg-tabs { margin: 2px 0 14px; }
+.seg-tabs > .seg-input { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.seg-labels { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--wash); border: 1px solid var(--line); border-radius: 999px; }
+.seg-label { padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 800; color: var(--muted); cursor: pointer; user-select: none; }
+.seg-label:hover { color: var(--ink); }
+.seg-panel { display: none; }
+.seg-tabs > .seg-input:nth-of-type(1):checked ~ .seg-labels > .seg-label:nth-child(1),
+.seg-tabs > .seg-input:nth-of-type(2):checked ~ .seg-labels > .seg-label:nth-child(2),
+.seg-tabs > .seg-input:nth-of-type(3):checked ~ .seg-labels > .seg-label:nth-child(3),
+.seg-tabs > .seg-input:nth-of-type(4):checked ~ .seg-labels > .seg-label:nth-child(4) { background: #fff; color: var(--ink); box-shadow: 0 2px 8px rgba(27, 18, 12, .10); }
+.seg-tabs > .seg-input:nth-of-type(1):focus-visible ~ .seg-labels > .seg-label:nth-child(1),
+.seg-tabs > .seg-input:nth-of-type(2):focus-visible ~ .seg-labels > .seg-label:nth-child(2),
+.seg-tabs > .seg-input:nth-of-type(3):focus-visible ~ .seg-labels > .seg-label:nth-child(3),
+.seg-tabs > .seg-input:nth-of-type(4):focus-visible ~ .seg-labels > .seg-label:nth-child(4) { outline: 2px solid var(--ember); outline-offset: 2px; }
+.seg-tabs > .seg-input:nth-of-type(1):checked ~ .seg-panels > .seg-panel:nth-child(1),
+.seg-tabs > .seg-input:nth-of-type(2):checked ~ .seg-panels > .seg-panel:nth-child(2),
+.seg-tabs > .seg-input:nth-of-type(3):checked ~ .seg-panels > .seg-panel:nth-child(3),
+.seg-tabs > .seg-input:nth-of-type(4):checked ~ .seg-panels > .seg-panel:nth-child(4) { display: block; }
 .period-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .period-nav a { text-decoration: none; color: var(--muted); font-weight: 700; }
 .period-nav a:hover { color: var(--ember-text); }
@@ -805,6 +834,18 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .attention-badge { display: inline-block; vertical-align: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
 .muscle-attention-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
 .muscle-status-card { margin-bottom: 16px; }
+/* Muscle page: the status/readings rail sits beside the check-in figure from 1024px, so the first interactive
+   surface is visible at load instead of below a tall status card. Below that, DOM order (status → form → readings)
+   is preserved. */
+.muscle-layout { display: block; }
+@media (min-width: 1024px) {
+  .muscle-layout { display: grid; grid-template-columns: minmax(300px, 360px) minmax(0, 1fr); gap: 18px; align-items: start; margin-bottom: 18px; }
+  .muscle-layout > div { min-width: 0; display: grid; gap: 18px; align-content: start; }
+  .muscle-layout > div > .card { margin-bottom: 0; }
+  .muscle-status-slot { grid-column: 1; grid-row: 1; }
+  .muscle-readings-slot { grid-column: 1; grid-row: 2; }
+  .muscle-form-slot { grid-column: 2; grid-row: 1 / span 2; }
+}
 .muscle-status-clear { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 0; }
 .muscle-status-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
 .muscle-status-row { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--wash); }

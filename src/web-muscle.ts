@@ -21,7 +21,6 @@ import {
   readinessForCheckIn,
   readMuscleTag,
   sorenessFill,
-  sorenessLabel,
   summarizeCheckIn,
   type MuscleCheckIn,
   type MuscleTagLevel,
@@ -144,10 +143,49 @@ function formatDayLabel(day: string): string {
   });
 }
 
-function tagLine(tag: { soreness: number; conditions: readonly string[]; side: string }): string {
-  const conditions = tag.conditions.map((key) => MUSCLE_CONDITION_BY_KEY[key as keyof typeof MUSCLE_CONDITION_BY_KEY]?.label ?? key);
+/**
+ * Localized soreness label keyed by the same bucket thresholds as the producer `sorenessLabel`. The en values
+ * are byte-identical, so English renders unchanged; the result stays `.toLowerCase()`-able at call sites.
+ */
+function txSorenessLabel(value: number, tx: Translator = defaultTranslator): string {
+  const bucket =
+    value <= 0
+      ? "nothing"
+      : value <= 2
+        ? "barelyThere"
+        : value <= 3
+          ? "mild"
+          : value <= 5
+            ? "noticeable"
+            : value <= 6
+              ? "clearDoms"
+              : value <= 7
+                ? "soreToTouch"
+                : value <= 8
+                  ? "strong"
+                  : "severe";
+  return tx.t(`muscle.soreness.${bucket}.label` as MessageKey);
+}
+
+/** Localized full muscle name for a catalog id; falls back to the raw id when the id is unknown. */
+function txMuscleName(muscleId: string, tx: Translator = defaultTranslator): string {
+  return getMuscle(muscleId) === undefined ? muscleId : tx.t(`muscle.name.${muscleId}` as MessageKey);
+}
+
+/** Localized short muscle name for a catalog id; falls back to the raw id when the id is unknown. */
+function txMuscleShortName(muscleId: string, tx: Translator = defaultTranslator): string {
+  return getMuscle(muscleId) === undefined ? muscleId : tx.t(`muscle.short.${muscleId}` as MessageKey);
+}
+
+function tagLine(
+  tag: { soreness: number; conditions: readonly string[]; side: string },
+  tx: Translator = defaultTranslator,
+): string {
+  const conditions = tag.conditions.map((key) =>
+    key in MUSCLE_CONDITION_BY_KEY ? tx.t(`muscle.condition.${key}.label` as MessageKey) : key,
+  );
   const side = tag.side === "both" ? "" : `, ${tag.side}`;
-  const parts = [`${tag.soreness}/10 ${sorenessLabel(tag.soreness)}`, ...conditions];
+  const parts = [`${tag.soreness}/10 ${txSorenessLabel(tag.soreness, tx)}`, ...conditions];
   return parts.join(" · ") + side;
 }
 
@@ -156,8 +194,9 @@ function levelChip(level: MuscleTagLevel, tx: Translator = defaultTranslator): s
   return `<span class="chip muscle-level ${chip.className}">${escapeHtml(tx.t(LEVEL_CHIP_KEY[level]))}</span>`;
 }
 
-function readinessChipHtml(readiness: string): string {
-  return `<span class="chip muscle-readiness ${READINESS_CHIP[readiness] ?? "readiness-steady"}">${escapeHtml(READINESS_LABELS[readiness as keyof typeof READINESS_LABELS] ?? readiness)}</span>`;
+function readinessChipHtml(readiness: string, tx: Translator = defaultTranslator): string {
+  const label = readiness in READINESS_LABELS ? tx.t(`muscle.readiness.${readiness}` as MessageKey) : readiness;
+  return `<span class="chip muscle-readiness ${READINESS_CHIP[readiness] ?? "readiness-steady"}">${escapeHtml(label)}</span>`;
 }
 
 /** One compact one-tap action on a status row: a tiny form so it works without script too. */
@@ -167,8 +206,7 @@ function statusActionForm(action: "hold" | "release" | "resolve", muscleId: stri
 
 /** One live status row: the muscle, today's computed level, the time story, and the three one-tap controls. */
 function statusRowHtml(status: MuscleStatus, tx: Translator = defaultTranslator): string {
-  const muscle = getMuscle(status.muscleId);
-  const name = muscle?.name ?? status.muscleId;
+  const name = txMuscleName(status.muscleId, tx);
   const trend = status.hold
     ? tx.t("muscle.heldTrend", { day: escapeHtml(formatDayLabel(status.startDay)), current: status.current })
     : status.current === status.reported
@@ -190,7 +228,7 @@ function statusRowHtml(status: MuscleStatus, tx: Translator = defaultTranslator)
   return `<li class="muscle-status-row">
     <span class="muscle-attention-dot" style="background:${sorenessFill(status.current)}" aria-hidden="true"></span>
     <div class="muscle-status-main">
-      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine({ soreness: status.current, conditions: [...status.conditions], side: status.side }))}</span>${levelChip(status.level, tx)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine({ soreness: status.current, conditions: [...status.conditions], side: status.side }, tx))}</span>${levelChip(status.level, tx)}</div>
       <p class="muted small">${trend}${linked}</p>
     </div>
     <div class="muscle-status-actions">
@@ -226,7 +264,7 @@ function statusSection(statuses: readonly MuscleStatus[], tx: Translator = defau
   const worstName = worstRow === null
     ? ""
     : tx.t("muscle.worstPrefix", {
-        name: escapeHtml(muscleShortName(worstRow.muscleId)),
+        name: escapeHtml(txMuscleShortName(worstRow.muscleId, tx)),
         level: escapeHtml(tx.t(LEVEL_CHIP_KEY[worstRow.level]).toLowerCase()),
       });
   const allBetter = count >= 2
@@ -252,7 +290,7 @@ function readingRowHtml(tag: { muscleId: string; soreness: number; conditions: r
   if (muscle === undefined) return "";
   const reading = readMuscleTag(tag as Parameters<typeof readMuscleTag>[0]);
   return `<li class="muscle-reading">
-    <div class="muscle-reading-head"><strong>${escapeHtml(muscle.name)}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine(tag))}</span>${levelChip(reading.level, tx)}</div>
+    <div class="muscle-reading-head"><strong>${escapeHtml(txMuscleName(tag.muscleId, tx))}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine(tag, tx))}</span>${levelChip(reading.level, tx)}</div>
     <p class="muted small">${escapeHtml(reading.guidance)}</p>
   </li>`;
 }
@@ -289,6 +327,7 @@ function careSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator)
   const blocks = entries.map(({ tag, reading }) => {
     const muscle = getMuscle(tag.muscleId);
     const name = muscle?.name ?? tag.muscleId;
+    const displayName = txMuscleName(tag.muscleId, tx);
     const note = `Muscle check-in ${checkIn.day}: ${tagLine(tag)}`;
     const isUrgent = reading.level === "urgent";
     const stateKey: CoachStateKey = isUrgent ? "medical_red_flag" : "pain_injury";
@@ -298,9 +337,9 @@ function careSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator)
       note,
       tx.t(isUrgent ? "muscle.setRedFlag" : "muscle.setPainState"),
     );
-    const ask = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My ${name} is ${tagLine(tag)} after training — what should I do?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", muscleId: tag.muscleId, source: "muscle-tab" }))}">${tx.t("muscle.askCoachMuscle", { name: escapeHtml(name.toLowerCase()) })}</button>`;
+    const ask = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My ${name} is ${tagLine(tag)} after training — what should I do?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", muscleId: tag.muscleId, source: "muscle-tab" }))}">${tx.t("muscle.askCoachMuscle", { name: escapeHtml(displayName.toLowerCase()) })}</button>`;
     return `<li class="muscle-reading care">
-      <div class="muscle-reading-head"><strong>${escapeHtml(name)}</strong>${levelChip(reading.level, tx)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(displayName)}</strong>${levelChip(reading.level, tx)}</div>
       <p class="muted small">${escapeHtml(reading.guidance)}</p>
       <div class="review-actions">${offer}${ask}</div>
     </li>`;
@@ -317,11 +356,11 @@ function drillSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator
   if (cards.length === 0) return "";
   const cardHtml = cards.map((card) => {
     const drills = card.drills
-      .map((drill) => `<li><span class="chip drill-cat drill-${drill.category}">${drill.category}</span><strong>${escapeHtml(drill.name)}</strong><span class="muted small">${escapeHtml(drill.how)}</span></li>`)
+      .map((drill) => `<li><span class="chip drill-cat drill-${drill.category}">${tx.t(`muscle.drillCategory.${drill.category}` as MessageKey)}</span><strong>${escapeHtml(drill.name)}</strong><span class="muted small">${escapeHtml(drill.how)}</span></li>`)
       .join("");
     const ask = `<button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Can we work a short ${card.level === "heavy" ? "easy recovery" : "mobility and activation"} session for my ${card.muscleName.toLowerCase()} into this week?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askWorkIn"))}</button>`;
     return `<article class="muscle-drill-card">
-      <div class="muscle-reading-head"><strong>${escapeHtml(card.muscleName)}</strong>${levelChip(card.level, tx)}</div>
+      <div class="muscle-reading-head"><strong>${escapeHtml(txMuscleName(card.muscleId, tx))}</strong>${levelChip(card.level, tx)}</div>
       <p class="muted small">${escapeHtml(card.guidance)}</p>
       <ul class="muscle-drills">${drills}</ul>
       <div class="review-actions">${ask}</div>
@@ -353,8 +392,8 @@ function trainingSection(rows: readonly MuscleTrainingRow[], tx: Translator = de
   }
   const items = rows.map((row) => {
     const chips = [
-      ...row.work.primary.map((id) => `<span class="chip worked-chip primary">${escapeHtml(getMuscle(id)?.name ?? id)}</span>`),
-      ...row.work.secondary.map((id) => `<span class="chip worked-chip secondary">${escapeHtml(getMuscle(id)?.name ?? id)}</span>`),
+      ...row.work.primary.map((id) => `<span class="chip worked-chip primary">${escapeHtml(txMuscleName(id, tx))}</span>`),
+      ...row.work.secondary.map((id) => `<span class="chip worked-chip secondary">${escapeHtml(txMuscleName(id, tx))}</span>`),
     ].join("");
     return `<li class="training-row">
       <div class="training-row-main"><strong>${escapeHtml(row.title)}</strong><span class="muted small">${escapeHtml(formatDayLabel(row.day))}</span></div>
@@ -371,11 +410,11 @@ function muscleListSection(prefillIds: readonly string[], tx: Translator = defau
   for (const muscle of MUSCLE_CATALOG) {
     const checked = prefillIds.includes(muscle.id) ? " checked" : "";
     const options = groups.get(muscle.group) ?? [];
-    options.push(`<li><label><input type="checkbox" class="muscle-check" name="muscleIds" value="${escapeHtml(muscle.id)}"${checked}> ${escapeHtml(muscle.name)}</label><span class="muted small">${escapeHtml(muscle.meaning)}</span></li>`);
+    options.push(`<li><label><input type="checkbox" class="muscle-check" name="muscleIds" value="${escapeHtml(muscle.id)}"${checked}> ${escapeHtml(txMuscleName(muscle.id, tx))}</label><span class="muted small">${escapeHtml(muscle.meaning)}</span></li>`);
     groups.set(muscle.group, options);
   }
   const groupHtml = [...groups.entries()]
-    .map(([group, items]) => `<li><strong>${escapeHtml(MUSCLE_GROUP_LABELS[group as keyof typeof MUSCLE_GROUP_LABELS] ?? group)}</strong><ul class="muscle-list-items">${items.join("")}</ul></li>`)
+    .map(([group, items]) => `<li><strong>${escapeHtml(group in MUSCLE_GROUP_LABELS ? tx.t(`muscle.group.${group}` as MessageKey) : group)}</strong><ul class="muscle-list-items">${items.join("")}</ul></li>`)
     .join("");
   return `<div class="muscle-list-tab"><p class="muted small">${escapeHtml(tx.t("muscle.listIntro"))}</p><ul class="muscle-list-groups">${groupHtml}</ul></div>`;
 }
@@ -384,14 +423,14 @@ function formSection(input: MusclePageInput, tx: Translator = defaultTranslator)
   const activityOptions = input.activityOptions.map(
     (option) => `<option value="${escapeHtml(option.activityId)}"${option.activityId === input.prefillActivityId ? " selected" : ""}>${escapeHtml(option.label)}</option>`,
   ).join("");
-  const anchors = SORENESS_ANCHORS.map((anchor) => `${anchor.value} ${anchor.label}`).join(" · ");
+  const anchors = SORENESS_ANCHORS.map((anchor) => `${anchor.value} ${txSorenessLabel(anchor.value, tx)}`).join(" · ");
   const conditionBoxes = MUSCLE_CONDITIONS
-    .map((condition) => `<label class="quick-condition"><input type="checkbox" class="quick-condition-input" name="conditions" value="${condition.key}"> ${condition.label}</label>`)
+    .map((condition) => `<label class="quick-condition"><input type="checkbox" class="quick-condition-input" name="conditions" value="${condition.key}"> ${tx.t(`muscle.condition.${condition.key}.label` as MessageKey)}</label>`)
     .join("");
-  const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === 5 ? " selected" : ""}>${value} · ${sorenessLabel(value)}</option>`).join("");
+  const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === 5 ? " selected" : ""}>${value} · ${txSorenessLabel(value, tx)}</option>`).join("");
   const focusNote = input.focusMuscleId === null
     ? ""
-    : `<p class="ok" role="status">${tx.t("muscle.focusNote", { name: escapeHtml(getMuscle(input.focusMuscleId)?.name ?? input.focusMuscleId) })}</p>`;
+    : `<p class="ok" role="status">${tx.t("muscle.focusNote", { name: escapeHtml(txMuscleName(input.focusMuscleId, tx)) })}</p>`;
   const prefillNote = input.prefillActivityId === null
     ? ""
     : `<p class="ok" role="status">${tx.t("muscle.prefillNote")}</p>`;
@@ -404,7 +443,7 @@ function formSection(input: MusclePageInput, tx: Translator = defaultTranslator)
     regions[status.muscleId] = {
       fill: sorenessFill(status.current),
       ...(status.level === "warning" || status.level === "urgent" ? { dashed: true } : {}),
-      note: `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} today${status.hold ? " · held" : ""}`,
+      note: `${status.current}/10 ${txSorenessLabel(status.current, tx).toLowerCase()} ${tx.t("muscle.wordToday")}${status.hold ? ` · ${tx.t("muscle.wordHeld")}` : ""}`,
     };
   }
   const panel = renderMuscleViewerPanel({
@@ -851,10 +890,12 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
     ${savedBanner}
     ${statusSavedBanner}
     ${errorBanner}
-    ${statusSection(input.statuses, tx)}
-    ${formSection(input, tx)}
+    <div class="muscle-layout">
+      <div class="muscle-status-slot">${statusSection(input.statuses, tx)}</div>
+      <div class="muscle-form-slot">${formSection(input, tx)}</div>
+      <div class="muscle-readings-slot">${readingSections}</div>
+    </div>
     ${trainingSection(input.trainingRows, tx)}
-    ${readingSections}
     ${historySection(input.history, input.dayCheckIn, tx)}
     ${safetySection(tx)}
     ${muscleScript(input)}`;
@@ -899,7 +940,7 @@ export function musclesWorkedCard(
   for (const id of work.secondary) regions[id] = { fill: "#fbd5a8", note: helperRole };
   for (const status of active) {
     const role = regions[status.muscleId]?.note ?? "";
-    const note = `${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} ${tx.t("muscle.wordToday")}${status.hold ? ` · ${tx.t("muscle.wordHeld")}` : ""}${role.length === 0 ? "" : ` · ${role}`}`;
+    const note = `${status.current}/10 ${txSorenessLabel(status.current, tx).toLowerCase()} ${tx.t("muscle.wordToday")}${status.hold ? ` · ${tx.t("muscle.wordHeld")}` : ""}${role.length === 0 ? "" : ` · ${role}`}`;
     regions[status.muscleId] = {
       fill: sorenessFill(status.current),
       ...(status.level === "warning" || status.level === "urgent" ? { dashed: true } : {}),

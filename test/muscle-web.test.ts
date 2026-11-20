@@ -126,6 +126,14 @@ describe("the muscle tab page", () => {
     expect(html).toContain("Muscle check-in");
     expect(html).toContain('class="view-switch" data-active="muscle"');
     expect(html).toContain('href="/muscle" aria-current="page"');
+    // From 1024px the status/readings rail sits beside the check-in figure; DOM order keeps status → form → readings
+    // for the phone.
+    expect(html).toContain('class="muscle-layout"');
+    expect(html).toContain('class="muscle-status-slot"');
+    expect(html).toContain('class="muscle-form-slot"');
+    expect(html).toContain('class="muscle-readings-slot"');
+    expect(html.indexOf('class="muscle-status-slot"')).toBeLessThan(html.indexOf('class="muscle-form-slot"'));
+    expect(html.indexOf('class="muscle-form-slot"')).toBeLessThan(html.indexOf('class="muscle-readings-slot"'));
     // The reusable 3D muscle plugin: a tab strip over the figure and the text list.
     expect(html).toContain('id="muscle-plugin"');
     expect(html).toContain('role="tablist" aria-label="3D muscle figure or muscle list"');

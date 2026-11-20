@@ -1,8 +1,10 @@
 # POC3 — page-layout review and the coach dock
 
-**Status:** review + implemented slice. The coach bubble is now a **docked coach column on wide screens** and a
-**tabbed sheet below 1200 px**; the panel itself is grouped into **Chat / States / Changes**. Verified 2026-11-20
-with 511 tests, typecheck, lint and a headless-Chrome capture pass. **Date:** 2026-11-20.
+**Status:** review + two implemented slices. The coach bubble is a **docked coach column on wide screens** and a
+**tabbed sheet below 1200 px**; the panel is grouped into **Chat / States / Changes**. A second pass applied the same
+grammar — tabs when a page mixes jobs, side-by-side when cards are peers — to the **training log, coaching states,
+activity detail and muscle** pages. Verified 2026-11-20 with 512 tests, typecheck, lint and headless-Chrome captures
+before and after. **Date:** 2026-11-20.
 **Lens:** 排版 — hierarchy, density, above-the-fold composition, scan path, responsive wrapping and the
 relationship between the page and the coach overlay — judged page by page against what a runner actually does.
 **Relation to earlier work:** builds on [10-uiux-design-review.md](10-uiux-design-review.md) (UX-22 measured the
@@ -84,13 +86,14 @@ today strip + one week (phone).
 
 ### Training log (`/history` week / month / year)
 
-**Verdict:** honest and complete, but the page answers the least urgent question first. **Above the fold:**
-summary stat row + load card; the week’s day cards start after the trend card.
+**Verdict:** honest and complete, but the page answered the least urgent question first. **Above the fold (pass 2):**
+summary stat row + Days/Review tabs; the week’s day cards start immediately. **Shipped in pass 2:** desktop
+2,198 → 1,547 px, phone 2,585 → 1,765 CSS px.
 
-- **P1 — the week rows are buried under three summary cards.** At week view the page is **2,198 px** tall on desktop
+- **P1 — the week rows are buried under three summary cards.** At week view the page was **2,198 px** tall on desktop
   and **2,585 CSS px** on the phone; summary → load → trend → day cards. A runner opening “this week” wants the
-  seven days first. **Fix (M):** summary row → **day cards** → load/trend; or put load/trend in a second tab
-  (“Review”) under the period switch. Reuse the existing card components; no data change.
+  seven days first. **Shipped in pass 2:** summary row → **Days/Review tabs**; the week is the default and load/trend
+  moved behind “Review”. Reused the existing card components; no data change.
 - **P2 — the trend card is a card of chips plus a chart of panels**, visually heavier than the week it explains.
   **Fix (S):** collapse it to a 2-row strip when the period has fewer than two runs (the empty state already says
   “Need at least two runs…”).
@@ -100,26 +103,27 @@ summary stat row + load card; the week’s day cards start after the trend card.
 
 ### Activity detail (`/activity/<id>`)
 
-**Verdict:** the best content in the product, in the longest column. **Above the fold:** title, four stat cards,
-plan-vs-actual, the start of the Garmin program. The muscle card, splits, laps, zones and Ask coach are below.
+**Verdict:** the best content in the product, in the longest column. **Above the fold (pass 2):** title, head actions
+(Ask coach / View day / View plan), four stat cards, plan-vs-actual, and the first card of both columns. **Shipped in
+pass 2:** 2,233 → 1,647 px.
 
-- **P1 — every card is full width in one column (2,233 px at 1280).** Garmin program and muscle card are both
-  tall; splits and laps are tables that fit side by side. **Fix (M):** at ≥1024 use a two-column card grid
-  (`grid-template-columns: 1.15fr .85fr`) for program / muscles / splits / laps; keep metrics and plan-vs-actual
-  full width.
-- **P1 — Ask coach is the last card on the page.** It is the natural next step after the plan comparison.
-  **Fix (S):** a head action beside the date plus the existing bottom card.
+- **P1 — every card was full width in one column (2,233 px at 1280).** Garmin program and muscle card are both tall;
+  splits and laps are tables that fit side by side. **Shipped in pass 2:** at ≥1024 a two-column grid
+  (program/metrics/splits | muscles/zones/laps); plan-vs-actual stays full width.
+- **P1 — Ask coach was the last card on the page.** It is the natural next step after the plan comparison.
+  **Shipped in pass 2:** head actions beside the date, with the explanatory card kept at the end.
 - **P2 — the muscle card repeats its full 3D viewer** and pushes the splits further down. **Fix (S):** on the
   activity detail show the worked-muscle chips + a “Check in” link by default; the viewer behind “Show figure”.
 
 ### Muscle (`/muscle`)
 
-**Verdict:** the status layer reads well, but the first interactive surface is below the fold. **Above the fold:**
-page head + status card (2 muscles) + the start of the check-in card; the 3D figure is below 900 px.
+**Verdict:** the status layer reads well, but the first interactive surface was below the fold. **Above the fold
+(pass 2):** page head + status rail + the check-in figure. **Shipped in pass 2:** 360 px status/readings rail beside
+the figure at ≥1024; full page 2,930 px.
 
-- **P1 — status card, check-in form and 3D viewer are stacked.** The runner must scroll to the figure before
-  selecting a muscle. **Fix (M):** at ≥1024, two columns: status/reading rail (360 px) + check-in figure (fluid);
-  the figure becomes visible at load. On the phone keep the stack but collapse the status card to one summary row.
+- **P1 — status card, check-in form and 3D viewer were stacked.** The runner had to scroll to the figure before
+  selecting a muscle. **Shipped in pass 2:** at ≥1024, two columns: status/reading rail (360 px) + check-in figure
+  (fluid); the figure is visible at load. On the phone the stack stays (status → form → readings).
 - **P2 — the plugin tab strip (“3D figure / List”) sits inside the form**, below the card heading; the list is the
   no-script/keyboard path but is not visible as an alternative until the form is reached. **Fix (S):** move the tab
   strip to the card head.
@@ -128,11 +132,12 @@ page head + status card (2 muscles) + the start of the check-in card; the 3D fig
 
 ### Coach states page (`/coach-states`)
 
-**Verdict:** careful and complete (1,722 px), but it now duplicates the dock’s States tab. **Above the fold:**
-active + proposed cards; set-state form and history below.
+**Verdict:** careful and complete (1,722 px), but it duplicated the dock’s States tab. **Above the fold (pass 2):**
+active + proposed in the Current tab; the set form and history are one tap away. **Shipped in pass 2:**
+Current / Set / History tabs; 1,722 → 1,231 px current (900 px for set or history).
 
-- **P2 — two equal-weight sections plus a form plus history in one column.** **Fix (S/M):** tabs (Active / Proposed /
-  History) or a two-column grid; keep the counts line.
+- **P2 — two equal-weight sections plus a form plus history in one column.** **Shipped in pass 2:** tabs
+  (Current / Set a state / History); the counts line and Garmin setup card stay outside the tabs.
 - **P2 — the set-state form uses a 120 px label column** and a 7-day number input; it is the least-used block but
   the tallest. **Fix (S):** disclosure under the cards.
 
@@ -211,34 +216,68 @@ a full sheet: there is no side-by-side room, so the tabs are what make the sheet
 | Tablet 1024×768 | 380×680 at x 632–1012, fixed drawer under the bar | main 1024, scroll locked | 258,400 px² (overlay by design) |
 | Phone 390×844 | 378×832 at x 6, y 6, fixed sheet, scroll locked | — | full sheet |
 
-## 5. Verification
+## 5. Pass 2 — the same grammar on four pages
 
-- `pnpm check` green: lint, `tsc --noEmit`, **511 tests in 21 files**. Two tests are new (the Chinese dock labels and
-  the `/chat/history` change journal); the existing bubble test gained the dock/tab/CSS assertions and the
-  `data-change-set` hook.
-- Headless Chrome: 0 JS exceptions across **27 page states**; probes confirmed dock overlap 0, static panel, tab click
-  and ArrowRight selection, badge clearing on the Changes tab, in-place undo marking **both** the dock card and the
-  Recent changes card, Escape closing to the launcher, and Ask coach leaving focus on the tab (no textarea focus).
+The rule: a page shows **one job per visible group**. Use **tabs** when the groups have different lifecycles (read vs
+write vs history); use **side-by-side columns** when the cards are peers the runner compares. The shared component is
+`.seg-tabs` — visually hidden radio inputs, labels and panels switched by sibling selectors
+(`:checked ~ .seg-panels`), so it works without JavaScript and without `:has`; arrow keys move the radio group
+natively. It is the dock's grammar without the dock's script.
+
+| Page | Regrouping | Before | After |
+|---|---|---|---|
+| Training log | **Days/Weeks/Months \| Review**; the period panel is the default, the summary row stays above | 2,198 px desktop / 2,585 CSS px phone; week rows under load + trend | **1,547 / 1,765 px**; week rows first |
+| Coaching states | **Current \| Set a state \| History**; setup card stays above | 1,722 px, active + proposed + form + history stacked | **1,231 px** current; 900 px for set or history |
+| Activity detail | Head actions (**Ask coach / View day / View plan**); two columns ≥1024: program+metrics+splits \| muscles+zones+laps | 2,233 px, one column, Ask coach last | **1,647 px**; columns 554 / 472 px at 1280 |
+| Muscle | Status/readings rail (360 px) beside the check-in figure ≥1024; DOM order status → form → readings below | figure below a tall status card | figure **above the fold** at 1280; full page 2,930 px |
+
+Notes:
+
+- The history tab label follows the view — **Days / Weeks / Months** — because the period bar (Week/Month/Year) is
+  navigation, while the tabs group content, not time.
+- The states page keeps its counts line and Garmin setup card outside the tabs; it is now the management surface
+  behind the dock's compact States tab.
+- The activity head actions duplicate the bottom card deliberately: quick action above the fold, explanatory card at
+  the end. The columns pair peers, not a main/sidebar hierarchy.
+- Muscle DOM order is unchanged; CSS grid areas move the readings under the status rail only at ≥1024, so the phone
+  still reads status → form → readings.
+
+## 6. Verification
+
+- `pnpm check` green: lint, `tsc --noEmit`, **512 tests in 21 files**. One test is new (a Cantonese state-catalog
+  check from the concurrent localization pass); the dock, history, states, activity and muscle tests gained layout
+  assertions.
+- Headless Chrome: 0 JS exceptions across **27 page states** in pass 1 and **34 captures (18 with DOM probes)** in
+  pass 2; probes confirmed dock overlap 0, static panel, tab click and ArrowRight selection, badge clearing on the
+  Changes tab, in-place undo marking **both** the dock card and the Recent changes card, Escape closing to the
+  launcher, Ask coach leaving focus on the tab, the segmented tabs switching panels, and the activity/muscle columns
+  sitting side by side.
 - Screenshots: [before/after desktop](../design/layout-review/before-after-coach-dock.png),
   [the three tabs](../design/layout-review/coach-dock-tabs.png),
-  [before/after phone](../design/layout-review/before-after-coach-mobile.png).
-- Live redeployed 2026-11-20: `/login` serves `app.css?v=26`, the stylesheet carries `.coach-dock`, `.coach-tabs`
-  and `body.coach-open`, and gateway `/health` is 200. The deploy gate now checks those dock styles and the v26 link.
+  [before/after phone](../design/layout-review/before-after-coach-mobile.png),
+  [history tabs](../design/layout-review/history-tabs.png),
+  [activity columns](../design/layout-review/activity-columns.png),
+  [muscle columns](../design/layout-review/muscle-columns.png),
+  [state tabs](../design/layout-review/states-tabs.png).
+- Live redeployed 2026-11-20: `/login` serves `app.css?v=27`, the stylesheet carries `.coach-dock`, `.coach-tabs`,
+  `body.coach-open`, `.seg-tabs`, `.activity-columns` and `.muscle-layout`; gateway `/health` is 200.
 
-## 6. Top layout fixes, ordered by impact
+## 7. Top layout fixes, ordered by impact
 
 1. **Dock the coach beside the page on wide screens** — shipped; removes 242,572 px² of covered content.
 2. **Group the coach into Chat / States / Changes** — shipped; active states and Undo are reachable from every page.
 3. **Give the phone a tabbed sheet with a visible close** — shipped; no more takeover with one 32 px “−”.
-4. **Compact the calendar head** (h1 + one line + swatch legend; state chips in one row) — pending, M; moves the
-   month grid up ~140 px.
-5. **History: week days before load/trend cards** — pending, M; the page currently opens on summaries, not the week.
-6. **Activity detail: two-column secondary cards + Ask coach in the head** — pending, M; cuts ~500 px.
-7. **Muscle: status rail + 3D figure side by side** — pending, M; the first control is below the fold today.
-8. **Day/profile/state-page polish** (session actions, drop the Profile link from the day subline, labeled profile
-   links, disclosure for the log/set-state forms) — pending, S each.
+4. **History: week days before load/trend cards** — **shipped in pass 2** as a Days/Review segmented control; the
+   week is the default and the page is 2198 → 1547 px.
+5. **Activity detail: two-column secondary cards + Ask coach in the head** — **shipped in pass 2**; 2233 → 1647 px.
+6. **Muscle: status rail + 3D figure side by side** — **shipped in pass 2**; the figure is above the fold at 1280.
+7. **Coaching states: Current / Set / History tabs** — **shipped in pass 2**; 1722 → 1231 px current.
+8. **Compact the calendar head** (h1 + one line + swatch legend; state chips in one row) — pending, M; moves the
+   month grid up ~140 px. This is now the largest remaining 排版 fix.
+9. **Day/profile polish** (session actions, drop the Profile link from the day subline, labeled profile links,
+   disclosure for the log form) — pending, S each.
 
-## 7. What is deliberately left for the next slice
+## 8. What is deliberately left for the next slice
 
 - A context chip above the transcript naming the Ask-coach origin (day/run/state), and a cross-tab “Coach replied”
   bar when a reply lands while the runner is on States or Changes. The counts are the cheap 80 %.
@@ -249,4 +288,8 @@ a full sheet: there is no side-by-side room, so the tabs are what make the sheet
 - Clamping day-menu/peek popups to the main column instead of `innerWidth` under a dock.
 - Extracting `renderChatBubble()`’s ~1,300-line inline script into a module; the tab logic is tested through the
   rendered page and the browser probe, not a unit seam.
+- The phone activity order: the columns stack program → metrics → splits → muscles, so the figure is ~3,500 px down.
+  A “Muscles” jump chip in the head is the cheap fix; a sticky sub-nav is the better one.
+- Segmented tabs are radio buttons, not ARIA tabs; screen readers announce a radio group. Correct for a CSS-only
+  switch, but an ARIA tablist with a tiny script is the upgrade if the pattern spreads further.
 - The remaining structural mobile gap: a week/agenda plan view under 640 px (I-09), which no coach layout can fix.

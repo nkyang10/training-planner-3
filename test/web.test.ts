@@ -1462,6 +1462,17 @@ describe("training log", () => {
     expect(html).toContain("Past training");
     expect(html).toContain('data-active="history"');
     expect(html).toContain(">Training log</a>");
+    // The period rows come first; load/trend/review live behind the Review tab.
+    expect(html).toContain('class="seg-tabs history-tabs"');
+    expect(html).toContain('id="history-tab-period" checked');
+    expect(html).toContain('id="history-tab-review"');
+    expect(html).toContain('data-seg-panel="period"');
+    expect(html).toContain('data-seg-panel="review"');
+    expect(html).toContain(">Days</label>");
+    expect(html).toContain(">Review</label>");
+    expect(html.indexOf('data-seg-panel="period"')).toBeLessThan(html.indexOf('data-seg-panel="review"'));
+    expect(html.indexOf("Mon, 2 Nov 2026")).toBeLessThan(html.indexOf('data-seg-panel="review"'));
+    expect(html.indexOf("Daily volume")).toBeGreaterThan(html.indexOf('data-seg-panel="review"'));
     expect(html).toContain("Morning run");
     expect(html).toContain("Easy 5 km");
     expect(html).toContain("Planned:");
@@ -1595,6 +1606,8 @@ describe("training log", () => {
     expect(html).toContain("1 次跑步");
     expect(html).toContain("指標趨勢");
     expect(html).toContain("趨勢指標");
+    expect(html).toContain(">每週</label>");
+    expect(html).toContain(">回顧</label>");
     expect(html).not.toContain("Average pace");
     expect(html).not.toContain("Metric trend");
     expect(html).not.toContain("Trend metric");
@@ -1721,6 +1734,12 @@ describe("training log", () => {
     expect(html).toContain('data-active="history"');
     expect(html).toContain('href="/history?view=week&period=2026-11-02"');
     expect(html).toContain('aria-label="Planned 5 km versus actual 5.2 km"');
+    // Secondary cards pair up from 1024px, and Ask coach is a head action instead of only the last card.
+    expect(html).toContain('class="activity-columns"');
+    expect(html).toContain('class="activity-col"');
+    expect(html).toContain('class="head-actions" aria-label="Run actions"');
+    expect(html.indexOf("Plan vs actual")).toBeLessThan(html.indexOf('class="activity-columns"'));
+    expect(html.indexOf('class="activity-columns"')).toBeLessThan(html.indexOf("Ask the coach about this run"));
   });
 
   it("shows enriched run metrics and per-kilometre splits on activity detail", async () => {
@@ -2671,6 +2690,11 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("min-height: 0");
     expect(css).toContain(".view-switch");
     expect(css).toContain(".history-summary");
+    expect(css).toContain(".seg-tabs");
+    expect(css).toContain(".seg-input");
+    expect(css).toContain(".seg-panel");
+    expect(css).toContain(".activity-columns");
+    expect(css).toContain(".muscle-layout");
     expect(css).toContain(".history-activity");
     expect(css).toContain(".trend-chart");
     expect(css).toContain(".trend-picker");
@@ -3232,6 +3256,19 @@ describe("coach states page", () => {
     const html = await response.text();
     expect(html).toContain("Coaching states");
     expect(html).toContain("Active states");
+    // The page is grouped into Current / Set / History so the write and log jobs stop stretching it.
+    expect(html).toContain('class="seg-tabs coach-states-tabs"');
+    expect(html).toContain('id="coach-states-tab-current" checked');
+    expect(html).toContain('id="coach-states-tab-set"');
+    expect(html).toContain('id="coach-states-tab-history"');
+    expect(html).toContain('data-seg-panel="current"');
+    expect(html).toContain('data-seg-panel="set"');
+    expect(html).toContain('data-seg-panel="history"');
+    expect(html).toContain(">Current</label>");
+    expect(html).toContain(">Set a state</label>");
+    expect(html).toContain(">History</label>");
+    expect(html.indexOf('data-seg-panel="current"')).toBeLessThan(html.indexOf('data-seg-panel="set"'));
+    expect(html.indexOf('data-seg-panel="set"')).toBeLessThan(html.indexOf('data-seg-panel="history"'));
     expect(html).toContain("Heat");
     expect(html).toContain("Hot and humid");
     expect(html).toContain("Pain / injury");
@@ -3271,9 +3308,31 @@ describe("coach states page", () => {
     expect(html).toContain("教練狀態");
     expect(html).toContain("生效狀態");
     expect(html).toContain("設定狀態");
+    expect(html).toContain(">現況</label>");
+    expect(html).toContain(">設定狀態</label>");
+    expect(html).toContain(">記錄</label>");
     // English chrome must not leak through into the zh-HK render.
     expect(html).not.toContain("Active states");
     expect(html).not.toContain("Set a state");
+  });
+
+  it("renders Cantonese state catalog data when locale is zh-HK", async () => {
+    const { base, cookie } = await start({
+      seed: (store, owner) => {
+        seedCoachState(store, owner.userId, "heat");
+      },
+    });
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/coach-states`, { headers: { cookie: zh } })).text();
+    // Cantonese label and description must appear.
+    expect(html).toContain("高溫");
+    expect(html).toContain("高溫天氣");
+    // English label must NOT appear as card text.
+    expect(html).not.toContain("<strong>Heat</strong>");
+    // English description must not leak.
+    expect(html).not.toContain("Hot conditions.");
+    // The coach prompt stays English (data-coach-message).
+    expect(html).toContain("How should the Heat state shape my coming week?");
   });
 
   it("sets a state from the form and reports validation errors", async () => {

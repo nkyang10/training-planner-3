@@ -2,7 +2,6 @@
 import type { AuthUser } from "./auth";
 import {
   COACH_STATE_DEFINITIONS,
-  coachStateSourceLabel,
   formatCoachStateDate,
   getCoachStateDefinition,
   sortCoachStates,
@@ -37,8 +36,7 @@ export function renderCoachAudit(
       ? `<p class="muted small">${tx.t("coachAudit.noEvents")}</p>`
       : `<ul class="state-history">${stateEvents
           .map((event) => {
-            const definition = getCoachStateDefinition(event.key);
-            return `<li><span class="chip">${escapeHtml(event.action)}</span> ${escapeHtml(definition.label)} · ${escapeHtml(event.fromStatus ?? "new")} → ${escapeHtml(event.toStatus)} · ${escapeHtml(coachStateSourceLabel(event.source))} · ${escapeHtml(localDateTime(event.createdAt, user.timezone))}</li>`;
+            return `<li><span class="chip">${escapeHtml(event.action)}</span> ${escapeHtml(tx.t(`coachState.label.${event.key}` as const))} · ${escapeHtml(event.fromStatus ?? "new")} → ${escapeHtml(event.toStatus)} · ${escapeHtml(tx.t(`coachState.source.${event.source}` as const))} · ${escapeHtml(localDateTime(event.createdAt, user.timezone))}</li>`;
           })
           .join("")}</ul>`;
   const legacyHtml =
@@ -154,9 +152,8 @@ function coachPromptForState(label: string): string {
   return `How should the ${label} state shape my coming week?`;
 }
 
-export function stateChipHtml(state: CoachStateRecord): string {
-  const definition = getCoachStateDefinition(state.key);
-  return `<a class="chip state-chip state-${state.status}" href="/coach-states" title="${escapeHtml(definition.description)}">${escapeHtml(definition.shortLabel)}</a>`;
+export function stateChipHtml(state: CoachStateRecord, tx: Translator = defaultTranslator): string {
+  return `<a class="chip state-chip state-${state.status}" href="/coach-states" title="${escapeHtml(tx.t(`coachState.desc.${state.key}` as const))}">${escapeHtml(tx.t(`coachState.short.${state.key}` as const))}</a>`;
 }
 
 function stateCardHtml(
@@ -184,11 +181,11 @@ function stateCardHtml(
   // Every state card can reach the coach in one tap: the action sits beside the data and never chases the runner.
   const askCoach = `<div class="state-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForState(definition.label))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-state", stateId: state.stateId, source: "states-page" }))}">${tx.t("coachStates.askCoach")}</button></div>`;
   return `<article class="state-card state-${state.status}">
-    <div class="state-head"><strong>${escapeHtml(definition.label)}</strong>${keyChip}${stateStatusChip(state, tx)}<span class="chip">${escapeHtml(coachStateSourceLabel(state.source))}</span><span class="muted small">${confidence}${escapeHtml(expiryText)}</span></div>
-    <p class="muted small">${escapeHtml(definition.description)}</p>
+    <div class="state-head"><strong>${escapeHtml(tx.t(`coachState.label.${state.key}` as const))}</strong>${keyChip}${stateStatusChip(state, tx)}<span class="chip">${escapeHtml(tx.t(`coachState.source.${state.source}` as const))}</span><span class="muted small">${confidence}${escapeHtml(expiryText)}</span></div>
+    <p class="muted small">${escapeHtml(tx.t(`coachState.desc.${state.key}` as const))}</p>
     ${evidence}
     ${guardrails}
-    <p class="state-note">${escapeHtml(definition.uiNote)}</p>
+    <p class="state-note">${escapeHtml(tx.t(`coachState.note.${state.key}` as const))}</p>
     ${proposed ? confirm : resolve}
     ${askCoach}
   </article>`;
@@ -222,7 +219,7 @@ export function renderCoachStates(
     if (definition.family === "setup") continue;
     const options = families.get(definition.family) ?? [];
     options.push(
-      `<option value="${definition.key}">${escapeHtml(definition.label)}${definition.sensitive ? tx.t("coachStates.sensitiveSuffix") : ""}</option>`,
+      `<option value="${definition.key}">${escapeHtml(tx.t(`coachState.label.${definition.key}` as const))}${definition.sensitive ? tx.t("coachStates.sensitiveSuffix") : ""}</option>`,
     );
     families.set(definition.family, options);
   }
@@ -235,19 +232,13 @@ export function renderCoachStates(
       ? `<p class="muted small">${tx.t("coachStates.noResolved")}</p>`
       : `<ul class="state-history">${resolved
           .map((state) => {
-            const definition = getCoachStateDefinition(state.key);
-            return `<li><span class="chip">${escapeHtml(definition.label)}</span> ${escapeHtml(coachStateSourceLabel(state.source))} · ${escapeHtml(localDateTime(state.resolvedAt ?? state.updatedAt, user.timezone))}</li>`;
+            return `<li><span class="chip">${escapeHtml(tx.t(`coachState.label.${state.key}` as const))}</span> ${escapeHtml(tx.t(`coachState.source.${state.source}` as const))} · ${escapeHtml(localDateTime(state.resolvedAt ?? state.updatedAt, user.timezone))}</li>`;
           })
           .join("")}</ul>`;
   const resolvedCount = resolved.length;
   const errorMessage = stateErrorMessage(error, tx);
-  return deps.layout(
-    tx.t("account.coachStates"),
-    `<section class="page-head"><p class="eyebrow"><a href="/profile">${tx.t("coachStates.backToProfile")}</a></p><h1>${tx.t("account.coachStates")}</h1><p class="muted">${tx.t("coachStates.intro")}</p><p class="muted small">${tx.t("coachStates.summary", { active: active.length, proposed: observing.length, resolved: resolvedCount })}</p>${errorBanner(errorMessage)}</section>
-    ${setupHtml}
-    <section class="card"><h2>${tx.t("coachStates.activeHeading")}</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit" title="${tx.t("coachStates.refreshTitle")}">${tx.t("coachStates.refreshButton")}</button></form>${activeHtml}</section>
-    ${observingHtml}
-    <section class="card"><h2>${tx.t("coachStates.setHeading")}</h2><p class="muted small">${tx.t("coachStates.setBody")}</p>
+  const currentPanel = `<div class="seg-panel" data-seg-panel="current"><section class="card"><h2>${tx.t("coachStates.activeHeading")}</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit" title="${tx.t("coachStates.refreshTitle")}">${tx.t("coachStates.refreshButton")}</button></form>${activeHtml}</section>${observingHtml}</div>`;
+  const setPanel = `<div class="seg-panel" data-seg-panel="set"><section class="card"><h2>${tx.t("coachStates.setHeading")}</h2><p class="muted small">${tx.t("coachStates.setBody")}</p>
       <form method="post" action="/coach-states" class="state-form">
         <label for="state-key">${tx.t("coachStates.fieldState")}</label><select id="state-key" name="key" required><option value="" disabled selected>${tx.t("coachStates.chooseState")}</option>${stateOptions}</select>
         <label for="state-ttl">${tx.t("coachStates.fieldTtl")}</label><div class="state-ttl-row"><input id="state-ttl" name="ttlDays" type="number" min="1" max="365" value="7" required aria-label="${tx.t("coachStates.ttlAria")}"> <span class="muted small">${tx.t("coachStates.ttlSuffix")}</span></div>
@@ -255,8 +246,16 @@ export function renderCoachStates(
         <button class="btn" type="submit">${tx.t("coachStates.setStateButton")}</button>
       </form>
       <p class="state-note">${tx.t("coachStates.medicalNote")}</p>
-    </section>
-    <section class="card"><h2>${tx.t("coachStates.historyHeading")}</h2>${historyHtml}</section>`,
+    </section></div>`;
+  const historyPanel = `<div class="seg-panel" data-seg-panel="history"><section class="card"><h2>${tx.t("coachStates.historyHeading")}</h2>${historyHtml}</section></div>`;
+  // The page is the management surface behind the dock's compact States tab: current first, then the two write/log
+  // jobs. Radio tabs keep it working without script.
+  const tabs = `<div class="seg-tabs coach-states-tabs" role="group" aria-label="${escapeHtml(tx.t("coachStates.tabsAria"))}"><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-current" checked><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-set"><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-history"><div class="seg-labels"><label class="seg-label" for="coach-states-tab-current">${escapeHtml(tx.t("coachStates.tabCurrent"))}</label><label class="seg-label" for="coach-states-tab-set">${escapeHtml(tx.t("coachStates.tabSet"))}</label><label class="seg-label" for="coach-states-tab-history">${escapeHtml(tx.t("coachStates.tabHistory"))}</label></div><div class="seg-panels">${currentPanel}${setPanel}${historyPanel}</div></div>`;
+  return deps.layout(
+    tx.t("account.coachStates"),
+    `<section class="page-head"><p class="eyebrow"><a href="/profile">${tx.t("coachStates.backToProfile")}</a></p><h1>${tx.t("account.coachStates")}</h1><p class="muted">${tx.t("coachStates.intro")}</p><p class="muted small">${tx.t("coachStates.summary", { active: active.length, proposed: observing.length, resolved: resolvedCount })}</p>${errorBanner(errorMessage)}</section>
+    ${setupHtml}
+    ${tabs}`,
     user,
     "none",
   );

@@ -18,7 +18,6 @@ import { createGarminSync, type GarminSyncOutcome } from "./garmin-sync";
 import { buildDirectiveForIntent, parseCoachIntent, type CoachIntent } from "./directives";
 import {
   confirmCoachState,
-  getCoachStateDefinition,
   isCoachStateKey,
   refreshCoachStates,
   resolveCoachState,
@@ -1964,7 +1963,7 @@ function layout(
   const dir = tx.dir;
   const i18nScript = clientI18nScript(tx);
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=26"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=27"></head>
   <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}</body></html>`;
 }
 
@@ -4284,25 +4283,24 @@ export function createWeb(options: WebOptions): WebApp {
             const key = record["key"];
             if (stateId.length === 0 || !isCoachStateKey(key)) continue;
             const stored = options.store.getCoachState(user.userId, stateId);
-            const definition = getCoachStateDefinition(key);
             states.push({
               stateId,
               key,
-              label: definition.label,
+              label: tx.t(`coachState.label.${key}` as const),
               status: stored?.status ?? (typeof record["status"] === "string" ? record["status"] : "active"),
               action: record["action"] === "resolve" ? "resolve" : "activate",
               source: stored?.source ?? "chat",
               confidence: stored?.confidence ?? 0,
               evidence: stored?.evidence ?? [],
               expiresAt: stored?.expiresAt ?? null,
-              uiNote: definition.uiNote,
+              uiNote: tx.t(`coachState.note.${key}` as const),
             });
           }
           const rawBlocked = Array.isArray(payload.poc3?.blockedByStates) ? payload.poc3.blockedByStates : [];
           const blockedByStates: Array<{ key: CoachStateKey; label: string }> = [];
           for (const value of rawBlocked) {
             if (typeof value === "string" && isCoachStateKey(value)) {
-              blockedByStates.push({ key: value, label: getCoachStateDefinition(value).label });
+              blockedByStates.push({ key: value, label: tx.t(`coachState.label.${value}` as const) });
             }
           }
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -4351,17 +4349,16 @@ export function createWeb(options: WebOptions): WebApp {
         const states = sortCoachStates(options.store.getActiveCoachStates(user.userId, now()))
           .filter((state) => state.key !== "no_key")
           .map((state) => {
-            const definition = getCoachStateDefinition(state.key);
             return {
               stateId: state.stateId,
               key: state.key,
-              label: definition.label,
+              label: tx.t(`coachState.label.${state.key}` as const),
               status: state.status,
               source: state.source,
               confidence: state.confidence,
               evidence: state.evidence,
               expiresAt: state.expiresAt,
-              uiNote: definition.uiNote,
+              uiNote: tx.t(`coachState.note.${state.key}` as const),
             };
           });
         // The coach dock's Changes tab reads the same durable journal the Recent changes card renders. Keeping it on
@@ -4669,6 +4666,10 @@ export function createWeb(options: WebOptions): WebApp {
           ? tx.t("history.noImport")
           : tx.t("history.lastImport", { time: localDateTime(lastImport, user.timezone) });
 
+        // The page used to open on summaries and bury the period rows. The tab strip puts the period first — days,
+        // weeks or months depending on the view — and keeps load/trend/review one tap away.
+        const periodTabLabel = view === "week" ? tx.t("history.tabDays") : view === "month" ? tx.t("history.tabWeeks") : tx.t("history.tabMonths");
+        const historyTabs = `<div class="seg-tabs history-tabs" role="group" aria-label="${escapeHtml(tx.t("history.tabsAria"))}"><input class="seg-input" type="radio" name="history-tab" id="history-tab-period" checked><input class="seg-input" type="radio" name="history-tab" id="history-tab-review"><div class="seg-labels"><label class="seg-label" for="history-tab-period">${escapeHtml(periodTabLabel)}</label><label class="seg-label" for="history-tab-review">${escapeHtml(tx.t("history.tabReview"))}</label></div><div class="seg-panels"><div class="seg-panel" data-seg-panel="period">${noActivities}${content}</div><div class="seg-panel" data-seg-panel="review">${manualReviewCard}${reviewCard}${loadCard}${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}${bestEffortsCard}</div></div></div>`;
         const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("history.eyebrow"))}</p><h1>${escapeHtml(tx.t("history.heading"))}</h1><p class="muted">${escapeHtml(tx.t("history.intro"))}</p></header>
           ${periodBar}
           ${garminPanel}
@@ -4679,13 +4680,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>${escapeHtml(tx.t("history.statLongest"))}</span></div>
           </section>
           <p class="muted small">${escapeHtml(lastImportText)}</p>
-          ${manualReviewCard}
-          ${reviewCard}
-          ${loadCard}
-          ${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}
-          ${bestEffortsCard}
-          ${noActivities}
-          ${content}`;
+          ${historyTabs}`;
         sendHtml(response, 200, pageLayout(tx.t("history.eyebrow"), body, user, "history", flash));
         return;
       }
@@ -4711,7 +4706,7 @@ export function createWeb(options: WebOptions): WebApp {
         const stateChips =
           activeStates.length === 0 && muscleChip.length === 0
             ? ""
-            : `<div class="state-chips"><span class="state-chips-label">Coaching states:</span>${activeStates.map((state) => stateChipHtml(state)).join("")}${muscleChip}${activeStates.length === 0 ? "" : `<a class="chip action" href="/coach-states">All states</a>`}</div>`;
+            : `<div class="state-chips"><span class="state-chips-label">${escapeHtml(tx.t("coachStates.chipsLabel"))}</span>${activeStates.map((state) => stateChipHtml(state, tx)).join("")}${muscleChip}${activeStates.length === 0 ? "" : `<a class="chip action" href="/coach-states">${escapeHtml(tx.t("coachStates.allStates"))}</a>`}</div>`;
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         // Fill this month's missing workouts before rendering so every run with a Garmin workout is paired in the grid.
@@ -4927,7 +4922,8 @@ export function createWeb(options: WebOptions): WebApp {
         const otherSessions = unmatched.length === 0
           ? ""
           : `<section class="card"><h2>${escapeHtml(tx.t("activity.otherPlanned"))}</h2><p class="muted small">${escapeHtml(tx.t("activity.otherPlannedNote"))}</p><p class="history-plan">${unmatched.map(sessionChip).join(" ")}</p></section>`;
-        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← ${escapeHtml(tx.t("nav.log"))}</a> · ${escapeHtml(tx.t("activity.title"))}</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day, tx.date))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity, tx))}</span></p></header>
+        const headActions = `<div class="head-actions" aria-label="${escapeHtml(tx.t("activity.actionsAria"))}"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a></div>`;
+        const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← ${escapeHtml(tx.t("nav.log"))}</a> · ${escapeHtml(tx.t("activity.title"))}</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day, tx.date))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity, tx))}</span></p>${headActions}</header>
           <section class="history-summary detail-summary">
             <div class="stat"><strong>${activity.distanceKm === null ? "—" : `${activity.distanceKm} km`}</strong><span>${escapeHtml(tx.t("history.statDistance"))}</span></div>
             <div class="stat"><strong>${activity.durationMin === null ? "—" : formatMinutes(activity.durationMin)}</strong><span>${escapeHtml(tx.t("history.statTime"))}</span></div>
@@ -4935,12 +4931,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="stat"><strong>${activity.avgHr === null ? "—" : `${activity.avgHr} bpm`}</strong><span>${escapeHtml(tx.t("activity.avgHr"))}</span></div>
           </section>
           ${planComparison(match, tx)}
-          ${workoutHtml}
-          ${workedCard}
-          ${metricsCard}
-          ${splitsHtml}
-          ${lapsHtml}
-          ${zonesHtml}
+          <div class="activity-columns"><div class="activity-col">${workoutHtml}${metricsCard}${splitsHtml}</div><div class="activity-col">${workedCard}${zonesHtml}${lapsHtml}</div></div>
           <section class="card"><h2>${escapeHtml(tx.t("activity.askCoachTitle"))}</h2><p class="muted">${escapeHtml(tx.t("activity.askCoachProse"))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a></div></section>
           ${otherSessions}`;
         sendHtml(response, 200, pageLayout(tx.t("activity.title"), body, user, "history", flash));
