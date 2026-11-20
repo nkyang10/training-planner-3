@@ -285,8 +285,52 @@ export interface CoachDirectiveRecord {
   /** The visible message this directive accompanied. */
   visible: string;
   directive: CoachDirective;
+  /**
+   * The exact hidden suffix this turn's user message carried after the visible text (directive block plus
+   * referenced context), persisted so the next turn can reproduce the same prompt bytes for the provider's
+   * prefix cache. Null for plain chat turns.
+   */
+  renderedPromptSuffix: string | null;
   /** Calendar writes the gateway refused because the directive forbade them. */
   blockedWrites: number;
+  createdAt: string;
+}
+
+/**
+ * The silently maintained preference profile: what the coach learned about how this runner wants to be talked
+ * to. Never rendered in the chat; the audit page is the owner's transparency surface. A null value means
+ * undecided, and the prompt falls back to its per-message heuristic.
+ */
+export interface CoachPreferences {
+  userId: string;
+  /** Reply language the coach has learned, or null while it is still detecting. */
+  language: Exclude<CoachLanguage, "auto"> | null;
+  tone: CoachTone | null;
+  replyLength: "short" | "standard" | null;
+  /** What the runner calls themselves, when they have said so. */
+  nickname: string | null;
+  updatedAt: string;
+}
+
+/** The mutable preference fields; undefined keys are left untouched. */
+export type CoachPreferencesPatch = Partial<Omit<CoachPreferences, "userId" | "updatedAt">>;
+
+/**
+ * One dated context snapshot appended to the coach conversation: the profile block and the facts as of its
+ * creation day. Snapshots are append-only rows - the gateway never edits one - because the provider's prefix
+ * cache requires the earlier prompt bytes to stay identical turn after turn.
+ */
+export interface PromptSnapshot {
+  snapshotId: string;
+  userId: string;
+  /** sha256 of the epoch's structured parts, compared to decide whether a new snapshot is needed. */
+  epoch: string;
+  /** The structured epoch parts, JSON-encoded, so the refresh reasons stay derivable. */
+  epochJson: string;
+  /** Short reason codes for the epoch bump, e.g. ["new-day", "new-activities"]. */
+  reasons: string[];
+  /** The rendered context block, byte-frozen at creation. */
+  body: string;
   createdAt: string;
 }
 
@@ -500,6 +544,21 @@ export interface Store {
   appendCoachDirective(record: CoachDirectiveRecord): void;
   /** Newest first. */
   listCoachDirectives(userId: string, limit?: number): CoachDirectiveRecord[];
+  /**
+   * The rendered prompt suffix of every recent directive turn, keyed by the message it accompanied, so prompt
+   * assembly reproduces the exact bytes the provider already cached. Rows without a suffix are skipped.
+   */
+  listCoachDirectiveSuffixes(userId: string, limit?: number): Array<{ messageId: string; suffix: string }>;
+  /** The runner's silently maintained preference profile, or undefined before the first write. */
+  getCoachPreferences(userId: string): CoachPreferences | undefined;
+  /** Patch the preference profile; undefined keys are left untouched. Returns the stored value. */
+  patchCoachPreferences(userId: string, patch: CoachPreferencesPatch, at: string): CoachPreferences;
+  /** Append one context snapshot row and prune the table to the newest few per runner. */
+  appendPromptSnapshot(snapshot: PromptSnapshot): void;
+  /** The newest stored snapshot, or undefined before the first one. */
+  getLatestPromptSnapshot(userId: string): PromptSnapshot | undefined;
+  /** Oldest first, newest last; only the pruned window. */
+  listPromptSnapshots(userId: string, limit?: number): PromptSnapshot[];
   /** Append one coaching state; history is kept. */
   appendCoachState(record: CoachStateRecord): void;
   /** Patch one state row; false when the row is missing or foreign. */

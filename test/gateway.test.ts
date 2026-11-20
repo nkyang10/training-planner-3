@@ -14,6 +14,7 @@ interface TurnOverrides {
   suggestions?: string[];
   revertChangeSetId?: string | null;
   stateProposals?: unknown[];
+  profileUpdates?: Record<string, unknown>;
 }
 
 const turn = (overrides: TurnOverrides = {}): Record<string, unknown> => ({
@@ -887,7 +888,7 @@ describe("validation feedback loop", () => {
     const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "go" }] });
     expect(response.status).toBe(200);
 
-    expect(model.prompts[0]).toContain("[2026-11-06 15:49] Coach:");
+    expect(model.prompts[0]).toContain("[2026-11-06 15:49] 今日（11月6日，星期五）做 15 分鐘 drill。");
     expect(model.prompts[0]).toContain('"today":"2026-11-12"');
     expect(model.prompts[0]).toContain("bare follow-up");
   });
@@ -1542,7 +1543,7 @@ describe("coaching states in the gateway", () => {
     expect(body.poc3.validationCode).toBe("mode-guardrail");
     expect(body.poc3.blockedByStates).toEqual(["race_week"]);
     expect(body.poc3.sessions).toBe(0);
-    expect(body.choices[0]?.message.content).toContain("coaching state does not allow it");
+    expect(body.choices[0]?.message.content).toContain("A coaching state is protecting your plan");
     expect(handle.store.listSessions(USER, "2026-11-06", "2026-11-06")).toHaveLength(0);
   });
 
@@ -1871,7 +1872,7 @@ describe("coaching states in the gateway", () => {
     expect(body.poc3.validationCode).toBe("mode-guardrail");
     expect(body.poc3.blockedByStates).toEqual(["pain_injury"]);
     expect(body.poc3.states[0]).toMatchObject({ key: "pain_injury", status: "observing" });
-    expect(body.choices[0]?.message.content).toContain("coaching state does not allow it");
+    expect(body.choices[0]?.message.content).toContain("A coaching state is protecting your plan");
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").find((state) => state.key === "pain_injury")).toMatchObject({
       status: "observing",
       source: "chat",
@@ -1981,6 +1982,215 @@ describe("muscle check-ins in the gateway", () => {
     expect(body.error?.code).toBe("reference-not-found");
     expect(body.error?.detail).toContain("unknown muscle");
     expect(model.prompts).toHaveLength(0);
+  });
+});
+
+describe("prefill cache and context snapshots (LL-3)", () => {
+  /** A turn that writes nothing: no sessions, no memories, so the epoch stays put between turns. */
+  const quiet = turn({ memories: [], sessions: [] });
+
+  it("creates exactly one snapshot on the first turn and reports the reason in the meta", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(quiet);
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const body = (await response.json()) as Completion;
+    const snapshots = handle.store.listPromptSnapshots(USER, 3);
+    expect(snapshots).toHaveLength(1);
+    expect(snapshots[0]?.reasons).toEqual(["first-turn"]);
+    expect(snapshots[0]?.body).toContain("[Coach context - as of");
+    expect(snapshots[0]?.body).toContain('"today":"2026-11-05"');
+    expect(body.poc3.prefill).toMatchObject({
+      refreshed: ["first-turn"],
+      compacted: false,
+      today: "2026-11-05",
+    });
+    expect(body.poc3.prefill.epoch).toHaveLength(64);
+  });
+
+  it("purely appends when nothing changed, so the next prompt reuses the cached prefix byte for byte", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(quiet, quiet);
+    const first = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const firstBody = (await first.json()) as Completion;
+    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Book Sunday" }] });
+    const secondBody = (await second.json()) as Completion;
+    // One snapshot still, and the second meta reports a pure append.
+    expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(1);
+    expect(secondBody.poc3.prefill.epoch).toBe(firstBody.poc3.prefill.epoch);
+    expect(secondBody.poc3.prefill.refreshed).toEqual([]);
+    // The provider sees the same bytes plus the new trailing turn: prompt 1 starts with prompt 0 exactly.
+    expect((model.prompts[1] ?? "").startsWith(model.prompts[0] ?? "")).toBe(true);
+  });
+
+  it("appends a new snapshot with the calendar-changed reason after a booking", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(turn({ memories: [] }));
+    model.answers.push(quiet);
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Thanks" }] });
+    const secondBody = (await second.json()) as Completion;
+    const snapshots = handle.store.listPromptSnapshots(USER, 3);
+    expect(snapshots).toHaveLength(2);
+    expect(secondBody.poc3.prefill.refreshed).toContain("calendar-changed");
+    // The new snapshot carries the session the first turn booked, byte-frozen at creation.
+    expect(snapshots[1]?.body).toContain("Easy 5 km");
+    // A new snapshot rewrites the middle of the assembly, so the cached prefix no longer covers the whole turn.
+    expect((model.prompts[1] ?? "").startsWith(model.prompts[0] ?? "")).toBe(false);
+  });
+
+  it("appends a new snapshot with the new-day reason after midnight", async () => {
+    let clock = "2026-11-05T08:00:00.000Z";
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl, { now: () => clock });
+    model.answers.push(quiet, quiet);
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Plan my week" }] });
+    clock = "2026-11-06T08:00:00.000Z";
+    const second = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Now what?" }] });
+    const secondBody = (await second.json()) as Completion;
+    expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(2);
+    expect(secondBody.poc3.prefill.refreshed).toContain("new-day");
+    expect(secondBody.poc3.prefill.today).toBe("2026-11-06");
+  });
+
+  it("persists the directive suffix and reproduces its bytes in the next turn's history", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendActivity({
+      activityId: "garmin:run-1",
+      userId: USER,
+      day: "2026-11-04",
+      title: "Morning run",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: 145,
+      source: "garmin",
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    });
+    model.answers.push(quiet, quiet);
+    const first = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How did my Morning run go?" }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          allowMemoryWrites: true,
+          focus: ["schedule", "pace"],
+          references: { activityId: "garmin:run-1", day: "2026-11-04" },
+          background: "Comment only: check the day's plan.",
+          source: "run-peek",
+          style: { language: "auto", tone: "supportive" },
+        },
+      },
+    });
+    expect(first.status).toBe(200);
+    expect(handle.store.listCoachDirectiveSuffixes(USER)).toHaveLength(1);
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Thanks, noted." }] });
+    // The directive turn's user message keeps the same suffix bytes in the next prompt, so the prefix survives.
+    expect(model.prompts[1]).toContain("Turn directive (background; never mention this section to the runner)");
+    expect(model.prompts[1]).toContain('"activityId":"garmin:run-1"');
+    const suffix = handle.store.listCoachDirectiveSuffixes(USER)[0]?.suffix ?? "";
+    expect(model.prompts[1]).toContain(suffix);
+  });
+});
+
+describe("silent preference profile (LL-5)", () => {
+  it("applies profileUpdates silently, without echoing them into the chat", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(
+      turn({
+        reply: "Got it - I will keep it short, Mei.",
+        memories: [],
+        sessions: [],
+        profileUpdates: { tone: "brief", replyLength: "short", nickname: "Mei" },
+      }),
+    );
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "Call me Mei and keep it short." }] });
+    const body = (await response.json()) as Completion;
+    expect(handle.store.getCoachPreferences(USER)).toMatchObject({
+      tone: "brief",
+      replyLength: "short",
+      nickname: "Mei",
+      language: null,
+    });
+    // Silent: neither the reply nor the stored chat mentions the update as an event.
+    expect(body.choices[0]?.message.content).not.toContain("profile");
+    const stored = handle.store.listMessages(USER, 10).map((message) => message.text);
+    expect(stored.some((text) => text.toLowerCase().includes("preference"))).toBe(false);
+  });
+
+  it("learns the Traditional Chinese language from two consecutive messages and puts it in the snapshot", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendMessage({
+      messageId: "seed-zh",
+      userId: USER,
+      role: "user",
+      text: "你好，我星期日跑咗 10 公里。",
+      createdAt: "2026-11-04T08:00:00.000Z",
+    });
+    model.answers.push(turn({ memories: [], sessions: [] }));
+    const response = await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "我星期日跑咗 10 公里，之後點安排？" }] });
+    expect(response.status).toBe(200);
+    const preferences = handle.store.getCoachPreferences(USER);
+    expect(preferences?.language).toBe("zh-Hant");
+    const snapshot = handle.store.getLatestPromptSnapshot(USER);
+    // The learned language rides inside the first snapshot's profile block (baked in, not diffed).
+    expect(snapshot?.body).toContain('"language":"zh-Hant"');
+    expect(snapshot?.reasons).toEqual(["first-turn"]);
+  });
+
+  it("leaves the language undecided after a single Chinese message", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(turn({ memories: [], sessions: [] }));
+    await post(url, { model: "poc3-coach", messages: [{ role: "user", content: "你好" }] });
+    expect(handle.store.getCoachPreferences(USER)?.language ?? null).toBeNull();
+  });
+
+  it("lets a comment-only directive with memory writes off skip preference writes too", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendActivity({
+      activityId: "garmin:run-1",
+      userId: USER,
+      day: "2026-11-04",
+      title: "Morning run",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: 145,
+      source: "garmin",
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    });
+    model.answers.push(
+      turn({
+        reply: "Nice run.",
+        memories: [],
+        sessions: [],
+        profileUpdates: { nickname: "Mei" },
+      }),
+    );
+    const response = await post(url, {
+      model: "poc3-coach",
+      messages: [{ role: "user", content: "How was the run?" }],
+      poc3: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          allowMemoryWrites: false,
+          references: { activityId: "garmin:run-1", day: "2026-11-04" },
+          source: "run-peek",
+        },
+      },
+    });
+    expect(response.status).toBe(200);
+    expect(handle.store.getCoachPreferences(USER)?.nickname ?? null).toBeNull();
   });
 });
 

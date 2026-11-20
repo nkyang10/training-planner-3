@@ -121,6 +121,18 @@ describe("clientStrings", () => {
     expect(zh["confirm"]).not.toBe("Confirm");
     expect("calendar.heading" in en).toBe(false);
   });
+
+  it("ships the re-prefill wait-line strings in both locales (LL-4)", () => {
+    const en = clientStrings("en");
+    const zh = clientStrings("zh-HK");
+    expect(en["coachWaitFirst"]).toContain("Getting to know you");
+    expect(en["coachWaitActivities"]).toContain("latest runs");
+    expect(en["coachWaitDay"]).toContain("plan");
+    expect(zh["coachWaitActivities"]).toContain("跑步紀錄");
+    expect(zh["coachWaitMuscle"]).toContain("身體狀況");
+    expect((zh["coachWaitCalendar"] ?? "").length).toBeGreaterThan(0);
+    expect(zh["coachWaitStates"]).toContain("教練狀態");
+  });
 });
 
 describe("languageCookie", () => {

@@ -1,14 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  COACH_PROMPT_VERSION,
   COACH_TOOL,
-  buildCoachHistory,
-  buildCoachPrompt,
+  MAX_REPLY_CHARS,
+  assembleConversation,
+  buildCoachSystemPrompt,
+  buildContextSnapshot,
+  buildTurnSuffix,
   buildValidationFeedbackForCode,
+  coachEpoch,
+  epochReasons,
   parseCoachTurn,
   policyForCode,
+  stripReplyStructure,
+  type CoachEpochParts,
 } from "../src/coach";
 import { buildDirectiveForIntent } from "../src/directives";
-import type { Activity, ChangeEntry, ChangeSet, CoachStateRecord, Memory, Message, TrainingSession } from "../src/types";
+import type {
+  Activity,
+  ChangeEntry,
+  ChangeSet,
+  CoachPreferences,
+  CoachStateRecord,
+  Memory,
+  Message,
+  TrainingSession,
+} from "../src/types";
 
 const TODAY = "2026-11-05";
 
@@ -36,12 +53,12 @@ const activity: Activity = {
   source: "garmin",
   createdAt: "2026-11-04T00:00:00.000Z",
 };
-const message = (role: "user" | "assistant", text: string): Message => ({
-  messageId: `${role}-${text}`,
+const message = (role: "user" | "assistant", text: string, at = "2026-11-05T08:00:00.000Z"): Message => ({
+  messageId: `${role}-${text}-${at}`,
   userId: "u",
   role,
   text,
-  createdAt: "2026-11-05T00:00:00.000Z",
+  createdAt: at,
 });
 const changeSet = (changeSetId: string, summary: string, revertedAt: string | null = null): ChangeSet => ({
   changeSetId,
@@ -52,6 +69,26 @@ const changeSet = (changeSetId: string, summary: string, revertedAt: string | nu
   revertedAt,
 });
 const SUGGESTIONS = ["Book my long run for Sunday", "Move Thursday to Friday"];
+
+const preferences = (overrides: Partial<CoachPreferences> = {}): CoachPreferences => ({
+  userId: "u",
+  language: null,
+  tone: null,
+  replyLength: null,
+  nickname: null,
+  updatedAt: "2026-11-05T00:00:00.000Z",
+  ...overrides,
+});
+
+const snapshotInput = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  today: TODAY,
+  timezone: "UTC",
+  memories: [memory("prefers mornings")],
+  sessions: [session("2026-11-06")],
+  activities: [activity],
+  recentChanges: [changeSet("change:9", 'move "Long 8 km" 2026-11-07 → 2026-11-09')],
+  ...overrides,
+});
 
 describe("coach turn", () => {
   it("accepts a grounded turn with memories and future sessions", () => {
@@ -70,6 +107,7 @@ describe("coach turn", () => {
       expect(result.turn.memories).toHaveLength(1);
       expect(result.turn.suggestions).toEqual(SUGGESTIONS);
       expect(result.turn.revertChangeSetId).toBeNull();
+      expect(result.turn.profileUpdates).toEqual({});
     }
   });
 
@@ -90,164 +128,6 @@ describe("coach turn", () => {
     });
   });
 
-  it("puts memory, upcoming sessions and activities into the prompt", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [memory("prefers mornings")],
-      sessions: [session("2026-11-06")],
-      activities: [activity],
-      history: [],
-      recentChanges: [],
-      question: "How is my week?",
-    });
-    expect(prompt).toContain("prefers mornings");
-    expect(prompt).toContain("2026-11-06");
-    expect(prompt).toContain("Morning run");
-    expect(prompt).toContain("How is my week?");
-  });
-
-  it("puts the runner's goal into the prompt facts", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      goal: "Half marathon in March, sub 2:00",
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "What should I focus on this month?",
-    });
-    expect(prompt).toContain('"goal":"Half marathon in March, sub 2:00"');
-    expect(prompt).toContain("keep the plan aligned with it");
-  });
-
-  it("omits an empty or whitespace goal instead of inventing one", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      goal: "   ",
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "How is my week?",
-    });
-    expect(prompt).toContain('"goal":null');
-  });
-
-  it("puts the runner's reported effort into the prompt facts", () => {
-    const reported: Activity = { ...activity, activityId: "activity:manual:1", source: "chat", rpe: 7.5 };
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [reported],
-      history: [],
-      recentChanges: [],
-      question: "How did my run feel?",
-    });
-    expect(prompt).toContain('"rpe":7.5');
-  });
-
-  it("renders a null rpe for runs without a reported effort", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [activity],
-      history: [],
-      recentChanges: [],
-      question: "How is my week?",
-    });
-    expect(prompt).toContain('"rpe":null');
-  });
-
-  it("carries the reported effort in the referenced-activity context", () => {
-    const reported: Activity = { ...activity, activityId: "activity:manual:1", source: "chat", rpe: 9 };
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [reported],
-      history: [],
-      recentChanges: [],
-      question: "How did my run go?",
-      referencedActivity: reported,
-    });
-    expect(prompt).toContain("Referenced context (JSON)");
-    expect(prompt).toContain('"rpe":9');
-  });
-
-  it("teaches the coach what reported effort means and how to use it", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "Hello",
-    });
-    expect(prompt).toContain("the runner's reported effort on the Borg CR10 scale");
-    expect(prompt).toContain("name it plainly");
-    expect(prompt).toContain("say both readings and ask the runner instead of choosing one");
-  });
-
-  it("caps history at the last 20 turns", () => {
-    const history = Array.from({ length: 30 }, (_, index) => message("user", `m${index}`));
-    const built = buildCoachHistory({ today: TODAY, memories: [], sessions: [], activities: [], history, recentChanges: [], question: "q" });
-    expect(built).toHaveLength(20);
-    expect(built[0]?.content).toBe("m10");
-  });
-
-  it("tells the coach to leave the calendar unchanged for comment-only reviews", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [activity],
-      history: [],
-      recentChanges: [],
-      question: "Review my run on 2026-11-01 and comment only; do not change the calendar.",
-    });
-    expect(prompt).toContain("asks for a comment, review or opinion only");
-    expect(prompt).toContain("leave the calendar unchanged");
-    expect(prompt).toContain("Only add, move, change or delete sessions when the runner explicitly asks for a schedule change");
-  });
-
-  it("puts the hidden directive and referenced context into the prompt", () => {
-    const directive = buildDirectiveForIntent(
-      { kind: "review-activity", activityId: "garmin:1", source: "run-peek" },
-      { activityDay: "2026-11-04" },
-    );
-    expect(directive).toBeDefined();
-    if (directive === undefined) return;
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [memory("mode: race week — half marathon on Sunday")],
-      sessions: [],
-      activities: [activity],
-      history: [],
-      recentChanges: [],
-      question: "How did my Morning run go?",
-      directive,
-      referencedActivity: activity,
-      referencedSessions: [session("2026-11-04")],
-    });
-    expect(prompt).toContain("Turn directive (background; never mention this section to the runner)");
-    expect(prompt).toContain("calendar writes: forbidden");
-    expect(prompt).toContain("references: activity garmin:1; day 2026-11-04");
-    expect(prompt).toContain("Referenced context (JSON)");
-    expect(prompt).toContain('"activityId":"garmin:1"');
-    expect(prompt).toContain('"sessionId":"s-2026-11-04"');
-    expect(prompt).toContain("that activity is the exact run the runner's latest message is about");
-    expect(prompt).toContain("mode: race week");
-    expect(prompt).toContain("Active coaching states");
-    expect(prompt).toContain("Coaching state catalog");
-    expect(prompt).toContain("never mention it to the runner");
-    expect(prompt.endsWith("How did my Morning run go?")).toBe(true);
-  });
-
   it("uses the respect-directive policy for comment-only write failures", () => {
     expect(policyForCode("comment-only-write")).toBe("respect-directive");
     const feedback = buildValidationFeedbackForCode(
@@ -259,6 +139,624 @@ describe("coach turn", () => {
       2,
     );
     expect(feedback.policy).toBe("respect-directive");
+  });
+});
+
+describe("reply style contract (LL-1)", () => {
+  it("caps the reply at 480 characters and maps oversize to a repairable code", () => {
+    expect(MAX_REPLY_CHARS).toBe(480);
+    const long = parseCoachTurn({ reply: "x".repeat(481), suggestions: ["a"] }, TODAY);
+    expect(long).toMatchObject({ ok: false, code: "reply-too-long" });
+    if (!long.ok) expect(long.policy).toBe("repair-format");
+    expect(policyForCode("reply-too-long")).toBe("repair-format");
+    const huge = parseCoachTurn({ reply: "y".repeat(2000), suggestions: ["a"] }, TODAY);
+    expect(huge).toMatchObject({ ok: false, code: "reply-too-long" });
+  });
+
+  it("strips markdown structure from the reply before validating", () => {
+    const result = parseCoachTurn(
+      {
+        reply: "## Week review\n\n- ran 5 km easy\n- felt good\n\n**Keep it easy.**",
+        suggestions: ["Book Sunday"],
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.turn.reply).toBe("Week review\n\nran 5 km easy\nfelt good\n\nKeep it easy.");
+    }
+  });
+
+  it("strips bold wrappers, block quotes and numbered lists deterministically", () => {
+    expect(stripReplyStructure("**bold** and __also__")).toBe("bold and also");
+    expect(stripReplyStructure("> quoted line")).toBe("quoted line");
+    expect(stripReplyStructure("1. first\n2. second")).toBe("first\nsecond");
+    expect(stripReplyStructure("a\n\n\n\nb")).toBe("a\n\nb");
+    expect(stripReplyStructure("  spaced  ")).toBe("spaced");
+  });
+
+  it("accepts a four-sentence reply under the cap", () => {
+    const reply = "Sunday works. Your week is light. I moved the long run. Keep the rest day.";
+    const result = parseCoachTurn({ reply, suggestions: ["Book Sunday"] }, TODAY);
+    expect(result.ok).toBe(true);
+  });
+});
+
+describe("coach system prompt (segment A)", () => {
+  const prompt = buildCoachSystemPrompt();
+
+  it("is byte-stable per deploy and carries no per-turn data", () => {
+    expect(buildCoachSystemPrompt()).toBe(prompt);
+    expect(prompt).not.toContain(TODAY);
+    expect(prompt).not.toContain("[Coach context");
+  });
+
+  it("casts the coach as a consultant and training friend, never a teacher or taskmaster", () => {
+    expect(prompt).toContain("You are the runner's consultant and training friend");
+    expect(prompt).toContain("not their teacher or taskmaster");
+    expect(prompt).toContain("The runner asks; you respond");
+    expect(prompt).toContain("never lecture, never moralize, never grade effort");
+    // The bilingual language hierarchy: the message's script wins, the learned profile fills bare follow-ups.
+    expect(prompt).toContain("if the latest message contains Chinese characters, reply in Traditional Chinese");
+    expect(prompt).toContain("use the language the newest Runner profile block names when it names one");
+    expect(prompt).not.toContain("You are the runner's AI coach.");
+  });
+
+  it("sets the peer voice: short spoken sentences, no lists, no markdown", () => {
+    expect(prompt).toContain("Write like you speak: 2-4 short sentences, usually 2, and at most one question");
+    expect(prompt).toContain("No headings, no numbered lists, no bullet lists, no markdown");
+    expect(prompt).toContain("Be warm and specific");
+  });
+
+  it("obeys the learned tone and reply length", () => {
+    expect(prompt).toContain("tone (supportive, direct, brief) and replyLength (short, standard)");
+    expect(prompt).toContain("brief tone or short length means one or two sentences");
+  });
+
+  it("tells the coach to learn preferences silently, never announcing them", () => {
+    expect(prompt).toContain("set profileUpdates and simply start using it");
+    expect(prompt).toContain("never announce the update and never ask permission for it");
+    expect(prompt).toContain("do not ask the runner to curate or approve memories");
+  });
+
+  it("keeps the goal-alignment rule", () => {
+    expect(prompt).toContain("keep the plan aligned with it");
+  });
+
+  it("states the snapshot authority and the staleness contract", () => {
+    expect(prompt).toContain("The newest context block is authoritative for today, weekday, timezone, tomorrow and the booking horizon");
+    expect(prompt).toContain("Older context blocks are history");
+    expect(prompt).toContain("trust their message over the block");
+    expect(prompt).toContain("a run they just did, a change they made by hand, fresh soreness");
+  });
+
+  it("keeps the consultant-first protocol with suggestions carrying the menu", () => {
+    expect(prompt).toContain("respond as a consultant");
+    expect(prompt).toContain("what their recent facts show (volume, load, consistency)");
+    expect(prompt).toContain("the tappable suggestions carry the menu, your reply carries the advice");
+    expect(prompt).toContain(
+      "Book sessions in the same turn only when the message itself explicitly asks to add, move, change or delete a session",
+    );
+    expect(prompt).toContain("Chit-chat is fine; notice the training intent inside it");
+  });
+
+  it("keeps the safety, honesty and calendar-write rules", () => {
+    expect(prompt).toContain("Never diagnose, prescribe calories or weight, or guarantee a result");
+    expect(prompt).toContain("Answer with exactly one JSON object");
+    expect(prompt).toContain(
+      "Only add, move, change or delete sessions when the runner explicitly asks for a schedule change",
+    );
+  });
+
+  it("keeps the comment-only rule for review turns", () => {
+    expect(prompt).toContain("asks for a comment, review or opinion only");
+    expect(prompt).toContain("leave the calendar unchanged");
+  });
+
+  it("teaches what reported effort means and how to use it", () => {
+    expect(prompt).toContain("the runner's reported effort on the Borg CR10 scale");
+    expect(prompt).toContain("name it plainly");
+    expect(prompt).toContain("say both readings and ask the runner instead of choosing one");
+  });
+
+  it("includes the muscle interpretation rules and the state catalog", () => {
+    expect(prompt).toContain("Normal soreness peaks 24-72 h");
+    expect(prompt).toContain("Sharp localized pain, swelling or numbness are not normal soreness");
+    expect(prompt).toContain("propose the pain_injury state");
+    expect(prompt).toContain("The coaching state catalog");
+    expect(prompt).toContain("race_day");
+    expect(prompt).toContain("medical_red_flag");
+  });
+
+  it("allows action and invitation chips and bans lecture chips", () => {
+    expect(prompt).toContain('an action the runner voices ("Book my long run for Sunday")');
+    expect(prompt).toContain('an invitation to discuss ("What if we moved the long run to Saturday?")');
+    expect(prompt).toContain("each 1..120 characters, in the runner's language, never numbered");
+    expect(prompt).toContain("ban lecture-style chips and duplicates");
+  });
+
+  it("explains the running thread so appended snapshots make sense", () => {
+    expect(prompt).toContain("The conversation below is a running thread");
+    expect(prompt).toContain("a new context block appears only when something it tracks changed");
+  });
+});
+
+describe("context snapshot (segments B and C)", () => {
+  it("renders the profile block, memories, facts and changes in fixed order", () => {
+    const body = buildContextSnapshot(snapshotInput() as never);
+    expect(body).toContain("[Coach context - as of");
+    expect(body).toContain("Background for this turn; never quote or mention this block");
+    expect(body.indexOf("Runner profile (JSON)")).toBeLessThan(body.indexOf("Remembered (JSON)"));
+    expect(body.indexOf("Remembered (JSON)")).toBeLessThan(body.indexOf("Facts (JSON)"));
+    expect(body.indexOf("Facts (JSON)")).toBeLessThan(body.indexOf("Active coaching states"));
+    expect(body).toContain("prefers mornings");
+    expect(body).toContain('"day":"2026-11-06"');
+    expect(body).toContain("Morning run");
+    expect(body).toContain("change:9");
+    expect(body).toContain('move \\"Long 8 km\\"');
+    expect(body).toContain('"revertedAt":null');
+  });
+
+  it("puts the runner's goal and name into the profile block", () => {
+    const body = buildContextSnapshot({
+      ...snapshotInput(),
+      displayName: "Mei",
+      goal: "Half marathon in March, sub 2:00",
+    } as never);
+    expect(body).toContain('"displayName":"Mei"');
+    expect(body).toContain('"goal":"Half marathon in March, sub 2:00"');
+  });
+
+  it("omits an empty or whitespace goal instead of inventing one", () => {
+    const body = buildContextSnapshot({ ...snapshotInput(), goal: "   " } as never);
+    expect(body).toContain('"goal":null');
+  });
+
+  it("renders learned preferences when they exist and nulls while undecided", () => {
+    const learned = buildContextSnapshot({
+      ...snapshotInput(),
+      preferences: preferences({ language: "zh-Hant", tone: "brief", replyLength: "short", nickname: "Ah Ming" }),
+    } as never);
+    expect(learned).toContain('"language":"zh-Hant"');
+    expect(learned).toContain('"tone":"brief"');
+    expect(learned).toContain('"replyLength":"short"');
+    expect(learned).toContain('"nickname":"Ah Ming"');
+    const undecided = buildContextSnapshot(snapshotInput() as never);
+    expect(undecided).toContain('"language":null');
+    expect(undecided).toContain('"nickname":null');
+  });
+
+  it("puts the runner's reported effort into the activity facts", () => {
+    const reported: Activity = { ...activity, activityId: "activity:manual:1", source: "chat", rpe: 7.5 };
+    const body = buildContextSnapshot({ ...snapshotInput(), activities: [reported] } as never);
+    expect(body).toContain('"rpe":7.5');
+  });
+
+  it("renders a null rpe for runs without a reported effort", () => {
+    const body = buildContextSnapshot(snapshotInput() as never);
+    expect(body).toContain('"rpe":null');
+  });
+
+  it("renders active states and omits the muscle section when there was never a check-in", () => {
+    const state: CoachStateRecord = {
+      stateId: "state:race-week",
+      userId: "u",
+      key: "race_week",
+      status: "active",
+      source: "auto",
+      confidence: 0.9,
+      evidence: ["Race on 2026-11-08 (3 days)."],
+      activatedAt: "2026-11-05T08:00:00.000Z",
+      updatedAt: "2026-11-05T08:00:00.000Z",
+      expiresAt: "2026-11-10T08:00:00.000Z",
+      resolvedAt: null,
+    };
+    const body = buildContextSnapshot({ ...snapshotInput(), states: [state] } as never);
+    expect(body).toContain("Active coaching states");
+    expect(body).toContain("race_week");
+    expect(body).toContain("Guardrail");
+    expect(body).not.toContain("Muscle status:");
+  });
+
+  it("renders the muscle status section when the runner has checked in", () => {
+    const body = buildContextSnapshot({
+      ...snapshotInput(),
+      muscleFacts: "Muscle check-in (latest 2026-11-04):\n- Calves 6/10 tight, left",
+    } as never);
+    expect(body).toContain("Muscle status:");
+    expect(body).toContain("Calves 6/10 tight, left");
+  });
+
+  it("is deterministic: the same rows render the same bytes", () => {
+    expect(buildContextSnapshot(snapshotInput() as never)).toBe(buildContextSnapshot(snapshotInput() as never));
+  });
+});
+
+describe("turn suffix (segment E's hidden half)", () => {
+  it("renders the directive block with forbidden calendar writes and the referenced activity", () => {
+    const directive = buildDirectiveForIntent(
+      { kind: "review-activity", activityId: "garmin:1", source: "run-peek" },
+      { activityDay: "2026-11-04" },
+    );
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const suffix = buildTurnSuffix({ directive, referencedActivity: activity, referencedSessions: [session("2026-11-04")] });
+    expect(suffix).toContain("Turn directive (background; never mention this section to the runner)");
+    expect(suffix).toContain("calendar writes: forbidden");
+    expect(suffix).toContain("references: activity garmin:1; day 2026-11-04");
+    expect(suffix).toContain("Referenced context (JSON)");
+    expect(suffix).toContain('"activityId":"garmin:1"');
+    expect(suffix).toContain('"sessionId":"s-2026-11-04"');
+  });
+
+  it("carries the reported effort inside the referenced activity", () => {
+    const directive = buildDirectiveForIntent(
+      { kind: "review-activity", activityId: "activity:manual:1", source: "run-peek" },
+      { activityDay: "2026-11-04" },
+    );
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const reported: Activity = { ...activity, activityId: "activity:manual:1", source: "chat", rpe: 9 };
+    const suffix = buildTurnSuffix({ directive, referencedActivity: reported });
+    expect(suffix).toContain('"rpe":9');
+  });
+
+  it("renders a discuss-change directive with the change set as referenced context", () => {
+    const before: TrainingSession = {
+      sessionId: "session:b",
+      userId: "u",
+      day: "2026-11-07",
+      title: "Long 8 km",
+      kind: "long",
+      distanceKm: 8,
+      durationMin: 55,
+      note: null,
+      createdAt: "2026-11-05T00:00:00.000Z",
+    };
+    const entry: ChangeEntry = {
+      action: "update",
+      sessionId: "session:b",
+      before,
+      after: { ...before, day: "2026-11-09" },
+      fromDay: "2026-11-07",
+      toDay: "2026-11-09",
+      title: "Long 8 km",
+      kind: "long",
+    };
+    const record: ChangeSet = {
+      changeSetId: "change:9",
+      userId: "u",
+      createdAt: "2026-11-05T07:00:00.000Z",
+      summary: 'move "Long 8 km" 2026-11-07 → 2026-11-09',
+      entries: [entry],
+      revertedAt: null,
+    };
+    const directive = buildDirectiveForIntent({ kind: "discuss-change", changeSetId: "change:9", source: "recent-changes" });
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const suffix = buildTurnSuffix({ directive, referencedChangeSet: record });
+    expect(suffix).toContain("references: change set change:9");
+    expect(suffix).toContain("Discuss what the referenced change set did and why the plan moved that way");
+    expect(suffix).toContain("This turn is comment-only");
+    expect(suffix).toContain('"changeSetId":"change:9"');
+    expect(suffix).toContain('"toDay":"2026-11-09"');
+  });
+
+  it("renders a discuss-state directive with the state as referenced context", () => {
+    const record: CoachStateRecord = {
+      stateId: "state:heat",
+      userId: "u",
+      key: "heat",
+      status: "active",
+      source: "user",
+      confidence: 1,
+      evidence: ["Hot week"],
+      activatedAt: "2026-11-04T07:00:00.000Z",
+      updatedAt: "2026-11-04T07:00:00.000Z",
+      expiresAt: "2026-11-12T00:00:00.000Z",
+      resolvedAt: null,
+    };
+    const directive = buildDirectiveForIntent({ kind: "discuss-state", stateId: "state:heat", source: "state-card" });
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const suffix = buildTurnSuffix({ directive, referencedState: record });
+    expect(suffix).toContain("references: state state:heat");
+    expect(suffix).toContain("offer options, not orders");
+    expect(suffix).toContain('"stateId":"state:heat"');
+    expect(suffix).toContain("Hot week");
+  });
+
+  it("carries the referenced muscle knowledge for a review-muscles turn", () => {
+    const directive = buildDirectiveForIntent({ kind: "review-muscles", muscleId: "calves", source: "muscle-tab" });
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const suffix = buildTurnSuffix({
+      directive,
+      referencedMuscle: "Referenced muscle: Calves (legs)\nFunction: Spring the foot off the ground.",
+    });
+    expect(suffix).toContain("Referenced muscle: Calves (legs)");
+    expect(suffix).toContain("Spring the foot off the ground");
+  });
+});
+
+describe("conversation assembly (segments C, D and E)", () => {
+  const snapshot = {
+    createdAt: "2026-11-05T07:00:00.000Z",
+    body: buildContextSnapshot(snapshotInput() as never),
+  };
+
+  it("date-stamps every message and ends with the turn message", () => {
+    const history = [message("user", "I ran 5 km yesterday"), message("assistant", "Nice, keep it easy")];
+    const assembly = assembleConversation({
+      history,
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "What next?", createdAt: "2026-11-05T09:00:00.000Z" },
+    });
+    expect(assembly.compacted).toBe(false);
+    const contents = assembly.messages.map((entry) => entry.content);
+    expect(assembly.messages[0]?.role).toBe("user");
+    expect(assembly.messages[0]?.content).toBe(snapshot.body);
+    expect(assembly.messages[1]?.content).toContain("I ran 5 km yesterday");
+    expect(assembly.messages[1]?.content).toMatch(/^\[/);
+    expect(assembly.messages[2]?.content).toContain("Nice, keep it easy");
+    const last = assembly.messages[assembly.messages.length - 1];
+    expect(last?.role).toBe("user");
+    expect(last?.content).toContain("What next?");
+  });
+
+  it("reproduces a directive turn's suffix bytes from the stored suffix map", () => {
+    const directive = buildDirectiveForIntent(
+      { kind: "review-activity", activityId: "garmin:1", source: "run-peek" },
+      { activityDay: "2026-11-04" },
+    );
+    expect(directive).toBeDefined();
+    if (directive === undefined) return;
+    const suffix = buildTurnSuffix({ directive, referencedActivity: activity });
+    const asked = message("user", "How did my Morning run go?", "2026-11-05T09:00:00.000Z");
+    const first = assembleConversation({
+      history: [],
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: asked.text, createdAt: asked.createdAt, suffix },
+    });
+    const reproduced = assembleConversation({
+      history: [asked],
+      timezone: "UTC",
+      suffixes: new Map([[asked.messageId, suffix]]),
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "Thanks", createdAt: "2026-11-05T10:00:00.000Z" },
+    });
+    // The historical message carries the same suffix bytes the live turn sent, so the next request's prefix is
+    // byte-identical for the provider's cache.
+    const liveContent = first.messages[first.messages.length - 1]?.content;
+    const storedContent = reproduced.messages.find((entry) => entry.content.includes("How did my Morning run go?"))?.content;
+    expect(storedContent).toBe(liveContent);
+    expect(storedContent).toContain("Turn directive (background");
+  });
+
+  it("keeps the prefix byte-identical when only the conversation grows", () => {
+    const historyA = [message("user", "Plan my week"), message("assistant", "Your week is light")];
+    const turnA = assembleConversation({
+      history: historyA,
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "Book Sunday", createdAt: "2026-11-05T09:00:00.000Z" },
+    });
+    const historyB = [
+      ...historyA,
+      message("user", "Book Sunday", "2026-11-05T09:00:00.000Z"),
+      message("assistant", "Booked.", "2026-11-05T09:01:00.000Z"),
+    ];
+    const turnB = assembleConversation({
+      history: historyB,
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "Move it to Saturday", createdAt: "2026-11-05T10:00:00.000Z" },
+    });
+    expect(turnB.messages.slice(0, turnA.messages.length)).toEqual(turnA.messages);
+  });
+
+  it("appends a newer snapshot after the old conversation instead of rewriting it", () => {
+    const historyA = [message("user", "Plan my week")];
+    const turnA = assembleConversation({
+      history: historyA,
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "Book Sunday", createdAt: "2026-11-05T09:00:00.000Z" },
+    });
+    const newerSnapshot = {
+      createdAt: "2026-11-06T07:00:00.000Z",
+      body: buildContextSnapshot({ ...snapshotInput(), today: "2026-11-06" } as never),
+    };
+    const historyB = [
+      ...historyA,
+      message("user", "Book Sunday", "2026-11-05T09:00:00.000Z"),
+      message("assistant", "Booked.", "2026-11-05T09:01:00.000Z"),
+      message("user", "Synced a new run", "2026-11-06T09:00:00.000Z"),
+    ];
+    const turnB = assembleConversation({
+      history: historyB,
+      timezone: "UTC",
+      snapshots: [snapshot, newerSnapshot],
+      latestSnapshot: newerSnapshot,
+      turn: { text: "How did it go?", createdAt: "2026-11-06T09:05:00.000Z" },
+    });
+    // The old prefix survives; the new snapshot lands after the old conversation, never rewriting it.
+    expect(turnB.messages.slice(0, turnA.messages.length)).toEqual(turnA.messages);
+    const newerIndex = turnB.messages.findIndex((entry) => entry.content === newerSnapshot.body);
+    expect(newerIndex).toBe(4);
+    expect(turnB.messages[newerIndex - 1]?.content).toContain("Booked.");
+    expect(turnB.messages[newerIndex + 1]?.content).toContain("Synced a new run");
+  });
+
+  it("always includes the newest snapshot even when it is older than the history window", () => {
+    const oldHistory = Array.from({ length: 3 }, (_, index) =>
+      message("user", `older ${index}`, `2026-11-05T0${index}:30:00.000Z`),
+    );
+    const assembly = assembleConversation({
+      history: oldHistory,
+      timezone: "UTC",
+      snapshots: [],
+      latestSnapshot: snapshot,
+      turn: { text: "Hi again", createdAt: "2026-11-05T11:00:00.000Z" },
+    });
+    expect(assembly.messages.some((entry) => entry.content === snapshot.body)).toBe(true);
+  });
+
+  it("drops the oldest history messages first when the token budget overflows", () => {
+    const history = Array.from({ length: 12 }, (_, index) =>
+      message("user", `m${index} ${"x".repeat(4000)}`, `2026-11-05T${String(index).padStart(2, "0")}:30:00.000Z`),
+    );
+    const assembly = assembleConversation({
+      history,
+      timezone: "UTC",
+      snapshots: [snapshot],
+      latestSnapshot: snapshot,
+      turn: { text: "Hello", createdAt: "2026-11-05T23:00:00.000Z" },
+    });
+    expect(assembly.compacted).toBe(true);
+    const historyMessages = assembly.messages.filter((entry) => /\] m\d+ /.test(entry.content));
+    // It keeps the newest ten messages (the assembly floor) and never drops the snapshot or the turn.
+    expect(historyMessages).toHaveLength(10);
+    expect(historyMessages.some((entry) => entry.content.includes("] m11 "))).toBe(true);
+    expect(historyMessages.some((entry) => entry.content.includes("] m0 "))).toBe(false);
+    expect(assembly.messages.some((entry) => entry.content === snapshot.body)).toBe(true);
+    expect(assembly.messages[assembly.messages.length - 1]?.content).toContain("Hello");
+  });
+});
+
+describe("prompt epoch (LL-3)", () => {
+  const parts: CoachEpochParts = {
+    promptVersion: COACH_PROMPT_VERSION,
+    today: TODAY,
+    latestChangeSetId: null,
+    latestActivityId: null,
+    activityCount: 0,
+    latestMuscleCheckInId: null,
+    activeStateKeys: [],
+    memoryIds: [],
+    profileKey: "p",
+    preferenceKey: "q",
+  };
+
+  it("hashes equal parts to the same epoch", () => {
+    expect(coachEpoch(parts)).toBe(coachEpoch({ ...parts }));
+    expect(coachEpoch(parts)).toHaveLength(64);
+  });
+
+  it("reports the first turn and the coach update before anything else", () => {
+    expect(epochReasons(null, parts)).toEqual(["first-turn"]);
+    expect(epochReasons(parts, { ...parts, promptVersion: "older" })).toEqual(["coach-updated"]);
+  });
+
+  it("derives one reason per changed part, in the client's loading-line order", () => {
+    expect(epochReasons(parts, { ...parts, today: "2026-11-06" })).toEqual(["new-day"]);
+    expect(epochReasons(parts, { ...parts, latestActivityId: "garmin:9", activityCount: 1 })).toEqual(["new-activities"]);
+    expect(epochReasons(parts, { ...parts, activityCount: 3 })).toEqual(["new-activities"]);
+    expect(epochReasons(parts, { ...parts, latestMuscleCheckInId: "check:2" })).toEqual(["new-muscle-check-in"]);
+    expect(epochReasons(parts, { ...parts, latestChangeSetId: "change:2" })).toEqual(["calendar-changed"]);
+    expect(epochReasons(parts, { ...parts, activeStateKeys: ["taper"] })).toEqual(["states-changed"]);
+    expect(epochReasons(parts, { ...parts, memoryIds: ["m1"] })).toEqual(["memories-updated"]);
+    expect(epochReasons(parts, { ...parts, profileKey: "p2" })).toEqual(["profile-updated"]);
+    expect(epochReasons(parts, { ...parts, preferenceKey: "q2" })).toEqual(["profile-updated"]);
+    expect(epochReasons(parts, parts)).toEqual([]);
+  });
+});
+
+describe("silent profile updates (LL-5)", () => {
+  it("parses valid preference updates and trims the nickname", () => {
+    const result = parseCoachTurn(
+      {
+        reply: "Noted, I will keep it brief.",
+        suggestions: ["Book Sunday"],
+        profileUpdates: { language: "zh-Hant", tone: "brief", replyLength: "short", nickname: "  Ah Ming  " },
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.turn.profileUpdates).toEqual({
+        language: "zh-Hant",
+        tone: "brief",
+        replyLength: "short",
+        nickname: "Ah Ming",
+      });
+    }
+  });
+
+  it("treats null preference values as absent", () => {
+    const result = parseCoachTurn(
+      { reply: "OK.", suggestions: ["Book Sunday"], profileUpdates: { language: null, tone: null } },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.turn.profileUpdates).toEqual({});
+  });
+
+  it("rejects unknown preference keys and invalid values", () => {
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: { mood: "bright" } }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-update-key" });
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: { language: "zh-HK" } }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-language" });
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: { tone: "angry" } }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-tone" });
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: { replyLength: "tiny" } }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-length" });
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: { nickname: "n".repeat(41) } }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-nickname" });
+    expect(
+      parseCoachTurn({ reply: "x", suggestions: ["a"], profileUpdates: "brief" }, TODAY),
+    ).toMatchObject({ ok: false, code: "invalid-profile-updates" });
+  });
+
+  it("exposes profileUpdates in the tool schema without requiring it", () => {
+    const parameters = COACH_TOOL.function.parameters;
+    const properties = parameters.properties;
+    expect(properties).toHaveProperty("profileUpdates");
+    expect(parameters.required).not.toContain("profileUpdates");
+    const updates = properties.profileUpdates;
+    expect(updates.additionalProperties).toBe(false);
+    expect(updates.properties.language.enum).toEqual(["en", "zh-Hant"]);
+    expect(updates.properties.tone.enum).toEqual(["supportive", "direct", "brief"]);
+    expect(updates.properties.replyLength.enum).toEqual(["short", "standard"]);
+    expect(updates.properties.nickname.maxLength).toBe(40);
+  });
+});
+
+describe("coach suggestions", () => {
+  it("accepts 1-3 suggestions and trims them", () => {
+    const result = parseCoachTurn({ reply: "x", suggestions: ["  Book Sunday  ", "Move Thursday"] }, TODAY);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.turn.suggestions).toEqual(["Book Sunday", "Move Thursday"]);
+    const three = parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c"] }, TODAY);
+    expect(three.ok).toBe(true);
+  });
+
+  it("rejects missing, empty, oversized or too many suggestions", () => {
+    expect(parseCoachTurn({ reply: "x" }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
+    expect(parseCoachTurn({ reply: "x", suggestions: [] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c", "d"] }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-suggestions",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: [""] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a".repeat(121)] }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-suggestion",
+    });
+    expect(parseCoachTurn({ reply: "x", suggestions: [42] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
   });
 });
 
@@ -292,63 +790,6 @@ describe("coach schedule actions", () => {
       ok: false,
       code: "invalid-action",
     });
-  });
-
-  it("puts the conversation so far into the prompt", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [message("user", "I ran 5 km yesterday"), message("assistant", "Nice, keep it easy")],
-      recentChanges: [],
-      question: "What next?",
-    });
-    expect(prompt).toContain("Conversation so far");
-    expect(prompt).toContain("several actions");
-    expect(prompt).toContain("Runner: I ran 5 km yesterday");
-    expect(prompt).toContain("Coach: Nice, keep it easy");
-  });
-});
-
-describe("coach suggestions", () => {
-  it("accepts 1-3 suggestions and trims them", () => {
-    const result = parseCoachTurn({ reply: "x", suggestions: ["  Book Sunday  ", "Move Thursday"] }, TODAY);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.turn.suggestions).toEqual(["Book Sunday", "Move Thursday"]);
-    const three = parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c"] }, TODAY);
-    expect(three.ok).toBe(true);
-  });
-
-  it("rejects missing, empty, oversized or too many suggestions", () => {
-    expect(parseCoachTurn({ reply: "x" }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
-    expect(parseCoachTurn({ reply: "x", suggestions: [] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestions" });
-    expect(parseCoachTurn({ reply: "x", suggestions: ["a", "b", "c", "d"] }, TODAY)).toMatchObject({
-      ok: false,
-      code: "invalid-suggestions",
-    });
-    expect(parseCoachTurn({ reply: "x", suggestions: [""] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
-    expect(parseCoachTurn({ reply: "x", suggestions: ["a".repeat(121)] }, TODAY)).toMatchObject({
-      ok: false,
-      code: "invalid-suggestion",
-    });
-    expect(parseCoachTurn({ reply: "x", suggestions: [42] }, TODAY)).toMatchObject({ ok: false, code: "invalid-suggestion" });
-  });
-
-  it("accepts invitational chips now that invitations are a legal form", () => {
-    const result = parseCoachTurn(
-      {
-        reply: "Two ways to play the heat: move the long run to dawn, or shorten it by a third. I'd move it to dawn.",
-        suggestions: [
-          "What if we moved the long run to Saturday?",
-          "Book my long run for Sunday",
-          "Shorten the long run to 12 km",
-        ],
-      },
-      TODAY,
-    );
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.turn.suggestions).toHaveLength(3);
   });
 });
 
@@ -386,37 +827,96 @@ describe("coach revert", () => {
       code: "invalid-revert",
     });
   });
+});
 
-  it("puts recent changes with their ids into the prompt and asks for suggestions", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      pastSessions: [session("2026-11-03")],
-      activities: [activity],
-      history: [],
-      recentChanges: [
-        changeSet("change:9", "move \"Long 8 km\" 2026-11-07 → 2026-11-09"),
-        changeSet("change:8", "add \"Easy 4 km\" on 2026-11-06", "2026-11-05T09:00:00.000Z"),
-      ],
-      question: "Undo that",
-    });
-    expect(prompt).toContain("recentChanges");
-    expect(prompt).toContain("change:9");
-    expect(prompt).toContain("change:8");
-    expect(prompt).toContain("move \\\"Long 8 km\\\"");
-    expect(prompt).toContain("\"revertedAt\":null");
-    expect(prompt).toContain("2026-11-05T09:00:00.000Z");
-    expect(prompt).toContain("recentPlannedSessions");
-    expect(prompt).toContain("2026-11-03");
-    expect(prompt).toContain("recentActivities");
-    expect(prompt).toContain("Morning run");
-    expect(prompt).toContain("never invent splits");
-    expect(prompt).toContain("suggestions");
-    expect(prompt).toContain("1-3");
-    expect(prompt).toContain("must not repeat");
-    expect(prompt).toContain("more than one booked session");
-    expect(prompt).toContain("revertChangeSetId");
+describe("coaching state proposals", () => {
+  it("parses a valid state proposal with an optional note", () => {
+    const result = parseCoachTurn(
+      {
+        reply: "Noted.",
+        suggestions: ["Plan the week"],
+        stateProposals: [
+          {
+            key: "travel",
+            action: "activate",
+            confidence: 0.8,
+            evidence: ["Travelling next week"],
+            ttlDays: 10,
+            note: "Tokyo",
+          },
+        ],
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.turn.stateProposals).toHaveLength(1);
+      expect(result.turn.stateProposals[0]).toMatchObject({
+        key: "travel",
+        action: "activate",
+        confidence: 0.8,
+        evidence: ["Travelling next week"],
+        ttlDays: 10,
+        note: "Tokyo",
+      });
+    }
+  });
+
+  it("rejects unknown, malformed and excessive state proposals", () => {
+    const invalid = (stateProposals: unknown): unknown =>
+      parseCoachTurn({ reply: "x", suggestions: ["Plan"], stateProposals }, TODAY);
+    expect(
+      invalid([{ key: "mode: race week", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-key" });
+    expect(
+      invalid([{ key: "travel", action: "keep", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-action" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.2, evidence: ["x"], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-confidence" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: [], ttlDays: 7, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-evidence" });
+    expect(
+      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 400, note: null }]),
+    ).toMatchObject({ ok: false, code: "invalid-state-ttl" });
+    expect(invalid("travel")).toMatchObject({ ok: false, code: "invalid-state-proposals" });
+    const four = Array.from({ length: 4 }, () => ({
+      key: "travel",
+      action: "activate",
+      confidence: 0.8,
+      evidence: ["x"],
+      ttlDays: 7,
+      note: null,
+    }));
+    expect(invalid(four)).toMatchObject({ ok: false, code: "invalid-state-proposals" });
+    expect(invalid([42])).toMatchObject({ ok: false, code: "invalid-state-proposal" });
+  });
+
+  it("exposes the state keys in the tool schema", () => {
+    const properties = COACH_TOOL.function.parameters.properties;
+    expect(properties).toHaveProperty("stateProposals");
+    const proposals = properties.stateProposals;
+    expect(proposals.type).toBe("array");
+    expect(proposals.maxItems).toBe(3);
+    expect(proposals.items.properties.key.enum).toContain("race_week");
+    expect(proposals.items.properties.key.enum).toContain("pain_injury");
+    expect(proposals.items.properties.action.enum).toEqual(["activate", "resolve"]);
+  });
+
+  it("maps a state guardrail failure to a repair instruction that respects the state", () => {
+    expect(policyForCode("mode-guardrail")).toBe("respect-state");
+    const feedback = buildValidationFeedbackForCode(
+      "mode-guardrail",
+      "blocked by race week",
+      TODAY,
+      "UTC",
+      1,
+      2,
+      [{ path: "sessions[0].kind", code: "mode-guardrail", message: "No hard sessions", rejectedValue: "tempo" }],
+      "respect-state",
+    );
+    expect(feedback.policy).toBe("respect-state");
   });
 });
 
@@ -450,365 +950,3 @@ describe("extended race horizon", () => {
     });
   });
 });
-
-describe("coaching state proposals and prompt", () => {
-  const state = (key: "race_week" | "pain_injury", overrides: Partial<CoachStateRecord> = {}): CoachStateRecord => ({
-    stateId: `state:${key}`,
-    userId: "u",
-    key,
-    status: "active",
-    source: "auto",
-    confidence: 0.9,
-    evidence: ["Race on 2026-11-08 (3 days)."],
-    activatedAt: "2026-11-05T08:00:00.000Z",
-    updatedAt: "2026-11-05T08:00:00.000Z",
-    expiresAt: "2026-11-10T08:00:00.000Z",
-    resolvedAt: null,
-    ...overrides,
-  });
-
-  it("parses a valid state proposal with an optional note", () => {
-    const result = parseCoachTurn(
-      {
-        reply: "Noted.",
-        suggestions: ["Plan the week"],
-        stateProposals: [
-          {
-            key: "travel",
-            action: "activate",
-            confidence: 0.8,
-            evidence: ["Travelling next week"],
-            ttlDays: 10,
-            note: "Tokyo",
-          },
-        ],
-      },
-      TODAY,
-    );
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.turn.stateProposals).toHaveLength(1);
-      expect(result.turn.stateProposals[0]).toMatchObject({
-        key: "travel",
-        action: "activate",
-        confidence: 0.8,
-        evidence: ["Travelling next week"],
-        ttlDays: 10,
-        note: "Tokyo",
-      });
-    }
-    const nullable = parseCoachTurn(
-      {
-        reply: "Noted.",
-        suggestions: ["Plan the week"],
-        stateProposals: [
-          {
-            key: "race_week",
-            action: "resolve",
-            confidence: 1,
-            evidence: ["Race is over"],
-            ttlDays: null,
-            note: null,
-          },
-        ],
-      },
-      TODAY,
-    );
-    expect(nullable.ok).toBe(true);
-    if (nullable.ok) expect(nullable.turn.stateProposals[0]?.ttlDays).toBeNull();
-  });
-
-  it("rejects unknown, malformed and excessive state proposals", () => {
-    const invalid = (stateProposals: unknown): unknown =>
-      parseCoachTurn({ reply: "x", suggestions: ["Plan"], stateProposals }, TODAY);
-    expect(
-      invalid([{ key: "mode: race week", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-key" });
-    expect(
-      invalid([{ key: "travel", action: "keep", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-action" });
-    expect(
-      invalid([{ key: "travel", action: "activate", confidence: 0.2, evidence: ["x"], ttlDays: 7, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-confidence" });
-    expect(
-      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: [], ttlDays: 7, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-evidence" });
-    expect(
-      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 400, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-ttl" });
-    expect(
-      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 0, note: null }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-ttl" });
-    expect(
-      invalid([{ key: "travel", action: "activate", confidence: 0.8, evidence: ["x"], ttlDays: 7, note: "x".repeat(281) }]),
-    ).toMatchObject({ ok: false, code: "invalid-state-note" });
-    expect(invalid("travel")).toMatchObject({ ok: false, code: "invalid-state-proposals" });
-    const four = Array.from({ length: 4 }, () => ({
-      key: "travel",
-      action: "activate",
-      confidence: 0.8,
-      evidence: ["x"],
-      ttlDays: 7,
-      note: null,
-    }));
-    expect(invalid(four)).toMatchObject({ ok: false, code: "invalid-state-proposals" });
-    expect(invalid([42])).toMatchObject({ ok: false, code: "invalid-state-proposal" });
-  });
-
-  it("exposes the state keys in the tool schema", () => {
-    const properties = COACH_TOOL.function.parameters.properties;
-    expect(properties).toHaveProperty("stateProposals");
-    const proposals = properties.stateProposals;
-    expect(proposals.type).toBe("array");
-    expect(proposals.maxItems).toBe(3);
-    expect(proposals.items.properties.key.enum).toContain("race_week");
-    expect(proposals.items.properties.key.enum).toContain("pain_injury");
-    expect(proposals.items.properties.action.enum).toEqual(["activate", "resolve"]);
-  });
-
-  it("puts active states and the catalog into the background prompt without exposing them in chat", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      timezone: "UTC",
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "Should I do intervals?",
-      states: [state("race_week"), state("pain_injury", { status: "observing", source: "chat", stateId: "state:pain" })],
-    });
-    expect(prompt).toContain("Active coaching states");
-    expect(prompt).toContain("race_week");
-    expect(prompt).toContain("Guardrail");
-    expect(prompt).toContain("Proposed/observing");
-    expect(prompt).toContain("pain_injury");
-    expect(prompt).toContain("Coaching state catalog");
-    expect(prompt).toContain("race_day");
-    expect(prompt).toContain("medical_red_flag");
-    expect(prompt.endsWith("Should I do intervals?")).toBe(true);
-  });
-
-  it("maps a state guardrail failure to a repair instruction that respects the state", () => {
-    expect(policyForCode("mode-guardrail")).toBe("respect-state");
-    const feedback = buildValidationFeedbackForCode(
-      "mode-guardrail",
-      "blocked by race week",
-      TODAY,
-      "UTC",
-      1,
-      2,
-      [{ path: "sessions[0].kind", code: "mode-guardrail", message: "No hard sessions", rejectedValue: "tempo" }],
-      "respect-state",
-    );
-    expect(feedback.policy).toBe("respect-state");
-  });
-});
-
-describe("consultant-friend coach contract", () => {
-  const prompt = buildCoachPrompt({
-    today: TODAY,
-    memories: [],
-    sessions: [],
-    activities: [],
-    history: [],
-    recentChanges: [],
-    question: "I want to run a 10k in 8 weeks.",
-  });
-
-  it("casts the coach as a consultant and training friend, never a teacher or taskmaster", () => {
-    expect(prompt).toContain("You are the runner's consultant and training friend");
-    expect(prompt).toContain("not their teacher or taskmaster");
-    expect(prompt).toContain("The runner asks; you respond");
-    expect(prompt).toContain("Explain the why behind every recommendation in one short sentence");
-    expect(prompt).toContain("never lecture, never moralize, never grade effort");
-    // The bilingual language rule survives the persona rewrite.
-    expect(prompt).toContain("reply in Traditional Chinese; otherwise reply in English");
-    expect(prompt).not.toContain("You are the runner's AI coach.");
-  });
-
-  it("replaces the pusher rule with a discuss-first consultant response", () => {
-    expect(prompt).toContain("respond as a consultant first");
-    expect(prompt).toContain("what their recent facts show (volume, load, consistency)");
-    expect(prompt).toContain("offer 2-3 concrete ways to approach it with the tradeoff of each in one sentence");
-    expect(prompt).toContain("invite the runner to sketch it or apply it");
-    expect(prompt).toContain(
-      "Book sessions in the same turn only when the message itself explicitly asks to add, move, change or delete a session",
-    );
-    expect(prompt).toContain("bigger than a single unambiguous action, offer to sketch it and let the runner choose");
-    expect(prompt).toContain("Chit-chat is fine; notice the training intent inside it");
-    expect(prompt).not.toContain("build or adjust a periodic training system");
-  });
-
-  it("allows action and invitation chips and bans lecture chips", () => {
-    expect(prompt).toContain('an action the runner voices ("Book my long run for Sunday")');
-    expect(prompt).toContain('an invitation to discuss ("What if we moved the long run to Saturday?")');
-    expect(prompt).toContain("each 1..120 characters, in the runner's language, never numbered");
-    expect(prompt).toContain("ban lecture-style chips and duplicates");
-    expect(prompt).not.toContain("imperative next steps");
-    expect(prompt).not.toContain("No questions");
-  });
-
-  it("asks the reply to speak as a peer while staying warm and specific", () => {
-    expect(prompt).toContain("warm, specific, and it speaks as a peer");
-  });
-
-  it("keeps the safety, honesty and calendar-write rules untouched", () => {
-    expect(prompt).toContain("Never diagnose, prescribe calories or weight, or guarantee a result");
-    expect(prompt).toContain("Answer with exactly one JSON object");
-    expect(prompt).toContain(
-      "Only add, move, change or delete sessions when the runner explicitly asks for a schedule change",
-    );
-  });
-});
-
-describe("discuss directives in the prompt", () => {
-  const before: TrainingSession = {
-    sessionId: "session:b",
-    userId: "u",
-    day: "2026-11-07",
-    title: "Long 8 km",
-    kind: "long",
-    distanceKm: 8,
-    durationMin: 55,
-    note: null,
-    createdAt: "2026-11-05T00:00:00.000Z",
-  };
-  const after: TrainingSession = { ...before, day: "2026-11-09" };
-  const entry: ChangeEntry = {
-    action: "update",
-    sessionId: "session:b",
-    before,
-    after,
-    fromDay: "2026-11-07",
-    toDay: "2026-11-09",
-    title: "Long 8 km",
-    kind: "long",
-  };
-  const changeSetRecord: ChangeSet = {
-    changeSetId: "change:9",
-    userId: "u",
-    createdAt: "2026-11-05T07:00:00.000Z",
-    summary: 'move "Long 8 km" 2026-11-07 → 2026-11-09',
-    entries: [entry],
-    revertedAt: null,
-  };
-  const stateRecord: CoachStateRecord = {
-    stateId: "state:heat",
-    userId: "u",
-    key: "heat",
-    status: "active",
-    source: "user",
-    confidence: 1,
-    evidence: ["Hot week"],
-    activatedAt: "2026-11-04T07:00:00.000Z",
-    updatedAt: "2026-11-04T07:00:00.000Z",
-    expiresAt: "2026-11-12T00:00:00.000Z",
-    resolvedAt: null,
-  };
-
-  it("renders a discuss-change directive with the change set as referenced context", () => {
-    const directive = buildDirectiveForIntent(
-      { kind: "discuss-change", changeSetId: "change:9", source: "recent-changes" },
-    );
-    expect(directive).toBeDefined();
-    if (directive === undefined) return;
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [changeSetRecord],
-      question: "Why did my long run move?",
-      directive,
-      referencedChangeSet: changeSetRecord,
-    });
-    expect(prompt).toContain("references: change set change:9");
-    expect(prompt).toContain("Discuss what the referenced change set did and why the plan moved that way");
-    expect(prompt).toContain("This turn is comment-only");
-    expect(prompt).toContain("Referenced context (JSON)");
-    expect(prompt).toContain('"changeSetId":"change:9"');
-    expect(prompt).toContain('move \\"Long 8 km\\"');
-    expect(prompt).toContain('"action":"update"');
-    expect(prompt).toContain('"toDay":"2026-11-09"');
-    expect(prompt).toContain('"revertedAt":null');
-    expect(prompt.endsWith("Why did my long run move?")).toBe(true);
-  });
-
-  it("renders a discuss-state directive with the state as referenced context", () => {
-    const directive = buildDirectiveForIntent({ kind: "discuss-state", stateId: "state:heat", source: "state-card" });
-    expect(directive).toBeDefined();
-    if (directive === undefined) return;
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "How should the heat shape my week?",
-      directive,
-      referencedState: stateRecord,
-    });
-    expect(prompt).toContain("references: state state:heat");
-    expect(prompt).toContain("Discuss how the referenced coaching state should shape the coming week");
-    expect(prompt).toContain("offer options, not orders");
-    expect(prompt).toContain("This turn is comment-only");
-    expect(prompt).toContain("Referenced context (JSON)");
-    expect(prompt).toContain('"stateId":"state:heat"');
-    expect(prompt).toContain('"key":"heat"');
-    expect(prompt).toContain("Hot week");
-  });
-});
-
-describe("muscle check-in facts in the prompt", () => {
-  it("renders the muscle facts block and the muscle interpretation rule", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "How should I train today?",
-      muscleFacts: "Muscle check-in (latest 2026-11-04):\n- Calves 6/10 tight, left\n- 2 check-ins in the last 14 days",
-    });
-    expect(prompt).toContain("Muscle check-in (latest 2026-11-04)");
-    expect(prompt).toContain("Calves 6/10 tight, left");
-    expect(prompt).toContain("2 check-ins in the last 14 days");
-    expect(prompt).toContain("Normal soreness peaks 24-72 h");
-    expect(prompt).toContain("Sharp localized pain, swelling or numbness are not normal soreness");
-    expect(prompt).toContain("propose the pain_injury state");
-  });
-
-  it("omits the block when the runner has never checked in", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "Hello",
-    });
-    expect(prompt).not.toContain("Muscle check-in (latest");
-  });
-
-  it("carries the referenced muscle knowledge for a review-muscles turn", () => {
-    const prompt = buildCoachPrompt({
-      today: TODAY,
-      memories: [],
-      sessions: [],
-      activities: [],
-      history: [],
-      recentChanges: [],
-      question: "My calves are tight — what should I do?",
-      muscleFacts: "Muscle check-in (latest 2026-11-04):\n- Calves 6/10 tight\n- 1 check-in in the last 14 days",
-      referencedMuscle: "Referenced muscle: Calves (legs)\nFunction: Spring the foot off the ground.",
-    });
-    expect(prompt).toContain("Referenced muscle: Calves (legs)");
-    expect(prompt).toContain("Spring the foot off the ground");
-  });
-});
-

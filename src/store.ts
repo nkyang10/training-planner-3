@@ -5,6 +5,8 @@ import type {
   AppNotification,
   ChangeSet,
   CoachDirectiveRecord,
+  CoachPreferences,
+  CoachPreferencesPatch,
   CoachStateEvent,
   CoachStatePatch,
   CoachStateRecord,
@@ -15,6 +17,7 @@ import type {
   Message,
   MuscleCheckIn,
   MuscleStatusControl,
+  PromptSnapshot,
   Store,
   TrainingSession,
   UserProfile,
@@ -203,6 +206,20 @@ CREATE TABLE IF NOT EXISTS coach_state_events (
   payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS coach_state_events_user_created ON coach_state_events (user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS coach_preferences (
+  user_id TEXT PRIMARY KEY,
+  updated_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS prompt_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS prompt_snapshots_user_created ON prompt_snapshots (user_id, created_at);
 `;
 
 const INSERT_USER =
@@ -303,6 +320,21 @@ const COMPLETE_COACH_TURN = `
 `;
 const FAIL_COACH_TURN =
   "UPDATE coach_turns SET completed_at = ?, status = 'failed' WHERE user_id = ? AND request_id = ?";
+const UPSERT_COACH_PREFERENCES = `
+  INSERT INTO coach_preferences (user_id, updated_at, payload) VALUES (?, ?, ?)
+  ON CONFLICT(user_id) DO UPDATE SET updated_at = excluded.updated_at, payload = excluded.payload
+`;
+const INSERT_PROMPT_SNAPSHOT =
+  "INSERT INTO prompt_snapshots (snapshot_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
+const PRUNE_PROMPT_SNAPSHOTS = `
+  DELETE FROM prompt_snapshots
+   WHERE user_id = ?
+     AND snapshot_id NOT IN (
+       SELECT snapshot_id FROM prompt_snapshots WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 3
+     )
+`;
+/** Memories are merged on write: a normalized duplicate is skipped instead of accumulating (LL-6). */
+const MEMORY_KEEP_COUNT = 24;
 
 /** `:memory:` opens an ephemeral database; `sqlite:<path>` opens/creates a file. */
 function resolveLocation(spec: string): string {
@@ -437,10 +469,26 @@ class SqliteStore implements Store {
     return rows.map((row) => decode<Message>(String(row["payload"]))).reverse();
   }
 
+  /**
+   * Append one memory, merged on write: a normalized duplicate of an existing fact is skipped instead of
+   * accumulating, and the table keeps only the newest `MEMORY_KEEP_COUNT` rows per runner (LL-6).
+   */
   appendMemory(memory: Memory): void {
+    const normalized = memory.text.toLowerCase().replace(/\s+/g, " ").trim();
+    const existing = this.listMemories(memory.userId, MEMORY_KEEP_COUNT);
+    if (existing.some((row) => row.text.toLowerCase().replace(/\s+/g, " ").trim() === normalized)) return;
     this.db
       .prepare(INSERT_MEMORY)
       .run(memory.memoryId, memory.userId, memory.createdAt, JSON.stringify(memory));
+    this.db
+      .prepare(
+        `DELETE FROM memories
+          WHERE user_id = ?
+            AND memory_id NOT IN (
+              SELECT memory_id FROM memories WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?
+            )`,
+      )
+      .run(memory.userId, memory.userId, MEMORY_KEEP_COUNT);
   }
 
   listMemories(userId: string, limit = 200): Memory[] {
@@ -798,6 +846,69 @@ class SqliteStore implements Store {
       )
       .all(userId, take);
     return rows.map((row) => decode<CoachDirectiveRecord>(String(row["payload"])));
+  }
+
+  listCoachDirectiveSuffixes(userId: string, limit = 50): Array<{ messageId: string; suffix: string }> {
+    const take = normalizeLimit(limit, 50);
+    if (take === 0) return [];
+    const rows = this.listCoachDirectives(userId, take);
+    const out: Array<{ messageId: string; suffix: string }> = [];
+    for (const record of rows) {
+      if (typeof record.messageId !== "string" || record.messageId.length === 0) continue;
+      if (typeof record.renderedPromptSuffix !== "string" || record.renderedPromptSuffix.length === 0) continue;
+      out.push({ messageId: record.messageId, suffix: record.renderedPromptSuffix });
+    }
+    return out;
+  }
+
+  getCoachPreferences(userId: string): CoachPreferences | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM coach_preferences WHERE user_id = ?")
+      .get(userId);
+    return row === undefined ? undefined : decode<CoachPreferences>(String(row["payload"]));
+  }
+
+  patchCoachPreferences(userId: string, patch: CoachPreferencesPatch, at: string): CoachPreferences {
+    const existing = this.getCoachPreferences(userId);
+    const next: CoachPreferences = {
+      userId,
+      language: patch.language !== undefined ? patch.language : existing?.language ?? null,
+      tone: patch.tone !== undefined ? patch.tone : existing?.tone ?? null,
+      replyLength: patch.replyLength !== undefined ? patch.replyLength : existing?.replyLength ?? null,
+      nickname: patch.nickname !== undefined ? patch.nickname : existing?.nickname ?? null,
+      updatedAt: at,
+    };
+    this.db.prepare(UPSERT_COACH_PREFERENCES).run(userId, at, JSON.stringify(next));
+    return next;
+  }
+
+  appendPromptSnapshot(snapshot: PromptSnapshot): void {
+    this.db
+      .prepare(INSERT_PROMPT_SNAPSHOT)
+      .run(snapshot.snapshotId, snapshot.userId, snapshot.createdAt, JSON.stringify(snapshot));
+    this.db.prepare(PRUNE_PROMPT_SNAPSHOTS).run(snapshot.userId, snapshot.userId);
+  }
+
+  getLatestPromptSnapshot(userId: string): PromptSnapshot | undefined {
+    const row = this.db
+      .prepare(
+        "SELECT payload FROM prompt_snapshots WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+      )
+      .get(userId);
+    return row === undefined ? undefined : decode<PromptSnapshot>(String(row["payload"]));
+  }
+
+  listPromptSnapshots(userId: string, limit = 3): PromptSnapshot[] {
+    const take = normalizeLimit(limit, 3);
+    if (take === 0) return [];
+    const rows = this.db
+      .prepare(
+        "SELECT payload FROM prompt_snapshots WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?",
+      )
+      .all(userId, take);
+    return rows
+      .map((row) => decode<PromptSnapshot>(String(row["payload"])))
+      .reverse();
   }
 
   appendCoachState(record: CoachStateRecord): void {

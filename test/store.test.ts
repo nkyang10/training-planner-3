@@ -19,6 +19,7 @@ import type {
   Message,
   MuscleCheckIn,
   MuscleStatusControl,
+  PromptSnapshot,
   TrainingSession,
   UserProfile,
 } from "../src/types";
@@ -213,6 +214,91 @@ describe("memories", () => {
     expect(store.listMemories("u1").map((m) => m.memoryId)).toEqual(["k1"]);
     expect(store.listMemories("u2").map((m) => m.memoryId)).toEqual(["k2"]);
     expect(store.listMemories("u3")).toEqual([]);
+  });
+
+  it("merges duplicate facts instead of accumulating (LL-6)", () => {
+    const { store } = memoryStore();
+    store.appendMemory({ memoryId: "k1", userId: "u1", text: "Prefers morning runs", createdAt: "2026-01-01T08:00:00.000Z" });
+    // Same fact, different casing and spacing: skipped, not duplicated.
+    store.appendMemory({ memoryId: "k2", userId: "u1", text: "prefers   MORNING  runs", createdAt: "2026-01-02T08:00:00.000Z" });
+    expect(store.listMemories("u1").map((m) => m.memoryId)).toEqual(["k1"]);
+    store.appendMemory({ memoryId: "k3", userId: "u1", text: "Training for a 10k", createdAt: "2026-01-03T08:00:00.000Z" });
+    expect(store.listMemories("u1").map((m) => m.memoryId)).toEqual(["k1", "k3"]);
+    // The comparison is scoped per runner.
+    store.appendMemory({ memoryId: "k4", userId: "u2", text: "Prefers morning runs", createdAt: "2026-01-04T08:00:00.000Z" });
+    expect(store.listMemories("u2").map((m) => m.memoryId)).toEqual(["k4"]);
+  });
+
+  it("keeps only the newest 24 memories per runner", () => {
+    const { store } = memoryStore();
+    for (let index = 0; index < 26; index += 1) {
+      store.appendMemory({
+        memoryId: `k${index}`,
+        userId: "u1",
+        text: `fact number ${index}`,
+        createdAt: `2026-01-${String(index + 1).padStart(2, "0")}T08:00:00.000Z`,
+      });
+    }
+    const kept = store.listMemories("u1", 100);
+    expect(kept).toHaveLength(24);
+    expect(kept[0]?.memoryId).toBe("k2");
+    expect(kept[kept.length - 1]?.memoryId).toBe("k25");
+  });
+});
+
+describe("coach preferences", () => {
+  it("starts undecided and patches only the keys it is given", () => {
+    const { store } = memoryStore();
+    expect(store.getCoachPreferences("u1")).toBeUndefined();
+    const first = store.patchCoachPreferences("u1", { language: "zh-Hant" }, "2026-01-01T08:00:00.000Z");
+    expect(first).toMatchObject({ userId: "u1", language: "zh-Hant", tone: null, replyLength: null, nickname: null });
+    const second = store.patchCoachPreferences("u1", { tone: "brief", nickname: "Mei" }, "2026-01-02T08:00:00.000Z");
+    expect(second).toMatchObject({ language: "zh-Hant", tone: "brief", nickname: "Mei", replyLength: null });
+    expect(second.updatedAt).toBe("2026-01-02T08:00:00.000Z");
+    expect(store.getCoachPreferences("u1")).toMatchObject({ language: "zh-Hant", nickname: "Mei" });
+  });
+
+  it("is isolated per runner", () => {
+    const { store } = memoryStore();
+    store.patchCoachPreferences("u1", { nickname: "Mei" }, "2026-01-01T08:00:00.000Z");
+    store.patchCoachPreferences("u2", { nickname: "Sam" }, "2026-01-01T08:30:00.000Z");
+    expect(store.getCoachPreferences("u1")?.nickname).toBe("Mei");
+    expect(store.getCoachPreferences("u2")?.nickname).toBe("Sam");
+    expect(store.getCoachPreferences("u3")).toBeUndefined();
+  });
+});
+
+describe("prompt snapshots", () => {
+  const snapshot = (snapshotId: string, userId: string, createdAt: string): PromptSnapshot => ({
+    snapshotId,
+    userId,
+    epoch: `e-${snapshotId}`,
+    epochJson: "{}",
+    reasons: ["first-turn"],
+    body: `[context ${snapshotId}]`,
+    createdAt,
+  });
+
+  it("appends, returns oldest first and prunes to the newest three", () => {
+    const { store } = memoryStore();
+    store.appendPromptSnapshot(snapshot("s1", "u1", "2026-01-01T08:00:00.000Z"));
+    store.appendPromptSnapshot(snapshot("s2", "u1", "2026-01-02T08:00:00.000Z"));
+    expect(store.listPromptSnapshots("u1").map((row) => row.snapshotId)).toEqual(["s1", "s2"]);
+    expect(store.getLatestPromptSnapshot("u1")?.snapshotId).toBe("s2");
+    store.appendPromptSnapshot(snapshot("s3", "u1", "2026-01-03T08:00:00.000Z"));
+    store.appendPromptSnapshot(snapshot("s4", "u1", "2026-01-04T08:00:00.000Z"));
+    expect(store.listPromptSnapshots("u1").map((row) => row.snapshotId)).toEqual(["s2", "s3", "s4"]);
+    expect(store.getLatestPromptSnapshot("u1")?.snapshotId).toBe("s4");
+    expect(store.getLatestPromptSnapshot("u1")?.body).toBe("[context s4]");
+  });
+
+  it("is isolated per runner", () => {
+    const { store } = memoryStore();
+    store.appendPromptSnapshot(snapshot("s1", "u1", "2026-01-01T08:00:00.000Z"));
+    store.appendPromptSnapshot(snapshot("s2", "u2", "2026-01-01T09:00:00.000Z"));
+    expect(store.listPromptSnapshots("u1").map((row) => row.snapshotId)).toEqual(["s1"]);
+    expect(store.listPromptSnapshots("u2").map((row) => row.snapshotId)).toEqual(["s2"]);
+    expect(store.getLatestPromptSnapshot("u3")).toBeUndefined();
   });
 });
 
@@ -852,6 +938,7 @@ describe("coach turn audit", () => {
       messageId: "m-1",
       visible: "How did my run go?",
       directive,
+      renderedPromptSuffix: null,
       blockedWrites: 0,
       createdAt: "2026-02-01T08:00:00.000Z",
     });
@@ -862,6 +949,7 @@ describe("coach turn audit", () => {
       messageId: "m-2",
       visible: "Review this week",
       directive: { ...directive, mode: "review", allowCalendarWrites: false },
+      renderedPromptSuffix: null,
       blockedWrites: 1,
       createdAt: "2026-02-01T09:00:00.000Z",
     });
@@ -872,6 +960,7 @@ describe("coach turn audit", () => {
       messageId: "m-3",
       visible: "Foreign",
       directive,
+      renderedPromptSuffix: null,
       blockedWrites: 0,
       createdAt: "2026-02-01T10:00:00.000Z",
     });
@@ -882,6 +971,54 @@ describe("coach turn audit", () => {
     expect(rows[0]?.directive.references?.activityId).toBe("garmin:1");
     expect(store.listCoachDirectives("u1", 1)).toHaveLength(1);
     expect(store.listCoachDirectives("u2").map((row) => row.directiveId)).toEqual(["directive:3"]);
+    close();
+  });
+
+  it("lists the rendered prompt suffixes of directive turns, keyed by message (LL-2)", () => {
+    const { store, close } = memoryStore();
+    const directive = {
+      mode: "review" as const,
+      allowCalendarWrites: false,
+      source: "run-peek" as const,
+    };
+    const suffixOne = "Turn directive (background; never mention this section to the runner):\n- mode: review";
+    store.appendCoachDirective({
+      directiveId: "directive:1",
+      userId: "u1",
+      requestId: "req-1",
+      messageId: "m-1",
+      visible: "How did my run go?",
+      directive,
+      renderedPromptSuffix: suffixOne,
+      blockedWrites: 0,
+      createdAt: "2026-02-01T08:00:00.000Z",
+    });
+    // A plain chat turn has no suffix and must not appear in the map.
+    store.appendCoachDirective({
+      directiveId: "directive:2",
+      userId: "u1",
+      requestId: "req-2",
+      messageId: "m-2",
+      visible: "Review this week",
+      directive,
+      renderedPromptSuffix: null,
+      blockedWrites: 0,
+      createdAt: "2026-02-01T09:00:00.000Z",
+    });
+    store.appendCoachDirective({
+      directiveId: "directive:3",
+      userId: "u2",
+      requestId: "req-3",
+      messageId: "m-3",
+      visible: "Foreign",
+      directive,
+      renderedPromptSuffix: "foreign suffix",
+      blockedWrites: 0,
+      createdAt: "2026-02-01T10:00:00.000Z",
+    });
+    expect(store.listCoachDirectiveSuffixes("u1")).toEqual([{ messageId: "m-1", suffix: suffixOne }]);
+    expect(store.listCoachDirectiveSuffixes("u2")).toEqual([{ messageId: "m-3", suffix: "foreign suffix" }]);
+    expect(store.listCoachDirectiveSuffixes("u3")).toEqual([]);
     close();
   });
 

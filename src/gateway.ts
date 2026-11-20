@@ -12,14 +12,21 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
+  COACH_MEMORY_WINDOW,
+  COACH_PROMPT_VERSION,
   COACH_TOOL,
   COACH_TOOL_NAME,
   HORIZON_DAYS,
-  buildCoachHistory,
-  buildCoachPrompt,
+  assembleConversation,
+  buildCoachSystemPrompt,
+  buildContextSnapshot,
+  buildTurnSuffix,
   buildValidationFeedback,
   buildValidationFeedbackForCode,
+  coachEpoch,
+  epochReasons,
   parseCoachTurn,
+  type CoachEpochParts,
   type CoachTurn,
   type ParseResult,
   type ValidationFeedback,
@@ -43,6 +50,7 @@ import type {
   CoachDirective,
   CoachMode,
   CoachStateRecord,
+  Message,
   Store,
   TrainingSession,
 } from "./types";
@@ -82,6 +90,20 @@ export interface TurnFailure {
   reason: TurnFailureReason;
 }
 
+/** Why this turn re-read the runner's context instead of purely appending (LL-3/LL-4). */
+export interface GatewayPrefill {
+  /** The epoch hash this turn ran under; equal epochs reuse the newest snapshot. */
+  epoch: string;
+  /** Reason codes for the snapshot appended this turn, empty when the conversation purely appended. */
+  refreshed: string[];
+  /** True when the token budget dropped the oldest history messages. */
+  compacted: boolean;
+  /** The snapshot day, so the client can predict the next new-day re-prefill. */
+  today: string;
+  latestChangeSetId: string | null;
+  latestActivityId: string | null;
+}
+
 /** The `poc3` block the calendar UI reads from a completion. */
 export interface GatewayMeta {
   /** How many sessions the turn wrote (a batch) or restored/deleted (a revert). */
@@ -111,11 +133,36 @@ export interface GatewayMeta {
   states: StateChange[];
   /** Active state keys that blocked a proposed session on this turn. */
   blockedByStates: string[];
+  /** What the model was prefilled with this turn and why it changed. */
+  prefill: GatewayPrefill;
 }
 
 const FALLBACK_REPLY =
-  "I could not safely write that turn, so nothing was changed. Please say it again in a simpler way — for example the goal, the days you can train, and anything that hurts.";
+  "I could not safely write that, so nothing was changed. Say it again more simply - the goal, the days you can train, and anything that hurts.";
 const MAX_REVERT_LOOKBACK = 50;
+
+/** The CJK test the reply language heuristic already uses; reused for the silent preference detection. */
+const CJK_TEXT = /[\u3400-\u9fff]/;
+
+/**
+ * The silent language preference (LL-5, D20): when no language is stored yet, two consecutive user messages in
+ * Chinese persist zh-Hant, so bare follow-ups like "ok" or "go" keep the conversation in the runner's language.
+ * English is the default and is never auto-persisted; a message that clearly switches language always wins over
+ * the stored value, so bilingual runners keep their per-message choice.
+ */
+function detectLanguage(history: readonly Message[], question: string): "zh-Hant" | undefined {
+  let lastUser: Message | undefined;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const message = history[index];
+    if (message !== undefined && message.role === "user") {
+      lastUser = message;
+      break;
+    }
+  }
+  if (lastUser === undefined) return undefined;
+  if (CJK_TEXT.test(lastUser.text) && CJK_TEXT.test(question)) return "zh-Hant";
+  return undefined;
+}
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -315,16 +362,16 @@ function appendRepair(messages: Array<Record<string, unknown>>, reply: ModelRepl
 
 function fallbackFor(code: string | null): string {
   if (code === "comment-only-write") {
-    return "I kept this turn to a comment and did not change your calendar. Ask again if you want a schedule change.";
+    return "I kept this to a comment, so your calendar is unchanged.";
   }
   if (code === "mode-guardrail") {
-    return "I did not book that session because your current coaching state does not allow it. The calendar is unchanged. If that state is wrong, you can resolve it on the Coaching states page.";
+    return "A coaching state is protecting your plan, so I did not book that. If the state is wrong, resolve it on the Coaching states page.";
   }
   if (code === "past-session") {
-    return `${FALLBACK_REPLY}\n\nI tried to book a date that has already passed, so I did not move it to today automatically.`;
+    return `${FALLBACK_REPLY} That date has already passed, so I booked nothing.`;
   }
   if (code === "session-too-far") {
-    return `${FALLBACK_REPLY}\n\nThe requested date is outside the 180-day booking window.`;
+    return `${FALLBACK_REPLY} The date is outside the 180-day booking window.`;
   }
   return FALLBACK_REPLY;
 }
@@ -369,6 +416,14 @@ function emptyMeta(): GatewayMeta {
     directiveId: null,
     states: [],
     blockedByStates: [],
+    prefill: {
+      epoch: "",
+      refreshed: [],
+      compacted: false,
+      today: "",
+      latestChangeSetId: null,
+      latestActivityId: null,
+    },
   };
 }
 
@@ -597,6 +652,7 @@ function persistDirective(
   directive: CoachDirective,
   blockedWrites: number,
   at: string,
+  renderedPromptSuffix: string,
 ): string {
   const directiveId = `directive:${randomUUID()}`;
   store.appendCoachDirective({
@@ -606,6 +662,7 @@ function persistDirective(
     messageId,
     visible,
     directive,
+    renderedPromptSuffix: renderedPromptSuffix.length > 0 ? renderedPromptSuffix : null,
     blockedWrites,
     createdAt: at,
   });
@@ -635,6 +692,12 @@ function applyParsedTurn(
     meta.attempts = attempts;
     meta.suggestions = turn.suggestions;
     const effectiveTurn = allowMemoryWrites ? turn : { ...turn, memories: [] };
+
+    // The silent preference channel (LL-5): applied transactionally, never rendered, never announced. A
+    // comment-only directive with memory writes off skips it, like it skips memories.
+    if (allowMemoryWrites && Object.keys(turn.profileUpdates).length > 0) {
+      options.store.patchCoachPreferences(userId, turn.profileUpdates, at);
+    }
 
     const appendAssistant = (text: string): void => {
       options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text, createdAt: at });
@@ -912,7 +975,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       const history = options.store.listMessages(userId, 20);
       const recentChanges = options.store.listChangeSets(userId, 10);
       // The runner's muscle status: check-ins become dated periods, their levels fade with time unless held,
-      // and today's computed state rides in every prompt. A review-muscles directive still zooms in on one
+      // and today's computed state rides in every snapshot. A review-muscles directive still zooms in on one
       // muscle's knowledge and history.
       const muscleCheckIns = options.store.listMuscleCheckIns(userId, 40);
       const muscleFacts = renderMuscleStatusFactsForPrompt({
@@ -929,27 +992,109 @@ export function createGateway(options: GatewayOptions): Gateway {
         referencedMuscleId !== undefined && isMuscleId(referencedMuscleId)
           ? referencedMuscleContext(referencedMuscleId, muscleCheckIns)
           : "";
-      const prompt = buildCoachPrompt({
+
+      // The silent language preference (LL-5): learn it before the epoch is computed, so the snapshot's profile
+      // block carries it on this very turn.
+      let preferences = options.store.getCoachPreferences(userId);
+      if (preferences?.language == null) {
+        const detected = detectLanguage(history, question);
+        if (detected !== undefined) {
+          preferences = options.store.patchCoachPreferences(userId, { language: detected }, nowIso);
+        }
+      }
+
+      // The epoch rule (LL-3): a new snapshot is appended only when something it tracks changed; between fires
+      // the conversation purely appends and the provider's cached prefix survives intact.
+      const memories = options.store.listMemories(userId, COACH_MEMORY_WINDOW);
+      const sessions = options.store.listSessions(userId, today, addDays(today, HORIZON_DAYS));
+      const pastSessions = options.store.listSessions(userId, addDays(today, -30), today);
+      const activities = options.store.listActivities(userId, 30);
+      const latestChangeSet = options.store.listChangeSets(userId, 1)[0] ?? null;
+      const latestMuscleCheckIn = muscleCheckIns[0] ?? null;
+      const epochParts: CoachEpochParts = {
+        promptVersion: COACH_PROMPT_VERSION,
         today,
-        timezone,
-        goal: profile?.goal ?? null,
-        now: nowIso,
-        memories: options.store.listMemories(userId, 100),
-        sessions: options.store.listSessions(userId, today, addDays(today, HORIZON_DAYS)),
-        pastSessions: options.store.listSessions(userId, addDays(today, -30), today),
-        activities: options.store.listActivities(userId, 30),
-        history,
-        recentChanges,
-        question,
-        states,
-        ...(directive === undefined ? {} : { directive }),
-        ...(resolved.activity === undefined ? {} : { referencedActivity: resolved.activity }),
-        ...(resolved.sessions.length === 0 ? {} : { referencedSessions: resolved.sessions }),
-        ...(resolved.changeSet === undefined ? {} : { referencedChangeSet: resolved.changeSet }),
-        ...(resolved.state === undefined ? {} : { referencedState: resolved.state }),
-        ...(muscleFacts.length === 0 ? {} : { muscleFacts }),
-        ...(referencedMuscle.length === 0 ? {} : { referencedMuscle }),
-      });
+        latestChangeSetId: latestChangeSet?.changeSetId ?? null,
+        latestActivityId: activities.length > 0 ? (activities[0]?.activityId ?? null) : null,
+        activityCount: activities.length,
+        latestMuscleCheckInId: latestMuscleCheckIn?.checkInId ?? null,
+        activeStateKeys: states
+          .filter((state) => state.status === "active" || state.status === "observing")
+          .map((state) => state.key)
+          .sort(),
+        memoryIds: memories.map((memory) => memory.memoryId),
+        profileKey: createHash("sha256")
+          .update(
+            JSON.stringify({
+              displayName: profile?.displayName ?? "",
+              timezone,
+              goal: profile?.goal ?? null,
+            }),
+          )
+          .digest("hex"),
+        preferenceKey: createHash("sha256")
+          .update(
+            JSON.stringify({
+              language: preferences?.language ?? null,
+              tone: preferences?.tone ?? null,
+              replyLength: preferences?.replyLength ?? null,
+              nickname: preferences?.nickname ?? null,
+            }),
+          )
+          .digest("hex"),
+      };
+      const epoch = coachEpoch(epochParts);
+      const lastSnapshot = options.store.getLatestPromptSnapshot(userId);
+      let lastParts: CoachEpochParts | null = null;
+      if (lastSnapshot !== undefined) {
+        try {
+          lastParts = JSON.parse(lastSnapshot.epochJson) as CoachEpochParts;
+        } catch {
+          lastParts = null;
+        }
+      }
+      const refreshed =
+        lastSnapshot === undefined || lastSnapshot.epoch !== epoch ? epochReasons(lastParts, epochParts) : [];
+      // The snapshot is written before the turn's message, so assembly orders it first on equal timestamps.
+      if (refreshed.length > 0) {
+        options.store.appendPromptSnapshot({
+          snapshotId: `snapshot:${randomUUID()}`,
+          userId,
+          epoch,
+          epochJson: JSON.stringify(epochParts),
+          reasons: refreshed,
+          body: buildContextSnapshot({
+            today,
+            timezone,
+            displayName: profile?.displayName ?? null,
+            goal: profile?.goal ?? null,
+            preferences: preferences ?? null,
+            memories,
+            sessions,
+            pastSessions,
+            activities,
+            recentChanges,
+            states,
+            ...(muscleFacts.length === 0 ? {} : { muscleFacts }),
+          }),
+          createdAt: nowIso,
+        });
+      }
+      const snapshots = options.store.listPromptSnapshots(userId, 3);
+
+      // Segment E: the hidden suffix of this turn's message. Persisted on the directive audit row so the next
+      // turn reproduces the exact bytes the provider already cached.
+      const turnSuffix =
+        directive === undefined
+          ? ""
+          : buildTurnSuffix({
+              directive,
+              ...(resolved.activity === undefined ? {} : { referencedActivity: resolved.activity }),
+              ...(resolved.sessions.length === 0 ? {} : { referencedSessions: resolved.sessions }),
+              ...(resolved.changeSet === undefined ? {} : { referencedChangeSet: resolved.changeSet }),
+              ...(resolved.state === undefined ? {} : { referencedState: resolved.state }),
+              ...(referencedMuscle.length === 0 ? {} : { referencedMuscle }),
+            });
       const createdAt = now();
       const userMessageId = randomUUID();
       options.store.appendMessage({
@@ -960,10 +1105,30 @@ export function createGateway(options: GatewayOptions): Gateway {
         createdAt,
       });
 
+      const suffixRows = options.store.listCoachDirectiveSuffixes(userId, 50);
+      const assembly = assembleConversation({
+        history,
+        timezone,
+        suffixes: new Map(suffixRows.map((row) => [row.messageId, row.suffix])),
+        snapshots,
+        latestSnapshot: snapshots.length > 0 ? snapshots[snapshots.length - 1] : undefined,
+        turn: {
+          text: question,
+          createdAt,
+          ...(turnSuffix.length === 0 ? {} : { suffix: turnSuffix }),
+        },
+      });
+      const prefill: GatewayPrefill = {
+        epoch,
+        refreshed,
+        compacted: assembly.compacted,
+        today,
+        latestChangeSetId: epochParts.latestChangeSetId,
+        latestActivityId: epochParts.latestActivityId,
+      };
       const messages: Array<Record<string, unknown>> = [
-        { role: "system", content: prompt },
-        ...buildCoachHistory({ today, memories: [], sessions: [], activities: [], history, recentChanges: [], question }),
-        { role: "user", content: question },
+        { role: "system", content: buildCoachSystemPrompt() },
+        ...assembly.messages.map((message) => ({ role: message.role, content: message.content })),
       ];
 
       let reply = FALLBACK_REPLY;
@@ -1125,7 +1290,17 @@ export function createGateway(options: GatewayOptions): Gateway {
       } catch {
         if (requestId !== null) options.store.failCoachTurn(userId, requestId, now());
         if (directive !== undefined) {
-          persistDirective(options.store, userId, requestId, userMessageId, question, directive, blockedWrites, now());
+          persistDirective(
+            options.store,
+            userId,
+            requestId,
+            userMessageId,
+            question,
+            directive,
+            blockedWrites,
+            now(),
+            turnSuffix,
+          );
         }
         sendJson(response, 502, { error: { code: "model-failed", detail: "the model call failed" } });
         return;
@@ -1135,6 +1310,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       meta.writesAllowed = directive?.allowCalendarWrites !== false;
       meta.blockedWrites = blockedWrites;
       meta.blockedByStates = blockedByStates;
+      meta.prefill = prefill;
       if (directive !== undefined) {
         meta.directiveId = persistDirective(
           options.store,
@@ -1145,6 +1321,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           directive,
           blockedWrites,
           now(),
+          turnSuffix,
         );
       }
 

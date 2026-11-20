@@ -2069,6 +2069,56 @@ function renderChatBubble(tx: Translator): string {
       writeChangesSeen(changesList.dataset.newest || '');
       setCount('changes', 0, tr('changesBadgeTitle', 'new coach changes'));
     };
+    // The prefill cache, client half (LL-4): the server is the truth about what was re-read, but the runner is
+    // already waiting when that truth arrives. The client predicts the re-prefill from signals it already has - a
+    // fresh Garmin import, a saved muscle check-in, a new day, a confirmed state or a calendar batch - and names
+    // the reason in the typing line; the response's prefill block then replaces the guess with the fact.
+    const prefillKey = 'poc3.coachPrefill';
+    const waitFlagKey = 'poc3.coachWait';
+    const readPrefill = () => {
+      try { return JSON.parse(localStorage.getItem(prefillKey) || 'null'); } catch { return null; }
+    };
+    const writePrefill = (value) => {
+      try { if (value !== null && typeof value === 'object') localStorage.setItem(prefillKey, JSON.stringify(value)); } catch { /* private mode */ }
+    };
+    const setWaitFlag = (reason) => {
+      try { localStorage.setItem(waitFlagKey, reason); } catch { /* private mode */ }
+    };
+    const takeWaitFlag = () => {
+      try {
+        const reason = localStorage.getItem(waitFlagKey) || '';
+        localStorage.removeItem(waitFlagKey);
+        return reason;
+      } catch { return ''; }
+    };
+    // A page that just imported runs or saved a check-in will re-read the runner's context on the next turn.
+    try {
+      const pageParams = new URLSearchParams(window.location.search);
+      if (pageParams.get('synced') !== null && Number(pageParams.get('synced')) > 0) setWaitFlag('Activities');
+      else if (pageParams.get('saved') === '1') setWaitFlag('Muscle');
+    } catch { /* private mode */ }
+    const localToday = () => {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+    };
+    const waitReasonText = (reason) => {
+      if (reason === 'Activities') return tr('coachWaitActivities', 'Pulling in your latest runs...');
+      if (reason === 'Muscle') return tr('coachWaitMuscle', 'Refreshing how your body feels...');
+      if (reason === 'Day') return tr('coachWaitDay', 'New day - checking your plan...');
+      if (reason === 'Calendar') return tr('coachWaitCalendar', 'Your calendar changed - re-reading it...');
+      if (reason === 'States') return tr('coachWaitStates', 'Noting your coaching states...');
+      return tr('coachWaitFirst', 'Getting to know you and your plan...');
+    };
+    const predictWaitReason = () => {
+      const flagged = takeWaitFlag();
+      if (flagged === 'Activities' || flagged === 'Muscle' || flagged === 'States') return flagged;
+      const stored = readPrefill();
+      if (stored === null || typeof stored !== 'object' || typeof stored.today !== 'string') return 'First';
+      if (stored.today !== localToday()) return 'Day';
+      if (typeof stored.latestChangeSetId === 'string' && (changesList.dataset.newest || '') !== stored.latestChangeSetId) return 'Calendar';
+      return null;
+    };
     let activeTab = 'chat';
     const track = (name, value) => {
       window.dispatchEvent(new CustomEvent('poc3:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
@@ -2350,6 +2400,8 @@ function renderChatBubble(tx: Translator): string {
       }
       setCount('states', proposed, tr('statesBadgeTitle', 'proposed states'));
       add('system', message);
+      // A confirmed or resolved state changes the epoch, so the next coach turn re-reads the states.
+      setWaitFlag('States');
     };
     const buildStateCard = (state, inLog) => {
       const card = document.createElement('div');
@@ -2632,7 +2684,9 @@ function renderChatBubble(tx: Translator): string {
       if (sendButton !== null) sendButton.disabled = true;
       add('user', text);
       if (input.value.trim() === text) input.value = '';
-      const typing = add('coach', '…');
+      // The bare ellipsis stays the signal for a cached-append turn; a re-prefill says why it is re-reading.
+      const waitReason = predictWaitReason();
+      const typing = add('coach', waitReason === null ? '…' : waitReasonText(waitReason));
       typing.classList.add('typing');
       const makeRequestId = () => {
         const bytes = new Uint8Array(16);
@@ -2668,6 +2722,8 @@ function renderChatBubble(tx: Translator): string {
           return;
         }
         add('coach', data.reply);
+        // The server's prefill block is the truth the typing line predicted; store it for the next prediction.
+        if (data.prefill !== null && typeof data.prefill === 'object') writePrefill(data.prefill);
         setSuggestions(Array.isArray(data.suggestions) && data.suggestions.length > 0 ? data.suggestions : STARTERS);
         scrollToLatest();
         if (data.sessions > 0 || (Array.isArray(data.changes) && data.changes.length > 0)) {
@@ -3888,7 +3944,9 @@ export function createWeb(options: WebOptions): WebApp {
             .listMemories(user.userId, 100)
             .filter((memory) => memory.text.trim().toLowerCase().startsWith("mode:"));
           const stateEvents = options.store.listCoachStateEvents(user.userId, 20);
-          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout: pageLayout }, tx));
+          const preferences = options.store.getCoachPreferences(user.userId);
+          const snapshots = options.store.listPromptSnapshots(user.userId, 3);
+          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout: pageLayout }, tx, preferences, snapshots));
           return;
         }
         sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
@@ -4313,6 +4371,14 @@ export function createWeb(options: WebOptions): WebApp {
               directiveId?: string | null;
               states?: unknown[];
               blockedByStates?: unknown[];
+              prefill?: {
+                epoch?: string;
+                refreshed?: string[];
+                compacted?: boolean;
+                today?: string;
+                latestChangeSetId?: string | null;
+                latestActivityId?: string | null;
+              };
             };
             error?: { detail?: string };
           };
@@ -4396,6 +4462,9 @@ export function createWeb(options: WebOptions): WebApp {
             directiveId: typeof payload.poc3?.directiveId === "string" ? payload.poc3.directiveId : null,
             states,
             blockedByStates,
+            prefill: typeof payload.poc3?.prefill === "object" && payload.poc3?.prefill !== null
+              ? payload.poc3.prefill
+              : null,
           }));
         } catch (error) {
           response.writeHead(502, { "content-type": "application/json; charset=utf-8" });

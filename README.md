@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 516 passing" src="https://img.shields.io/badge/tests-516%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 556 passing" src="https://img.shields.io/badge/tests-556%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (516 tests in 21 files). |
+| `pnpm test` | Run the Vitest suite (556 tests in 21 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -168,13 +168,37 @@ See the [environment reference](docs/POC3-CALENDAR.md#environment-reference) for
 - **P1/P2 layout pass (2026-11-20):** the week history summary keeps a `Load … · signal` chip visible and links it to Review/`#load-card`; history and states tabs are URL-addressable (`?tab=review`, `?tab=set`) with server rendering and back/forward; the states page has a “Set a state” head action; page tabs are explicit segmented controls (`role="radiogroup"`) while the dock keeps ARIA tabs; at 1024–1199 px with the coach open activity and muscle stack (988 px) and keep two columns when it is closed; activity has a “Muscles” jump chip; and `data-track` feeds a privacy-safe `poc3:track` event hook. 45 captures, 516/516 green.
 - Add / move / delete / revert sessions; 1?? tappable follow-ups; starter prompts; a structured **Could not apply** card.
   Review requests are read-only and never write to the calendar.
+- **Peer voice with a cap (2026-11-20):** the reply contract is spoken, not written — 2-4 short sentences, no
+  headings, no lists, no markdown, at most one question — enforced by a 480-character validation cap with one
+  repair attempt plus a deterministic markdown strip, so the plain-text bubble never shows structure noise. The
+  suggestion chips carry the menu; the reply carries the advice. Plan and record:
+  [the coach-interaction plan](docs/analysis/15-coach-interaction-llm-plan.md) and
+  [the implementation record](docs/analysis/16-coach-interaction-implementation-record.md).
+- **Cached prefill, obeyed (2026-11-20):** the prompt is now a byte-stable system head (rules + state catalog),
+  a dated **context snapshot** (profile + facts as of one day) and an append-only date-stamped conversation. A
+  new snapshot is appended only when the epoch rule fires — new day, new synced runs, a muscle check-in, a
+  calendar edit, a state change, a profile or preference update — otherwise the turn is pure append and the
+  provider's prefix cache covers everything but the trailing message. The model is told the newest snapshot is
+  authoritative and the runner's newer words beat it; snapshots are persisted byte-frozen so reloads reproduce
+  the same bytes, and long conversations compact past a token budget.
+- **The loading line explains itself (2026-11-20):** while waiting, a bare "…" means a cached-append turn; when
+  a re-prefill is expected the typing line names the reason in the runner's locale — "Pulling in your latest
+  runs…", "Refreshing how your body feels…", "New day — checking your plan…" — predicted client-side from the
+  sync/check-in/state signals and confirmed by the gateway's `prefill` block in the response.
+- **Silent preference profile (2026-11-20):** the coach learns *how* to talk to this runner — reply language,
+  tone, reply length, a nickname — silently through an optional `profileUpdates` tool field (never rendered,
+  never announced) plus a zero-cost language heuristic; two consecutive Chinese messages persist `zh-Hant`, and
+  a message that clearly switches language always wins. The values ride the snapshot's profile block (so they
+  refresh only at the next epoch boundary), and only the owner's `/coach-audit` shows them. Memories merge on
+  write instead of accumulating, keeping the newest 24 with a 12-memory prompt window.
 - **Hidden directives** ??every action-originated message carries a server-authored stage direction (mode, write
   permission, references, focus, style and a short background note) that goes into the coach prompt but never into the
   chat bubble. The gateway enforces `allowCalendarWrites: false`, so a comment-only turn cannot write even if the model
   proposes it. A typed intent comes from the browser; hidden prose never does.
 - **Coach audit** (`/coach-audit`, an internal page that is not linked in the end-user UI and is scoped to the signed-in
   runner) shows the recent
-  hidden directives, blocked writes, active coaching states, an immutable state-transition log and any legacy `mode:`
+  hidden directives, blocked writes, the **learned preference profile and the snapshot window with each
+  re-prefill's reasons**, active coaching states, an immutable state-transition log and any legacy `mode:`
   memories.
 - **Coaching states** (`/coach-states`) ??durable context beyond one turn. Race phase (race day/week, taper, post-race),
   load (ACWR ramp, hard/easy mix, under-load), consistency and data freshness are detected from the calendar and Garmin;
@@ -252,7 +276,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 516 Vitest tests across 21 files. |
+| `test/` | 556 Vitest tests across 21 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -262,6 +286,8 @@ One SQLite file, two processes:
 |---|---|
 | [Solution document](docs/POC3-CALENDAR.md) | Architecture, accounts, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, training log, activity detail, metric trend graph, Garmin workouts, auto-sync, Garmin, API, runbook and limits. |
 | [Coaching states](docs/COACH-STATES.md) | The durable-state model, catalog, detectors, chat/user proposals, precedence, guardrails, UI/API, research citations and what is needed versus deliberately skipped. |
+| [Coach-interaction plan](docs/analysis/15-coach-interaction-llm-plan.md) | The LLM-architecture review of the coach's voice and fuel: the rebuilt-per-turn prompt (measured), the reply-style contract, the epoch rule for cached prefill, the explained loading line and the silent preference profile. |
+| [Coach-interaction record](docs/analysis/16-coach-interaction-implementation-record.md) | What shipped from the plan with which decisions (D19-D22), in which files, and with what verification, including the byte-stability probe. |
 | [Training-log plan](docs/TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented load/ramp, rich-metrics, per-kilometre-split, lap/interval, HR-zone, best-efforts/PR, metric-trend, Garmin-workout and weekly-review slices. |
 | [Muscle tab](docs/MUSCLE-TAB.md) | Research basis (scales, DOMS course, red flags), the check-in flow, the interpretation rules, drill suggestions, coach integration, accessibility and safety copy for the Muscles tab. |
 | [Muscle anatomy 3D research](docs/MUSCLE-ANATOMY-3D-RESEARCH.md) | How to get a nicer muscle/skeleton figure: options with licenses (BodyParts3D recommended), the proven download→Blender→GLB→three.js pipeline, the curated per-muscle part mapping, and the integration plan. |
@@ -292,11 +318,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/poc3-
 
 | Gate | State |
 |---|---|
-| Tests | **516 / 516** in 21 files |
+| Tests | **556 / 556** in 21 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the en/zh-HK localization slice, the coach dock, the four-page regroup and the P0/P1/P2 layout passes: `app.css?v=28` carries `.coach-dock`, `.coach-tabs`, `body.coach-open`, `.seg-tabs`, `.activity-columns`, `.muscle-layout`, `.history-load-chip` and the dock-open column override; `/login` serves v28, gateway health 200, 516/516 green. Earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
+| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the coach-interaction slice — the peer voice with the 480-character cap and markdown strip, the epoch-gated cached prefill with explained re-prefills, and the silent preference profile with merged memories — via the `\POC3-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=28`, 556/556 green. **Live-verified:** two real Chinese model turns at 99 and 68 characters with tappable Chinese suggestion chips; `prefill.refreshed` reported `first-turn` then `memories-updated, profile-updated`; `/coach-audit` shows the silently learned `zh-Hant` and the snapshot reason chips; the temporary account and its 14 rows were removed afterwards. Earlier the same day: the en/zh-HK localization slice, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
@@ -316,7 +342,11 @@ request replay; typed coach intents with server-authored hidden directives and c
 `coach_states` schema and `coach_state_events` audit table; a real model turn; read-only state pages plus the explicit
 refresh action; the state manager's CSRF origin rejection; and the state event log on the audit page. The live
 verification created a temporary account, exercised the routes and a real model turn, and removed every temporary row
-(no test state or event left behind).
+(no test state or event left behind). **Coach-interaction slice (2026-11-20):** two real Chinese model turns in the
+peer voice (99 and 68 characters, one question, Chinese suggestion chips); the prefill meta reporting `first-turn`
+then `memories-updated, profile-updated`; the silently learned `zh-Hant` preference visible only on `/coach-audit`
+with the snapshot reason chips; the wait-line strings and the client prediction hook on the live calendar page; the
+temporary account and its 14 rows removed afterwards.
 
 **Live-verified Garmin:** a real personal-key pull of **100 activities** (the list endpoint's maximum); the 90-day
 filter/upsert; enriched load/cadence/elevation/effect/HR-zone fields; the current week's real load card; per-kilometre
@@ -376,7 +406,11 @@ pipeline-proven path in [docs/MUSCLE-ANATOMY-3D-RESEARCH.md](docs/MUSCLE-ANATOMY
 
 - **Booking horizon:** the coach accepts bookings up to **180 days ahead** (shown in the bubble header).
 - **Model loop:** one bounded repair attempt; there is no open-ended agent loop.
-- **No streaming:** the bubble waits for the full reply.
+- **No streaming:** the bubble waits for the full reply; the typing line names the reason when the turn is
+  known to re-read the runner's context instead of appending to the cached conversation. The provider's cache is
+  external — the app guarantees byte-stable prefixes and reports what refreshed, it cannot force a particular
+  backend to cache (the gateway's `usage` passthrough is still stubbed, so a live cache-hit measurement is a
+  follow-up).
 - **Auth:** the cookie is signed with `POC3_AUTH_SECRET`; set a strong secret.
 - **State detection is heuristic:** ACWR, race-week and post-race detection are signals, not diagnoses. The runner can
   resolve any state; sensitive states are never inferred. The engine does not replace a clinician or coach.

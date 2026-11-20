@@ -2994,6 +2994,46 @@ describe("in-calendar coach bubble", () => {
     expect(gateway.seenMessage()).toBeUndefined();
   });
 
+  it("forwards the prefill block so the typing line can explain a re-prefill (LL-4)", async () => {
+    const gateway = await startMockGateway({
+      poc3: {
+        prefill: {
+          epoch: "e".repeat(64),
+          refreshed: ["new-activities"],
+          compacted: false,
+          today: "2026-11-05",
+          latestChangeSetId: null,
+          latestActivityId: "garmin:9",
+        },
+      },
+    });
+    const { base, cookie } = await start({ gatewayUrl: gateway.url });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "How did my run go?" }),
+    });
+    expect(response.status).toBe(200);
+    const data = (await response.json()) as { prefill?: Record<string, unknown> };
+    expect(data.prefill).toMatchObject({
+      epoch: "e".repeat(64),
+      refreshed: ["new-activities"],
+      compacted: false,
+      today: "2026-11-05",
+      latestActivityId: "garmin:9",
+    });
+    // A gateway without the block degrades to a null prefill, never a broken response.
+    const plain = await startMockGateway();
+    const plainApp = await start({ gatewayUrl: plain.url });
+    const plainLogin = await fetch(`${plainApp.base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: plainApp.cookie },
+      body: JSON.stringify({ message: "Hi" }),
+    });
+    const plainData = (await plainLogin.json()) as { prefill?: unknown };
+    expect(plainData.prefill).toBeNull();
+  });
+
   it("forwards discuss-change and discuss-state intents as comment-only directives", async () => {
     const gateway = await startMockGateway();
     const { base, cookie } = await start({ gatewayUrl: gateway.url });
@@ -3061,6 +3101,7 @@ describe("coach audit", () => {
       messageId: "m-1",
       visible: "How did my Morning run go?",
       directive,
+      renderedPromptSuffix: null,
       blockedWrites: 2,
       createdAt: `${TODAY}T09:00:00.000Z`,
     });
@@ -3096,6 +3137,7 @@ describe("coach audit", () => {
       messageId: "m-other",
       visible: "Other secret",
       directive,
+      renderedPromptSuffix: null,
       blockedWrites: 0,
       createdAt: `${TODAY}T09:30:00.000Z`,
     });
@@ -3139,6 +3181,38 @@ describe("coach audit", () => {
     expect(css).toContain(".audit-item");
     expect(css).toContain(".audit-background");
     expect(css).toContain(".state-guardrail");
+  });
+
+  it("shows the learned preference profile and the snapshot history (LL-5/LL-3)", async () => {
+    const { base, handle, user, cookie } = await start();
+    handle.store.patchCoachPreferences(user.userId, { language: "zh-Hant", tone: "brief" }, `${TODAY}T09:00:00.000Z`);
+    handle.store.appendPromptSnapshot({
+      snapshotId: "snapshot:1",
+      userId: user.userId,
+      epoch: "a".repeat(64),
+      epochJson: "{}",
+      reasons: ["first-turn"],
+      body: "[Coach context - as of Thursday 2026-11-05 (UTC).]",
+      createdAt: `${TODAY}T08:00:00.000Z`,
+    });
+    handle.store.appendPromptSnapshot({
+      snapshotId: "snapshot:2",
+      userId: user.userId,
+      epoch: "b".repeat(64),
+      epochJson: "{}",
+      reasons: ["calendar-changed"],
+      body: "[Coach context - as of Thursday 2026-11-05 (UTC). Two.]",
+      createdAt: `${TODAY}T10:00:00.000Z`,
+    });
+    const html = await (await fetch(`${base}/coach-audit`, { headers: { cookie } })).text();
+    expect(html).toContain("What the coach has learned about you");
+    expect(html).toContain("zh-Hant");
+    expect(html).toContain("brief");
+    expect(html).toContain("not learned yet");
+    expect(html).toContain("Recent context snapshots");
+    // Newest first, with the epoch reason as a chip.
+    expect(html.indexOf("calendar-changed")).toBeLessThan(html.indexOf("first-turn"));
+    expect(html).toContain("bbbbbbbbbbbb");
   });
 });
 
