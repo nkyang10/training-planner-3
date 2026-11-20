@@ -177,6 +177,11 @@ function txMuscleShortName(muscleId: string, tx: Translator = defaultTranslator)
   return getMuscle(muscleId) === undefined ? muscleId : tx.t(`muscle.short.${muscleId}` as MessageKey);
 }
 
+/** Stable key slug for drill and guidance text: lowercase, runs of non-alphanumerics become single underscores, leading/trailing underscores stripped. */
+function drillSlug(text: string): string {
+  return text.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
 function tagLine(
   tag: { soreness: number; conditions: readonly string[]; side: string },
   tx: Translator = defaultTranslator,
@@ -291,7 +296,7 @@ function readingRowHtml(tag: { muscleId: string; soreness: number; conditions: r
   const reading = readMuscleTag(tag as Parameters<typeof readMuscleTag>[0]);
   return `<li class="muscle-reading">
     <div class="muscle-reading-head"><strong>${escapeHtml(txMuscleName(tag.muscleId, tx))}</strong><span class="chip muscle-tagline">${escapeHtml(tagLine(tag, tx))}</span>${levelChip(reading.level, tx)}</div>
-    <p class="muted small">${escapeHtml(reading.guidance)}</p>
+    <p class="muted small">${escapeHtml(tx.t(`muscle.guidance.${drillSlug(reading.guidance)}` as MessageKey))}</p>
   </li>`;
 }
 
@@ -340,7 +345,7 @@ function careSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator)
     const ask = `<button type="button" class="coach-ask" data-coach-message="${escapeHtml(`My ${name} is ${tagLine(tag)} after training — what should I do?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-muscles", muscleId: tag.muscleId, source: "muscle-tab" }))}">${tx.t("muscle.askCoachMuscle", { name: escapeHtml(displayName.toLowerCase()) })}</button>`;
     return `<li class="muscle-reading care">
       <div class="muscle-reading-head"><strong>${escapeHtml(displayName)}</strong>${levelChip(reading.level, tx)}</div>
-      <p class="muted small">${escapeHtml(reading.guidance)}</p>
+      <p class="muted small">${escapeHtml(tx.t(`muscle.guidance.${drillSlug(reading.guidance)}` as MessageKey))}</p>
       <div class="review-actions">${offer}${ask}</div>
     </li>`;
   }).join("");
@@ -356,12 +361,12 @@ function drillSection(checkIn: MuscleCheckIn, tx: Translator = defaultTranslator
   if (cards.length === 0) return "";
   const cardHtml = cards.map((card) => {
     const drills = card.drills
-      .map((drill) => `<li><span class="chip drill-cat drill-${drill.category}">${tx.t(`muscle.drillCategory.${drill.category}` as MessageKey)}</span><strong>${escapeHtml(drill.name)}</strong><span class="muted small">${escapeHtml(drill.how)}</span></li>`)
+      .map((drill) => `<li><span class="chip drill-cat drill-${drill.category}">${tx.t(`muscle.drillCategory.${drill.category}` as MessageKey)}</span><strong>${escapeHtml(tx.t(`muscle.drill.${drillSlug(drill.name)}.name` as MessageKey))}</strong><span class="muted small">${escapeHtml(tx.t(`muscle.drill.${drillSlug(drill.how)}.how` as MessageKey))}</span></li>`)
       .join("");
     const ask = `<button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Can we work a short ${card.level === "heavy" ? "easy recovery" : "mobility and activation"} session for my ${card.muscleName.toLowerCase()} into this week?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "muscle-tab" }))}">${escapeHtml(tx.t("muscle.askWorkIn"))}</button>`;
     return `<article class="muscle-drill-card">
       <div class="muscle-reading-head"><strong>${escapeHtml(txMuscleName(card.muscleId, tx))}</strong>${levelChip(card.level, tx)}</div>
-      <p class="muted small">${escapeHtml(card.guidance)}</p>
+      <p class="muted small">${escapeHtml(tx.t(`muscle.guidance.${drillSlug(card.guidance)}` as MessageKey))}</p>
       <ul class="muscle-drills">${drills}</ul>
       <div class="review-actions">${ask}</div>
     </article>`;
@@ -516,19 +521,26 @@ function safetySection(tx: Translator = defaultTranslator): string {
 }
 
 /** The inline editor script: selection on the figures, the tray, the per-muscle panel, the quick set and the submit. */
-function muscleScript(input: MusclePageInput): string {
+function muscleScript(input: MusclePageInput, tx: Translator = defaultTranslator): string {
   const muscleData = MUSCLE_CATALOG.map((muscle) => ({
     id: muscle.id,
-    name: muscle.name,
+    name: txMuscleName(muscle.id, tx),
     group: muscle.group,
     view: muscle.view,
     function: muscle.function,
     issues: muscle.issues,
     meaning: muscle.meaning,
     recovery: muscle.recovery,
-    drills: muscle.drills,
+    drills: muscle.drills.map((drill) => ({
+      ...drill,
+      name: tx.t(`muscle.drill.${drillSlug(drill.name)}.name` as MessageKey),
+      how: tx.t(`muscle.drill.${drillSlug(drill.how)}.how` as MessageKey),
+    })),
   }));
-  const conditions = MUSCLE_CONDITIONS.map((condition) => ({ key: condition.key, label: condition.label }));
+  const conditions = MUSCLE_CONDITIONS.map((condition) => ({
+    key: condition.key,
+    label: tx.t(`muscle.condition.${condition.key}.label` as MessageKey),
+  }));
   const training = input.trainingRows.map((row) => ({
     activityId: row.activityId,
     day: row.day,
@@ -898,7 +910,7 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
     ${trainingSection(input.trainingRows, tx)}
     ${historySection(input.history, input.dayCheckIn, tx)}
     ${safetySection(tx)}
-    ${muscleScript(input)}`;
+    ${muscleScript(input, tx)}`;
   return deps.layout(tx.t("nav.muscles"), body, input.user, "muscle");
 }
 

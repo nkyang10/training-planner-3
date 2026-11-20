@@ -543,6 +543,94 @@ describe("the muscle status layer", () => {
     expect(html).toContain("緊繃／僵硬");
   });
 
+  it("localizes drill-card guidance, drill names and how-text to Cantonese with no English left on the cards", async () => {
+    const { base, cookie } = await start();
+    await postCheckIn(base, cookie, [
+      ["day", TODAY],
+      ["muscleIds", "calves"],
+      ["soreness", "6"],
+      ["conditions", "tight"],
+    ]);
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    // A soreness-6 tight calves check-in yields a watch card carrying the mobility and activation drills.
+    expect(html).toContain("<strong>慢速雙腿提踵</strong>");
+    expect(html).toContain("<strong>牆邊小腿伸展</strong>");
+    expect(html).toContain('<span class="muted small">2 × 15，受控節奏</span>');
+    expect(html).toContain('<span class="muted small">每邊直膝 30 秒、曲膝 30 秒</span>');
+    // The editor payload now carries the locale's text, so the English drill literals are gone from
+    // the rendered markup entirely; the absence checks stay scoped to the card markup forms.
+    expect(html).not.toContain("<strong>Slow double-leg calf raises</strong>");
+    expect(html).not.toContain("<strong>Wall calf stretch</strong>");
+    expect(html).not.toContain('<span class="muted small">2 × 15, controlled tempo</span>');
+    expect(html).not.toContain('<span class="muted small">30 s straight-knee and 30 s bent-knee per side</span>');
+    // The readings row above carries the same guidance sentence untranslated (that section is untouched by
+    // this change), so the guidance check is scoped to the drill card itself.
+    const cardStart = html.indexOf('<article class="muscle-drill-card">');
+    expect(cardStart).toBeGreaterThanOrEqual(0);
+    const card = html.slice(cardStart, html.indexOf("</article>", cardStart));
+    expect(card).toContain("緊繃是活動受限，不是損傷");
+    expect(card).not.toContain("Tightness is restriction, not damage");
+  });
+
+  it("localizes the interactive editor payload to Cantonese — drill names, how-text, condition labels and muscle names", async () => {
+    const { base, cookie } = await start();
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    // The serialized editor payload is embedded in the page source. Scope assertions to the MUSCLES/CONDITIONS
+    // JSON so unrelated English prose (the knowledge fields, which stay English) cannot false-fail the checks.
+    const payloadStart = html.indexOf("const MUSCLES = ");
+    expect(payloadStart).toBeGreaterThanOrEqual(0);
+    const payload = html.slice(payloadStart, html.indexOf("const TRAINING = ", payloadStart));
+    // Cantonese muscle name, drill name, drill how-text and condition label now ride inside the payload.
+    expect(payload).toContain('"name":"小腿"');
+    expect(payload).toContain('"name":"慢速雙腿提踵"');
+    expect(payload).toContain('"how":"2 × 15，受控節奏"');
+    expect(payload).toContain('"label":"緊繃／僵硬"');
+    // The English catalog literals are gone from the payload — display values were swapped to the locale's text.
+    expect(payload).not.toContain('"name":"Calves"');
+    expect(payload).not.toContain('"name":"Slow double-leg calf raises"');
+    expect(payload).not.toContain('"how":"2 × 15, controlled tempo"');
+    expect(payload).not.toContain('"label":"Tight / stiff"');
+    // Client logic keys off the unlocalized key/id fields, which remain untouched.
+    expect(payload).toContain('"key":"tight"');
+    expect(payload).toContain('"id":"calves"');
+    expect(payload).toContain('"category":"activation"');
+  });
+
+  it("localizes the muscle readings and care guidance to Cantonese with no English guidance left in the lists", async () => {
+    const { base, cookie } = await start();
+    // quads sharp pain → warning (care) guidance; calves soreness 2 → the "normal training response" guidance.
+    const payload = JSON.stringify([
+      { muscleId: "quads", soreness: 6, conditions: ["sharp_pain"] },
+      { muscleId: "calves", soreness: 2, conditions: [] },
+    ]);
+    await postCheckIn(base, cookie, [["day", TODAY], ["musclesJson", payload]]);
+    const zh = `${cookie}; poc3_lang=zh-HK`;
+    const html = await (await fetch(`${base}/muscle?saved=1`, { headers: { cookie: zh } })).text();
+    expect(html).toContain('<html lang="zh-HK" dir="ltr">');
+    // English guidance still rides inside the editor script/JSON payloads, so the absence check is scoped to the
+    // rendered muscle reading lists: the latest-check-in list and the care list (both share the list class).
+    const listStarts = [...html.matchAll(/<ul class="muscle-reading-list">/g)].map((match) => match.index);
+    expect(listStarts.length).toBeGreaterThanOrEqual(2);
+    const rendered = listStarts.map((start) => html.slice(start, html.indexOf("</ul>", start))).join("\n");
+    // Cantonese care guidance (sharp pain reads as a possible strain) and the normal-response guidance both appear.
+    expect(rendered).toContain("應視為可能嘅拉傷");
+    expect(rendered).toContain("照原本嘅計劃練就可以");
+    // The care row is present and carries the care-level instruction in Cantonese.
+    const careStart = html.indexOf('class="muscle-reading care"');
+    expect(careStart).toBeGreaterThanOrEqual(0);
+    const careRow = html.slice(careStart, html.indexOf("</li>", careStart));
+    expect(careRow).toContain("請去見臨床人員");
+    // No English guidance sentence leaks into the rendered reading lists.
+    expect(rendered).not.toContain("Sharp, localized pain");
+    expect(rendered).not.toContain("possible strain");
+    expect(rendered).not.toContain("A normal training response");
+    expect(rendered).not.toContain("Keep your plan as it is");
+  });
+
   it("claims all better and returns the muscle to perfect condition", async () => {
     const { base, cookie, handle, user } = await start();
     await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
