@@ -629,8 +629,6 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .audit-visible { margin: 0 0 4px; font-weight: 700; }
 .audit-background { margin: 4px 0 0; padding: 8px 10px; border-left: 3px solid var(--solar); background: #fffaf1; border-radius: 0 8px 8px 0; font-size: 13px; color: var(--ink); }
 
-.state-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-.state-chips-label { align-self: center; font-size: 12px; font-weight: 700; color: var(--muted); }
 .state-ttl-row { display: flex; align-items: center; gap: 6px; }
 .state-chip { text-decoration: none; }
 .state-status.state-active { color: #1f6b45; border-color: #bfe0cd; background: #eef8f2; }
@@ -686,24 +684,45 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .banner.error { background: #fdeeea; border-color: #f1c3b8; color: var(--danger); }
 .coach-horizon { margin-left: 10px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .head-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 6px 0 0; }
-/* Today's answer strip: date, the booked session, and the two things a runner does with it. */
-.today-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 12px 0 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
-.today-strip-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+/* The entry header is one line: the page title and the greeting share a baseline. */
+.calendar-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; }
+.calendar-head h1 { margin: 0; font-size: clamp(26px, 5vw, 38px); }
+.calendar-head > p.muted { margin: 0; font-size: 13px; }
+/* The today hero: one answer, one primary action, one quiet fallback, and the coach's context. */
+.today-strip { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "head actions" "main actions" "context context"; align-items: center; gap: 2px 20px; margin: 12px 0 14px; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--ember); border-radius: 16px; box-shadow: var(--shadow); }
+.today-strip-head { grid-area: head; display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .today-strip-label { font-weight: 800; font-size: 14px; }
 .today-strip-date { color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
-.today-strip-main { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex: 1 1 240px; min-width: 0; }
+.today-strip-main { grid-area: main; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0; }
 .today-strip-title { font-weight: 800; font-size: 15px; overflow-wrap: anywhere; }
 .today-strip-meta { color: var(--ink-2); font-size: 13px; white-space: nowrap; }
 .today-strip-intent { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--ink-2); }
-.today-strip-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: auto; }
-.today-strip-actions .btn { padding: 8px 12px; font-size: 12px; }
-.today-strip-empty { color: var(--muted); font-size: 13px; flex: 1 1 240px; }
-/* One-line legend for the calendar grid's three row kinds, kept scannable under the header copy. */
-.cal-legend { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
-/* Garmin freshness beside the data; reads as a sentence, not an uppercase chip. */
-.garmin-sync-chip { text-transform: none; letter-spacing: .02em; font-weight: 600; color: var(--muted); background: #fff; }
-.empty-card, .connect-card { margin-bottom: 14px; }
-.empty-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.today-strip-actions { grid-area: actions; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-left: 0; }
+.today-strip .btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; font-size: 13px; white-space: nowrap; }
+.entry-quiet-link { display: inline-flex; align-items: center; min-height: 24px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.entry-quiet-link:hover { color: var(--ember-text); }
+.today-strip-empty { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+.entry-next { margin-left: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.entry-context { grid-area: context; margin: 2px 0 0; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--muted); }
+.entry-context-label { font-weight: 700; }
+.entry-context a.chip { border: 0; padding: 0; background: none; color: var(--muted); text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 500; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+.entry-context a.chip:hover { color: var(--ember-text); }
+/* The row key and freshness sit with the grid they explain. */
+.cal-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin: -6px 0 12px; font-size: 11px; color: var(--muted); }
+.cal-key-item { display: inline-flex; align-items: center; gap: 5px; }
+.key-swatch { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 11px; border-radius: 3px; font-style: normal; font-size: 8px; font-weight: 800; }
+.key-swatch.key-plan { background: #e6f5eb; border-left: 3px solid #2f9e5f; color: #17653b; }
+.key-swatch.key-record { background: #2f7d57; border-left: 3px solid #1f5f3f; color: #eafbf0; }
+.key-swatch.key-pair { background: linear-gradient(180deg, #2f7d57 0 50%, #f4f1ff 50% 100%); border-left: 3px solid #6b5bd6; color: #3f2f96; }
+.cal-key .garmin-sync-chip { margin-left: auto; border: 0; padding: 0; background: none; font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 500; }
+.cal-key .garmin-connect-link { margin-left: auto; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+@media (max-width: 640px) {
+  .calendar-head { display: block; }
+  .calendar-head h1 { margin: 0 0 2px; }
+  .today-strip { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "actions" "context"; gap: 5px; }
+  .today-strip-actions { flex-wrap: wrap; }
+  .cal-key .garmin-sync-chip, .cal-key .garmin-connect-link { margin-left: 0; flex-basis: 100%; }
+}
 .change-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .change-item { border-top: 1px dashed var(--line); padding-top: 10px; }
 .change-item:first-child { border-top: 0; padding-top: 0; }

@@ -38,6 +38,7 @@ are the evidence behind them.
 | [14-uiux-layout-research.md](14-uiux-layout-research.md) | What does modern UI/UX research and design-system guidance say about tabs, side-by-side panes, overlays and progressive disclosure - and how does Milebook's layout grammar measure up? | 43 cited sources: W3C WCAG 2.2/APG, Material 3, Apple HIG, Fluent 2, Carbon, GOV.UK, NN/g, Laws of UX, HAX and PAIR; heuristic audit of the rendered pages, measurements, the P0/P1/P2 implementation notes and the evaluation plan | 627 |
 | [15-coach-interaction-llm-plan.md](15-coach-interaction-llm-plan.md) | How does the coach talk and what is it fed - and how do we get peer-voice short replies, an append-only conversation the prefill cache can actually reuse, an explained re-prefill, and a silent per-runner preference profile? | owner directive 2026-11-20 (the four asks) + `src/coach.ts`/`gateway.ts`/`directives.ts`/`web.ts` anchors + a byte-level two-turn prompt probe on a mid-size synthetic runner (CI-01..CI-09, LL-1..LL-6, D19-D22); plan only, nothing implemented | 331 |
 | [16-coach-interaction-implementation-record.md](16-coach-interaction-implementation-record.md) | What actually shipped from the coach-interaction plan - the peer voice, the epoch-gated cached prefill, the explained re-prefill, the silent preference profile - with which D19-D22 decisions, in which files, and with what verification? | the implementation slice's workstream + `pnpm check` 556/556 + the upgraded byte-stability probe (full prefix reused byte-identically on no-change turns) + the live deploy and two real Chinese model turns (99/68-char replies, prefill reasons end to end, learned zh-Hant on the audit page, temp account removed) | 126 |
+| [17-entry-review.md](17-entry-review.md) | Why does the post-login calendar feel like a control panel, what is actually needed on the first screen, and what shipped? | seeded headless-Chrome captures at 1164/390 (zh-HK) + DOM geometry probes before/after + the 560/560 gate + a 19-check live probe with one real plan turn (111-char reply, 6 sessions booked, temp account removed) | 109 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -46,13 +47,13 @@ assigned I-18 to slice 1, added the G-08/G-18 mapping note, reworded the infrast
 `??` defects in 03, deleted stale root-level copies of 01-03 and MILEBOOK-CALENDAR.md, and recorded the disposition of every
 finding in 06 section 8.
 
-**Character encoding.** 00, 02, 04, 05, 06, 07, 10 and this index are pure ASCII. 01, 03, 08, 09, 11, 13 and 14 are
-valid UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive
+**Character encoding.** 00, 02, 04, 05, 06, 07, 10 and this index are pure ASCII. 01, 03, 08, 09, 11, 13, 14 and 17
+are valid UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive
 matrix's yes/partial/no glyphs (audited byte-by-byte in 06: the earlier "lone surrogate" alarm was a UTF-16 reporting
 artefact, not file corruption); 08 and 11 quote the calendar's own UI glyphs (the run checkmark and the workout
 diamond) in their findings tables; 09's tone book quotes both a lecturing and an advisory Traditional Chinese phrase
-pair; and 14 uses typographic dashes and quotes around its 43 cited sources. 15 is ASCII except the sample
-zh-HK loading-line copy in section 4.6. No document contains mojibake or
+pair; 14 uses typographic dashes and quotes around its 43 cited sources; and 17 quotes the key's middle dot and the
+connect chevron. 15 is ASCII except the sample zh-HK loading-line copy in section 4.6. No document contains mojibake or
 replacement characters.
 
 ## ID conventions

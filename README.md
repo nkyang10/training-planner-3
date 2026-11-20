@@ -318,11 +318,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/mileb
 
 | Gate | State |
 |---|---|
-| Tests | **556 / 556** in 21 files |
+| Tests | **560 / 560** in 21 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
-| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the coach-interaction slice — the peer voice with the 480-character cap and markdown strip, the epoch-gated cached prefill with explained re-prefills, and the silent preference profile with merged memories — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=28`, 556/556 green. **Live-verified:** two real Chinese model turns at 99 and 68 characters with tappable Chinese suggestion chips; `prefill.refreshed` reported `first-turn` then `memories-updated, profile-updated`; `/coach-audit` shows the silently learned `zh-Hant` and the snapshot reason chips; the temporary account and its 14 rows were removed afterwards. Earlier the same day: the en/zh-HK localization slice, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
+| Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the entry slice — the today-first hero, one primary action, states and freshness as quiet meta, and the row key at the grid — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=29`, 560/560 green. **Live-verified 19/19:** a temporary account saw the new entry; the hero's real plan turn returned a 111-character Chinese reply and booked 6 sessions / 6 changes; the account and its 16 rows were removed. Earlier the same day: the coach-interaction slice (peer voice, epoch-gated cached prefill, silent preference profile), the en/zh-HK localization, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: the real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout
@@ -347,6 +347,15 @@ peer voice (99 and 68 characters, one question, Chinese suggestion chips); the p
 then `memories-updated, profile-updated`; the silently learned `zh-Hant` preference visible only on `/coach-audit`
 with the snapshot reason chips; the wait-line strings and the client prediction hook on the live calendar page; the
 temporary account and its 14 rows removed afterwards.
+
+**Entry slice (2026-11-20):** the calendar's first screen is a today hero - the date, the one-line answer, the next
+session, one 44 px primary (a complete plan request sent in one click) and one quiet manual link, with the coach's
+states and the live muscle reading as a 12 px context line. The header dropped the eyebrow, the prose legend, the
+mixed action row and the state-chip row; the row key and the Garmin freshness moved into the month card above the
+grid; the duplicate empty/connect cards are gone. Measured at 1164x900: head 217 -> 51 px, grid 479 -> 362 px,
+above-grid targets 11 -> 7; phone grid 556 -> 461 px. The seeded booked/recorded/empty-month hero states were
+captured, and the live probe exercised the empty-month request with a real model turn (111 Chinese characters,
+6 sessions booked, 6 changes) before removing the temp account and its 16 rows.
 
 **Live-verified Garmin:** a real personal-key pull of **100 activities** (the list endpoint's maximum); the 90-day
 filter/upsert; enriched load/cadence/elevation/effect/HR-zone fields; the current week's real load card; per-kilometre

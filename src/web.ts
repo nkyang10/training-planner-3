@@ -1990,7 +1990,7 @@ function layout(
   const i18nScript = clientI18nScript(tx);
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=28"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=29"></head>
   <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
@@ -4858,10 +4858,6 @@ export function createWeb(options: WebOptions): WebApp {
           today,
         });
         const muscleChip = muscleCalendarChip(muscleStatuses, tx) ?? "";
-        const stateChips =
-          activeStates.length === 0 && muscleChip.length === 0
-            ? ""
-            : `<div class="state-chips"><span class="state-chips-label">${escapeHtml(tx.t("coachStates.chipsLabel"))}</span>${activeStates.map((state) => stateChipHtml(state, tx)).join("")}${muscleChip}${activeStates.length === 0 ? "" : `<a class="chip action" href="/coach-states">${escapeHtml(tx.t("coachStates.allStates"))}</a>`}</div>`;
         const sessions = options.store.listSessions(user.userId, start, end);
         const activities = options.store.listActivities(user.userId, 200).filter((activity) => activity.day >= start && activity.day <= end);
         // Fill this month's missing workouts before rendering so every run with a Garmin workout is paired in the grid.
@@ -4888,53 +4884,86 @@ export function createWeb(options: WebOptions): WebApp {
         const monthLabel = date.monthLabel(month);
         const savedKey = options.store.getGarminKey(user.userId);
         const garminPanel = renderGarminPanel(savedKey, `/calendar?month=${month}`, tx, url.searchParams.get("keyError"));
-        // Freshness beside the data: the same timestamp the bell shows, formatted in the runner's own timezone.
+        // Freshness and the row key live with the grid they describe, not in the page head.
         const lastSync = options.store.getLastSync(user.userId);
-        const syncChip = savedKey !== undefined && lastSync !== null
+        const syncMeta = savedKey !== undefined && lastSync !== null
           ? `<span class="chip garmin-sync-chip" title="${escapeHtml(tx.t("calendar.syncedChipTitle"))}">${escapeHtml(tx.t("calendar.syncedChip", { time: localDateTime(lastSync, safeTimeZone(user.timezone)) }))}</span>`
-          : "";
+          : savedKey === undefined
+            ? `<a class="garmin-connect-link" href="/calendar?garmin=setup" aria-label="${escapeHtml(tx.t("calendar.connectGarmin"))}" title="${escapeHtml(tx.t("calendar.connectGarmin"))}">${escapeHtml(tx.t("calendar.connectTitle"))} ›</a>`
+            : "";
+        const calendarKey = `<div class="cal-key" aria-label="${escapeHtml(tx.t("calendar.keyAria"))}">
+          <span class="cal-key-item"><i class="key-swatch key-plan" aria-hidden="true"></i>${escapeHtml(tx.t("calendar.keyPlan"))}</span>
+          <span class="cal-key-item"><i class="key-swatch key-record" aria-hidden="true">✓</i>${escapeHtml(tx.t("calendar.keyRecord"))}</span>
+          <span class="cal-key-item"><i class="key-swatch key-pair" aria-hidden="true">◈</i>${escapeHtml(tx.t("calendar.keyPair"))}</span>
+          ${syncMeta}
+        </div>`;
         const reviewCard = redirectReviewCardFor(options.store, user.userId, url.searchParams, tx);
-        const emptyCard = sessions.length > 0 || activities.length > 0
+        // The one-line context the coach is acting on: durable states and the live muscle reading.
+        const stateLinks = activeStates.map((state) => stateChipHtml(state, tx)).join(" · ");
+        const contextLinks = [stateLinks, muscleChip].filter((part) => part.length > 0).join(" ｜ ");
+        const contextLine = contextLinks.length === 0
           ? ""
-          : `<section class="card empty-card"><h2>${escapeHtml(tx.t("calendar.emptyTitle"))}</h2><p class="muted">${escapeHtml(tx.t("calendar.emptyBody"))}</p><p class="empty-actions"><a class="btn" href="/calendar?garmin=setup">${escapeHtml(tx.t("calendar.connectGarmin"))}</a> <a class="btn ghost" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a> <button class="btn ghost coach-ask" type="button" data-coach-message="Help me plan the next two weeks." data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "composer" }))}">${escapeHtml(tx.t("calendar.askCoachFull"))}</button></p></section>`;
-        const connectCard = savedKey === undefined
-          ? `<section class="card connect-card"><h2>${escapeHtml(tx.t("calendar.connectTitle"))}</h2><p class="muted small">${escapeHtml(tx.t("calendar.connectBody"))} <a class="btn" href="/calendar?garmin=setup">${escapeHtml(tx.t("calendar.connectGarmin"))}</a> <a class="chip" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRunHand"))}</a></p></section>`
-          : "";
-        // The 6am answer: what is booked today, above the grid, only in the month that contains today.
+          : `<p class="entry-context"><span class="entry-context-label">${escapeHtml(tx.t("calendar.contextLabel"))}</span>${contextLinks}</p>`;
+        // The next booked session gives an empty today an anchor instead of a dead end.
+        const nextSession = month === currentMonth
+          ? options.store
+              .listSessions(user.userId, addDays(today, 1), addDays(today, 14))
+              .sort((left, right) => left.day.localeCompare(right.day) || left.title.localeCompare(right.title))[0]
+          : undefined;
+        const nextLine = nextSession === undefined
+          ? `<span class="entry-next">${escapeHtml(tx.t("calendar.nextNone"))}</span>`
+          : `<span class="entry-next">${escapeHtml(tx.t("calendar.nextUp", {
+              when: nextSession.day === addDays(today, 1) ? tx.t("calendar.nextTomorrow") : date.shortDate(nextSession.day),
+              title: nextSession.title,
+            }))}</span>`;
+        // The 6am answer: what is booked today, promoted to the first card and reduced to one primary action.
         const todaySessions = month === currentMonth ? sessions.filter((session) => session.day === today) : [];
         const todayActivities = month === currentMonth ? activities.filter((activity) => activity.day === today) : [];
         const todaySession = todaySessions[0];
         const todayRun = todayActivities[0];
+        const calendarEmpty = sessions.length === 0 && activities.length === 0;
+        let todayMain = "";
+        let todayActions = "";
+        if (todaySession !== undefined) {
+          const intent = sessionIntent(todaySession, tx);
+          // The hero has room for the duration, but it never repeats a distance the title already states.
+          const titleHasDistance = todaySession.distanceKm !== null && titleMentions(todaySession.title, todaySession.distanceKm, "km");
+          const amounts = [
+            todaySession.distanceKm === null || titleHasDistance ? "" : `${todaySession.distanceKm} km`,
+            todaySession.durationMin === null ? "" : formatMinutes(todaySession.durationMin),
+          ].filter((part) => part.length > 0).map((part) => `<span class="today-strip-meta">${escapeHtml(part)}</span>`).join("");
+          todayMain = `<div class="today-strip-main"><span class="chip kind-${escapeHtml(todaySession.kind)}">${escapeHtml(sessionKindLabel(todaySession.kind, tx))}</span><strong class="today-strip-title">${escapeHtml(todaySession.title)}</strong>${amounts}${todaySessions.length > 1 ? `<a class="chip" href="/day/${escapeHtml(today)}">+${todaySessions.length - 1}${escapeHtml(tx.t("calendar.moreSuffix"))}</a>` : ""}${todayRun !== undefined ? `<span class="today-strip-meta"><span class="tick">✓</span> ${escapeHtml(todayRun.title)} — ${escapeHtml(activityMetrics(todayRun))}</span>` : ""}<p class="today-strip-intent">${escapeHtml(intent.purpose)} <span class="muted">${escapeHtml(intent.effort)}</span></p></div>`;
+          todayActions = `<div class="today-strip-actions"><a class="btn" href="/day/${escapeHtml(today)}">${escapeHtml(tx.t("calendar.viewDay"))}</a><button type="button" class="entry-quiet-link" data-coach-message="${escapeHtml(`What is planned on ${today}?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button></div>`;
+        } else if (todayRun !== undefined) {
+          todayMain = `<div class="today-strip-main"><strong class="today-strip-title"><span class="tick">✓</span> ${escapeHtml(todayRun.title)}</strong><span class="today-strip-meta">${escapeHtml(activityMetrics(todayRun))}</span><span class="chip source-${escapeHtml(todayRun.source)}">${escapeHtml(activitySourceLabel(todayRun))}</span></div>`;
+          todayActions = `<div class="today-strip-actions"><a class="btn" href="/activity/${encodeURIComponent(todayRun.activityId)}">${escapeHtml(tx.t("calendar.viewDetail"))}</a><button type="button" class="entry-quiet-link" data-coach-message="${escapeHtml(coachPromptForActivity(todayRun))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: todayRun.activityId, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button></div>`;
+        } else if (calendarEmpty) {
+          todayMain = `<div class="today-strip-main"><p class="today-strip-empty">${escapeHtml(tx.t("calendar.emptyHeroTitle"))}<span class="entry-next">${escapeHtml(tx.t("calendar.emptyHeroBody"))}</span></p></div>`;
+          todayActions = `<div class="today-strip-actions"><button type="button" class="btn" data-coach-message="${escapeHtml(tx.t("calendar.emptyHeroMessage"))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", source: "today-strip" }))}">${escapeHtml(tx.t("calendar.emptyHeroAsk"))}</button><a class="entry-quiet-link" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a></div>`;
+        } else {
+          todayMain = `<div class="today-strip-main"><p class="today-strip-empty">${escapeHtml(tx.t("calendar.nothingTodayShort"))}${nextLine}</p></div>`;
+          todayActions = `<div class="today-strip-actions"><button type="button" class="btn" data-coach-message="${escapeHtml(tx.t("calendar.heroAskMessage"))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.heroAsk"))}</button><a class="entry-quiet-link" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a></div>`;
+        }
         const todayStrip = month !== currentMonth
           ? ""
           : `<section class="today-strip" aria-label="${escapeHtml(tx.t("calendar.today"))}">
-            <div class="today-strip-head"><span class="today-strip-label">${escapeHtml(tx.t("calendar.today"))}</span><span class="today-strip-date">${escapeHtml(formatDayLabel(today, date))}</span></div>${
-              todaySession !== undefined
-                ? `<div class="today-strip-main"><span class="chip kind-${escapeHtml(todaySession.kind)}">${escapeHtml(sessionKindLabel(todaySession.kind, tx))}</span><strong class="today-strip-title">${escapeHtml(todaySession.title)}</strong>${[
-                    todaySession.distanceKm === null ? "" : `${todaySession.distanceKm} km`,
-                    todaySession.durationMin === null ? "" : formatMinutes(todaySession.durationMin),
-                  ].filter((part) => part.length > 0).map((part) => `<span class="today-strip-meta">${escapeHtml(part)}</span>`).join("")}${todaySessions.length > 1 ? `<a class="chip" href="/day/${escapeHtml(today)}">+${todaySessions.length - 1}${escapeHtml(tx.t("calendar.moreSuffix"))}</a>` : ""}${todayRun !== undefined ? `<span class="today-strip-meta"><span class="tick">✓</span> ${escapeHtml(todayRun.title)} — ${escapeHtml(activityMetrics(todayRun))}</span>` : ""}<p class="today-strip-intent">${escapeHtml(sessionIntent(todaySession, tx).purpose)} <span class="muted">${escapeHtml(sessionIntent(todaySession, tx).effort)}</span></p></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(`What is planned on ${today}?`)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-day", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(today)}">${escapeHtml(tx.t("calendar.viewDay"))}</a></div>`
-                : todayRun !== undefined
-                  ? `<div class="today-strip-main"><strong class="today-strip-title"><span class="tick">✓</span> ${escapeHtml(todayRun.title)}</strong><span class="today-strip-meta">${escapeHtml(activityMetrics(todayRun))}</span><span class="chip source-${escapeHtml(todayRun.source)}">${escapeHtml(activitySourceLabel(todayRun))}</span></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(coachPromptForActivity(todayRun))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: todayRun.activityId, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoach"))}</button><a class="chip" href="/activity/${encodeURIComponent(todayRun.activityId)}">${escapeHtml(tx.t("calendar.detail"))}</a><a class="chip" href="/day/${escapeHtml(today)}">${escapeHtml(tx.t("calendar.viewDay"))}</a></div>`
-                  : `<div class="today-strip-main"><p class="today-strip-empty">${escapeHtml(tx.t("calendar.nothingToday"))}</p></div>
-              <div class="today-strip-actions"><button type="button" class="coach-ask" data-coach-send="false" data-coach-message="${escapeHtml(`Add a session on ${today}: `)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "plan", day: today, source: "today-strip" }))}">${escapeHtml(tx.t("calendar.askCoachFull"))}</button><a class="chip" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a></div>`
-            }</section>`;
-        const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("calendar.eyebrow"))}</p>
+            <div class="today-strip-head"><span class="today-strip-label">${escapeHtml(tx.t("calendar.today"))}</span><span class="today-strip-date">${escapeHtml(formatDayLabel(today, date))}</span></div>
+            ${todayMain}
+            ${todayActions}
+            ${contextLine}
+          </section>`;
+        const body = `<header class="page-head calendar-head">
           <h1>${escapeHtml(tx.t("calendar.heading"))}</h1>
           <p class="muted">${escapeHtml(tx.t("calendar.welcome", { name: user.displayName }))}</p>
-          <p class="cal-legend">${escapeHtml(tx.t("calendar.legend"))}</p>
-          <p class="head-actions"><a class="chip action" href="/day/${escapeHtml(today)}#log-run">${escapeHtml(tx.t("calendar.logRun"))}</a> <a class="chip action" href="#recent-changes">${escapeHtml(tx.t("changes.title"))}</a>${syncChip}</p>${stateChips}</header>
+        </header>
           ${todayStrip}
           ${reviewCard}
-          ${emptyCard}
-          <section class="card">
+          <section class="card calendar-card">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">${escapeHtml(tx.t("calendar.prev"))}</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="${escapeHtml(tx.t("calendar.chooseMonth"))}">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">${escapeHtml(tx.t("calendar.next"))}</a></div>
+            ${calendarKey}
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
-          ${connectCard}
           ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx)}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));

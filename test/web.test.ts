@@ -338,8 +338,9 @@ describe("authentication pages", () => {
     expect(calendar.status).toBe(200);
     const calendarHtml = await calendar.text();
     expect(calendarHtml).toContain("Welcome back, New Runner");
-    expect(calendarHtml).toContain("Your training calendar");
-    expect(calendarHtml).toContain('class="chip action"');
+    expect(calendarHtml).toContain("Your plan");
+    expect(calendarHtml).toContain('class="today-strip"');
+    expect(calendarHtml).toContain('class="cal-key"');
 
     const duplicate = await fetch(`${base}/signup`, {
       method: "POST",
@@ -2141,7 +2142,7 @@ describe("training log", () => {
     expect(html).toContain("Hard 1 run");
   });
 
-  it("shows a garmin-synced chip and a one-line row legend on the calendar", async () => {
+  it("puts the garmin freshness and the swatch key with the grid", async () => {
     const { base, cookie } = await start({
       autoSyncMinutes: 100000,
       seed: (store, runner) => {
@@ -2154,17 +2155,81 @@ describe("training log", () => {
     expect(html).toContain("Garmin synced 2026-11-05 15:30");
     expect(html).toContain("The last Garmin pull, shown in your timezone");
     expect(html).not.toContain("Garmin is not connected");
-    // The legend sits under the header copy: plan rows, check rows and paired rows in one scannable line.
-    expect(html).toContain("cal-legend");
-    expect(html).toContain("Colored row: planned session · green ✓ row: recorded run · green+purple ◈ row: recorded run + the Garmin workout it followed.");
+    // The row key sits inside the month card, after the month nav, not in the page head.
+    expect(html).toContain('class="cal-key"');
+    expect(html).toContain("key-plan");
+    expect(html).toContain("key-record");
+    expect(html).toContain("key-pair");
+    expect(html).toContain("Planned");
+    expect(html).toContain("Recorded");
+    expect(html).toContain("Run + Garmin workout");
+    expect(html.indexOf("month-nav")).toBeLessThan(html.indexOf("cal-key"));
+    expect(html).not.toContain("cal-legend");
+    expect(html).not.toContain('class="head-actions"');
     const css = await (await fetch(`${base}/static/app.css`)).text();
-    expect(css).toContain(".cal-legend");
+    expect(css).toContain(".cal-key");
+    expect(css).toContain(".key-swatch");
     expect(css).toContain(".garmin-sync-chip");
 
-    // Without a saved key there is no freshness to claim and no chip.
+    // Without a saved key the key row offers the connection instead of a stale timestamp.
     const fresh = await start();
     const freshHtml = await (await fetch(`${fresh.base}/calendar?month=2026-11`, { headers: { cookie: fresh.cookie } })).text();
     expect(freshHtml).not.toContain("garmin-sync-chip");
+    expect(freshHtml).toContain("Garmin is not connected");
+  });
+
+  it("makes today one primary action and anchors an empty day to the next session", async () => {
+    const { base, cookie } = await start();
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="today-strip"');
+    expect(html).toContain("Nothing booked.");
+    expect(html).toContain("Next: tomorrow · Easy 5 km");
+    expect(html).toContain('class="btn" data-coach-message="Plan my training for today."');
+    expect(html).toContain("Ask the coach to plan today");
+    expect(html).not.toContain('data-coach-send="false"');
+    expect(html).toContain('class="entry-quiet-link" href="/day/2026-11-05#log-run"');
+    expect(html).not.toContain("cal-legend");
+    expect(html).not.toContain('class="head-actions"');
+  });
+
+  it("keeps one primary action when today is booked", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedSession(store, runner.userId, "session:today", TODAY, "Tempo 6 km", "tempo", 6),
+    });
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="btn" href="/day/2026-11-05"');
+    expect(html).toContain("View day");
+    expect(html).toContain("Tempo 6 km");
+    expect(html).toContain("What is planned on 2026-11-05?");
+    expect(html).toContain("review-day");
+    expect(html).not.toContain("Nothing booked.");
+  });
+
+  it("shows a recorded run as the today hero with one primary action", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => seedActivity(store, runner.userId, "activity-today", TODAY, "Morning run", 5),
+    });
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain('class="btn" href="/activity/activity-today"');
+    expect(html).toContain("View details");
+    expect(html).toContain("Morning run");
+    expect(html).toContain("review-activity");
+    expect(html).not.toContain("Nothing booked.");
+  });
+
+  it("turns an empty month into one plan request", async () => {
+    const { base, cookie } = await start({
+      seed: (store, runner) => {
+        store.deleteSession(runner.userId, "session:easy");
+      },
+    });
+    const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(html).toContain("Nothing booked this month.");
+    expect(html).toContain("Ask the coach to plan this month");
+    expect(html).toContain('data-coach-message="Plan my training for this month."');
+    expect(html).not.toContain('class="empty-card"');
+    expect(html).not.toContain('class="connect-card"');
+    expect(html).toContain("Garmin is not connected");
   });
 });
 
@@ -2302,8 +2367,8 @@ describe("Garmin workout surfaces", () => {
     expect(html).toContain('<span class="cal-meta">10 km</span>');
     expect(html).toContain("Kenosha - Threshold");
     expect(html).toContain('aria-label="Recorded run with Garmin workout: Threshold run (10 km), Kenosha - Threshold. Show run and workout details"');
-    // The one-line legend explains the paired row now that the header paragraph is a single welcome line.
-    expect(html).toContain("green+purple");
+    // The swatch key names the paired row now that the header paragraph is a single welcome line.
+    expect(html).toContain("Run + Garmin workout");
     expect(html).not.toContain('class="cal-pill program"');
     // The pair is one click target: its two lines are not separately focusable or clickable.
     const pairHtml = html.match(/<span class="cal-pill paired"[\s\S]*?<\/span><\/span>/)?.[0] ?? "";
@@ -3621,24 +3686,25 @@ describe("coach states page", () => {
     expect(get.status).toBe(405);
   });
 
-  it("shows active state chips on the calendar and links to the manager", async () => {
+  it("shows the active states as one context line on the today hero", async () => {
     const { base, cookie } = await start({
       seed: (store, owner) => {
         seedCoachState(store, owner.userId, "heat", { evidence: ["Hot week"] });
       },
     });
     const html = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
-    expect(html).toContain('class="state-chips"');
+    expect(html).toContain('class="entry-context"');
     expect(html).toContain("state-chip");
     expect(html).toContain("Heat");
     expect(html).toContain("/coach-states");
-    expect(html).toContain("States");
+    expect(html).toContain("Coach is watching:");
+    expect(html).not.toContain('class="state-chips"');
   });
 
-  it("omits the chip row when there are no active states", async () => {
+  it("omits the context line when there are no active states", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
-    expect(html).not.toContain('class="state-chips"');
+    expect(html).not.toContain('class="entry-context"');
   });
 
   it("forwards state changes and blocked-state labels to the chat bubble", async () => {
