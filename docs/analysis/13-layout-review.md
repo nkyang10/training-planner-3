@@ -3,8 +3,10 @@
 **Status:** review + two implemented slices. The coach bubble is a **docked coach column on wide screens** and a
 **tabbed sheet below 1200 px**; the panel is grouped into **Chat / States / Changes**. A second pass applied the same
 grammar — tabs when a page mixes jobs, side-by-side when cards are peers — to the **training log, coaching states,
-activity detail and muscle** pages. Verified 2026-11-20 with 513 tests, typecheck, lint and headless-Chrome captures
-before and after. **Date:** 2026-11-20.
+activity detail and muscle** pages. Verified 2026-11-20 with the full suite green (513 at the layout pass, 516 after
+the follow-up localization and P0 pass), typecheck, lint and headless-Chrome captures before and after. A P0
+accessibility pass on 2026-11-20 added launcher disclosure semantics, inert focus management below 1200 px and a
+320 px reflow capture (§9). **Date:** 2026-11-20.
 **Lens:** 排版 — hierarchy, density, above-the-fold composition, scan path, responsive wrapping and the
 relationship between the page and the coach overlay — judged page by page against what a runner actually does.
 **Relation to earlier work:** builds on [10-uiux-design-review.md](10-uiux-design-review.md) (UX-22 measured the
@@ -296,3 +298,18 @@ Notes:
 - Segmented tabs are radio buttons, not ARIA tabs; screen readers announce a radio group. Correct for a CSS-only
   switch, but an ARIA tablist with a tiny script is the upgrade if the pattern spreads further.
 - The remaining structural mobile gap: a week/agenda plan view under 640 px (I-09), which no coach layout can fix.
+
+## 9. P0 accessibility pass (2026-11-20)
+
+The research review ([14-uiux-layout-research.md](14-uiux-layout-research.md)) ranked the accessibility fixes first;
+this pass shipped them:
+
+- `#coach-bubble` exposes `aria-expanded` and `aria-controls="coach-panel"`; the panel is a named `region`.
+- Below 1200 px the open panel sets `inert` on `.app-shell > main` and `.site-footer`; at ≤720 px it also inerts
+  `nav.top` because the sheet covers the app bar. The dock at ≥1200 px leaves the page focusable. A resize listener
+  resyncs the state; Escape/minimize/close remove it and return focus to the launcher.
+- 320×844 capture: **0 horizontal overflow**. Probes: 1024/390 main + footer inert (app bar too at 390), 1280 no
+  inert, Escape `aria-expanded="false"` and focus on `#coach-bubble`. Evidence:
+  [320 px sheet](../design/layout-review/phone-320-sheet.png).
+- The bubble test asserts the disclosure attributes, the named region, the inert sync selectors and the resize hook;
+  516/516 green.

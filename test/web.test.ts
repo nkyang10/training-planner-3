@@ -2603,6 +2603,18 @@ describe("in-calendar coach bubble", () => {
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain('id="coach-bubble"');
     expect(html).toContain('id="coach-panel"');
+    // The launcher is a disclosure: its open state is programmatic, and the panel is a named region.
+    expect(html).toContain('id="coach-bubble" type="button" aria-label="Talk to the coach" aria-expanded="false" aria-controls="coach-panel"');
+    expect(html).toContain('id="coach-panel" hidden role="region" aria-label="AI Coach"');
+    expect(html).toContain("bubble.setAttribute('aria-expanded', 'true')");
+    expect(html).toContain("bubble.setAttribute('aria-expanded', 'false')");
+    // Below 1200px the overlay makes the page inert; the dock does not.
+    expect(html).toContain("matchMedia('(max-width: 1199px)')");
+    expect(html).toContain("matchMedia('(max-width: 720px)')");
+    expect(html).toContain("pageMain.inert = open");
+    expect(html).toContain("siteFooter.inert = open");
+    expect(html).toContain("topbar.inert = open && sheetWidth()");
+    expect(html).toContain("window.addEventListener('resize', syncCoachInert)");
     expect(html).toContain('id="coach-minimize"');
     expect(html).toContain('aria-label="Minimize chat"');
     expect(html).toContain(">−</button>");

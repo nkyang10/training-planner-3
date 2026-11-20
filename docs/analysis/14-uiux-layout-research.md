@@ -2,7 +2,8 @@
 
 **Evidence review and heuristic audit of the POC3 coach dock and page regroup**
 
-**Status:** secondary research + heuristic audit (no primary user study yet). **Date:** 2026-11-20.
+**Status:** secondary research + heuristic audit (no primary user study yet). A P0 implementation note was added
+after the review (see §9.3). **Date:** 2026-11-20.
 **Scope:** web app, 390–1440 px, en / zh-HK, WCAG 2.2 AA. **Prepared for:** the POC3 calendar-first running coach.
 
 ---
@@ -20,6 +21,8 @@ The evidence also sets limits that the current implementation does not yet fully
    - the drawer/sheet locks scroll but does **not** make the background inert, so keyboard focus can move behind the overlay (WCAG 2.4.11 risk) [4];
    - the in-page `.seg-tabs` control is a **radio group / segmented control**, not the ARIA tabs pattern, while the dock's tabs are ARIA tabs — the same visual grammar behaves differently for keyboard and screen-reader users [2][30];
    - the history **Review** tab hides training load, a safety-relevant metric, with no always-visible load summary [6][9][15].
+
+The P0 subset — inert focus management and launcher disclosure semantics — **shipped on 2026-11-20** (§9.3). The remaining gaps are the segmented-control semantics and the hidden load signal.
 
 The report recommends a P0 accessibility pass, a P1 discoverability/IA pass, and a P2 measurement programme. The largest remaining layout question is not “which page needs more tabs”; it is **which information is primary at each width and which control makes the secondary job cheap to reach**.
 
@@ -384,13 +387,13 @@ The audit uses the rendered pages, the DOM probes and the measurements in [the l
 | 4 | States Current/Set/History tabs reduce page length | [6][16]; 1,722 → 1,231 px | Pass with caveat | Add a head “Set a state” action and deep links |
 | 5 | Activity two columns and head actions | [3][6][17]; 2,233 → 1,647 px | Pass with caveat | Test at 1024 px with the dock open |
 | 6 | Muscle status rail beside the figure | [3][6]; figure above the fold at 1280 | Pass with caveat | Test at 1024 px; check rail wrapping |
-| 7 | Drawer/sheet background not inert; focus can move behind overlay | [4]; `body.coach-open` only locks scroll | **P0** | Add `inert` to main/footer or a focus trap; test 2.4.11 |
-| 8 | Launcher lacks `aria-expanded` / `aria-controls` | [2][15]; `#coach-bubble` has only `aria-label` | **P1** | Add disclosure semantics and update on open/close |
+| 7 | Drawer/sheet background not inert; focus could move behind overlay — **fixed 2026-11-20** | [4]; `body.coach-open` only locked scroll | **Fixed** | Main/footer inert at <1200 px, app bar at ≤720 px; resize sync; Escape returns focus |
+| 8 | Launcher lacked `aria-expanded` / `aria-controls` — **fixed 2026-11-20** | [2][15]; `#coach-bubble` had only `aria-label` | **Fixed** | Launcher exposes the disclosure state; panel is a named `region` |
 | 9 | `.seg-tabs` is a radio group presented as tabs | [2][30]; native radios, no tabpanel roles | **P1** | Standardise on segmented-control semantics or implement ARIA tabs |
 | 10 | History Review hides training load | [6][9][15]; load only in the Review panel | **P1** | Add a compact load chip to the always-visible summary |
 | 11 | Set-state form is only reachable through a tab | [7][16]; no head action, no deep link | **P2** | Add “Set a state” action and `?tab=set`/`#set` |
 | 12 | Page tab state is not in the URL | [6]; reload resets to the first tab | **P2** | Persist tab in query/hash; support back/forward |
-| 13 | Tab labels/overflow at 320 px and long locales untested | [3][18]; wrap behaviour exists but untested | **P1** | Test 320 px, 200%/400% zoom, pseudo-locale |
+| 13 | 320 px reflow tested; long locales and 200%/400% zoom still open | [3][18]; 320 px shows 0 horizontal overflow | **Partial** | Add pseudo-locale and zoom checks |
 | 14 | Activity/muscle column breakpoint is viewport-based | [23]; dock open reduces content width | **P2** | Use container queries or a `body.coach-open` override |
 | 15 | Mobile activity figure is ~3,500 px down | [11][36]; interaction cost | **P2** | Add a “Muscles” jump chip in the head |
 | 16 | No tab-switch/scroll-depth analytics | [11]; cannot measure the layout hypothesis | **P2** | Instrument events and run the study in §11 |
@@ -414,11 +417,23 @@ The dock’s tabs are ARIA tabs; the page controls look like tabs but behave as 
 
 Do not ship a third state: a visual tab strip with radio semantics and no documentation.
 
+### 9.3 P0 implementation note (2026-11-20)
+
+The P0 items in §10 shipped after this review:
+
+- The launcher exposes `aria-expanded` and `aria-controls="coach-panel"`; the panel is a named `region`, and the state is updated on open/close.
+- Below 1200 px the open panel sets `inert` on `.app-shell > main` and `.site-footer`; at ≤720 px it also inerts `nav.top` because the sheet covers the app bar. The dock at ≥1200 px leaves the page focusable. A resize listener resyncs the state; Escape/minimize/close remove it and return focus to the launcher.
+- The 320 px capture shows **0 horizontal overflow**; the 1024/390 probes show main + footer inert (app bar too at 390), while the 1280 dock shows no inert; the Escape probe shows `aria-expanded="false"` and focus back on `#coach-bubble`. Evidence: [320 px sheet](../design/layout-review/phone-320-sheet.png).
+
+Rows 9–12 remain open (segmented-control vs ARIA tabs, hidden load, states head action/deep links, URL state).
+
 ---
 
 ## 10. Recommendations
 
-### P0 — accessibility and safe use
+### P0 — accessibility and safe use (shipped 2026-11-20, except the 400% zoom check)
+
+**Status:** items 1 and 2 shipped; the 320 px half of item 3 is verified. The 400% zoom check remains in the next accessibility audit.
 
 1. **Make the narrow-width overlay non-obscuring.** When the drawer (721–1199 px) or sheet (≤720 px) is open, set `inert` on the page shell and footer (or trap focus in the panel), keep the panel and its close/launcher focusable, close on Escape and restore focus to the launcher. Verify with a keyboard-only pass at 1024 and 390 px against WCAG 2.4.11 [4].
 2. **Add disclosure semantics to the launcher.** `aria-expanded="false"`, `aria-controls="coach-panel"`, updated on open/close; keep the panel’s region label (or wire `aria-labelledby` to a visible title). This is a small fix with a large assistive-technology benefit [2][15].
@@ -573,7 +588,7 @@ Source: [the layout review](13-layout-review.md), headless-Chrome captures at 12
 | Coaching states | 1,722 px | 1,231 px current; 900 px set/history | Current/Set/History tabs |
 | Activity detail | 2,233 px | 1,647 px | Two columns; 554 / 472 px at 1280 |
 | Muscle | Figure below the fold | Figure above the fold at 1280 | Full page 2,930 px |
-| Verification | — | Full suite green; 34 captures; 0 JS exceptions | `app.css?v=27`, live `:8093` / `:8092` |
+| Verification | — | Full suite green; 36 captures; 0 JS exceptions | `app.css?v=27`, live `:8093` / `:8092` |
 
 ## Appendix B — Audit checklist for the next pass
 

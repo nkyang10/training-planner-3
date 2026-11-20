@@ -1970,8 +1970,8 @@ function layout(
 function renderChatBubble(tx: Translator): string {
   const E = escapeHtml;
   return `<aside class="coach-dock" aria-label="${E(tx.t("coach.title"))}">
-  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
-  <section id="coach-panel" hidden aria-label="${E(tx.t("coach.title"))}">
+  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
+  <section id="coach-panel" hidden role="region" aria-label="${E(tx.t("coach.title"))}">
     <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}">−</button></div></header>
     <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
     <div class="coach-tab-panel" id="coach-tabpanel-chat" role="tabpanel" aria-labelledby="coach-tab-chat" data-coach-panel="chat">
@@ -2006,6 +2006,21 @@ function renderChatBubble(tx: Translator): string {
     const tabs = panel === null ? [] : Array.from(panel.querySelectorAll('[data-coach-tab]'));
     const tabPanels = panel === null ? [] : Array.from(panel.querySelectorAll('[data-coach-panel]'));
     if (!bubble || !panel || !minimize || !close || !form || !input || !log || !suggestions || !statesList || !changesList) return;
+    const overlayWidth = () => window.matchMedia('(max-width: 1199px)').matches;
+    const sheetWidth = () => window.matchMedia('(max-width: 720px)').matches;
+    // Below 1200 px the coach is an overlay: inert the page behind it so keyboard focus cannot land on content the
+    // panel covers (WCAG 2.4.11). The dock at >=1200 px occupies its own grid column, so the page stays focusable.
+    // Query at call time: the footer is parsed after the dock's inline script, so a captured reference would be null.
+    const syncCoachInert = () => {
+      const open = !panel.hidden && overlayWidth();
+      const pageMain = document.querySelector('.app-shell > main');
+      const siteFooter = document.querySelector('.site-footer');
+      const topbar = document.querySelector('nav.top');
+      if (pageMain !== null) pageMain.inert = open;
+      if (siteFooter !== null) siteFooter.inert = open;
+      // The sheet covers the app bar at <=720 px; the drawer starts below it, so the bar stays usable there.
+      if (topbar !== null) topbar.inert = open && sheetWidth();
+    };
     const STARTERS = ${jsonForScript(tx.starters())};
     let suggestionsSet = false;
     const sendButton = form.querySelector('button[type="submit"]');
@@ -2052,17 +2067,21 @@ function renderChatBubble(tx: Translator): string {
       document.body.classList.add('coach-open');
       panel.hidden = false;
       bubble.hidden = true;
+      bubble.setAttribute('aria-expanded', 'true');
       // Focus the selected tab, not the textarea: an "Ask coach" turn sends itself and must not pop the phone keyboard
       // over the answer. A deliberate launcher click may focus the composer.
       setTab(activeTab, { focus: activeTab !== 'chat' });
       if (activeTab === 'chat' && focusComposer === true) input.focus();
+      syncCoachInert();
       showStarters();
       void loadConversation();
     };
     const minimizePanel = () => {
       panel.hidden = true;
       bubble.hidden = false;
+      bubble.setAttribute('aria-expanded', 'false');
       document.body.classList.remove('coach-open');
+      syncCoachInert();
       bubble.focus();
     };
     const scrollToLatest = () => {
@@ -3307,6 +3326,7 @@ function renderChatBubble(tx: Translator): string {
     window.addEventListener('resize', () => {
       if (!peek.hidden && peekTrigger !== null) positionPeek(peekTrigger);
     });
+    window.addEventListener('resize', syncCoachInert);
     window.addEventListener('scroll', () => closeActivityPeek(false), { passive: true });
 
     bubble.addEventListener('click', () => show(true));
