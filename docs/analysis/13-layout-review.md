@@ -1,12 +1,13 @@
 # POC3 — page-layout review and the coach dock
 
-**Status:** review + two implemented slices. The coach bubble is a **docked coach column on wide screens** and a
+**Status:** review + three implemented slices. The coach bubble is a **docked coach column on wide screens** and a
 **tabbed sheet below 1200 px**; the panel is grouped into **Chat / States / Changes**. A second pass applied the same
 grammar — tabs when a page mixes jobs, side-by-side when cards are peers — to the **training log, coaching states,
-activity detail and muscle** pages. Verified 2026-11-20 with the full suite green (513 at the layout pass, 516 after
-the follow-up localization and P0 pass), typecheck, lint and headless-Chrome captures before and after. A P0
-accessibility pass on 2026-11-20 added launcher disclosure semantics, inert focus management below 1200 px and a
-320 px reflow capture (§9). **Date:** 2026-11-20.
+activity detail and muscle** pages. A P0 accessibility pass added launcher disclosure semantics, inert focus
+management below 1200 px and a 320 px reflow capture (§9). A P1/P2 pass added the visible load chip, URL-addressable
+page tabs, the states head action, explicit segmented-control semantics, the 1024 px dock-open column override, the
+mobile Muscles jump chip and a privacy-safe analytics hook (§10). Verified 2026-11-20 with the full suite green
+(516 tests), typecheck, lint and 45 headless-Chrome captures. **Date:** 2026-11-20.
 **Lens:** 排版 — hierarchy, density, above-the-fold composition, scan path, responsive wrapping and the
 relationship between the page and the coach overlay — judged page by page against what a runner actually does.
 **Relation to earlier work:** builds on [10-uiux-design-review.md](10-uiux-design-review.md) (UX-22 measured the
@@ -249,23 +250,29 @@ Notes:
 
 ## 6. Verification
 
-- `pnpm check` green: lint, `tsc --noEmit`, **513 tests in 21 files**. Two tests are new (a Cantonese state-catalog
-  check and a Cantonese muscle-name/soreness check from the concurrent localization pass); the dock, history,
-  states, activity and muscle tests gained layout assertions.
-- Headless Chrome: 0 JS exceptions across **27 page states** in pass 1 and **34 captures (18 with DOM probes)** in
-  pass 2; probes confirmed dock overlap 0, static panel, tab click and ArrowRight selection, badge clearing on the
-  Changes tab, in-place undo marking **both** the dock card and the Recent changes card, Escape closing to the
-  launcher, Ask coach leaving focus on the tab, the segmented tabs switching panels, and the activity/muscle columns
-  sitting side by side.
+- `pnpm check` green: lint, `tsc --noEmit`, **516 tests in 21 files**. The dock, history, states, activity and muscle
+  tests gained layout assertions; the P0/P1/P2 passes added disclosure, inert, URL-tab, load-chip, head-action,
+  segmented-control and analytics assertions.
+- Headless Chrome: 0 JS exceptions across **27 page states** in pass 1 and **45 captures (29 with DOM probes)** across
+  the later passes; probes confirmed dock overlap 0, static panel, tab click and ArrowRight selection, badge clearing on
+  the Changes tab, in-place undo marking **both** the dock card and the Recent changes card, Escape closing to the
+  launcher, Ask coach leaving focus on the tab, the segmented tabs switching panels, the activity/muscle columns
+  sitting side by side when the coach is closed and stacking when it is open, Review/Set deep links, long-label
+  wrapping with 0 overflow, and one analytics event per interaction.
 - Screenshots: [before/after desktop](../design/layout-review/before-after-coach-dock.png),
   [the three tabs](../design/layout-review/coach-dock-tabs.png),
   [before/after phone](../design/layout-review/before-after-coach-mobile.png),
   [history tabs](../design/layout-review/history-tabs.png),
   [activity columns](../design/layout-review/activity-columns.png),
   [muscle columns](../design/layout-review/muscle-columns.png),
-  [state tabs](../design/layout-review/states-tabs.png).
-- Live redeployed 2026-11-20: `/login` serves `app.css?v=27`, the stylesheet carries `.coach-dock`, `.coach-tabs`,
-  `body.coach-open`, `.seg-tabs`, `.activity-columns` and `.muscle-layout`; gateway `/health` is 200.
+  [state tabs](../design/layout-review/states-tabs.png),
+  [320 px sheet](../design/layout-review/phone-320-sheet.png),
+  [load chip](../design/layout-review/history-load-chip.png),
+  [states action](../design/layout-review/states-set-action.png),
+  [1024 coach-open columns](../design/layout-review/tablet-columns-coach.png).
+- Live redeployed 2026-11-20: `/login` serves `app.css?v=28`, the stylesheet carries `.coach-dock`, `.coach-tabs`,
+  `body.coach-open`, `.seg-tabs`, `.activity-columns`, `.muscle-layout`, `.history-load-chip` and the dock-open
+  column override; gateway `/health` is 200.
 
 ## 7. Top layout fixes, ordered by impact
 
@@ -273,10 +280,14 @@ Notes:
 2. **Group the coach into Chat / States / Changes** — shipped; active states and Undo are reachable from every page.
 3. **Give the phone a tabbed sheet with a visible close** — shipped; no more takeover with one 32 px “−”.
 4. **History: week days before load/trend cards** — **shipped in pass 2** as a Days/Review segmented control; the
-   week is the default and the page is 2198 → 1547 px.
+   week is the default and the page is 2198 → 1547 px. A **load chip** above the tabs now links to Review/`#load-card`
+   (P1 pass).
 5. **Activity detail: two-column secondary cards + Ask coach in the head** — **shipped in pass 2**; 2233 → 1647 px.
+   At 1024 px with the dock open the columns stack instead of squeezing (P1 pass).
 6. **Muscle: status rail + 3D figure side by side** — **shipped in pass 2**; the figure is above the fold at 1280.
-7. **Coaching states: Current / Set / History tabs** — **shipped in pass 2**; 1722 → 1231 px current.
+   At 1024 px with the dock open the rail stacks (P1 pass).
+7. **Coaching states: Current / Set / History tabs** — **shipped in pass 2**; 1722 → 1231 px current. A **Set a state**
+   head action and `?tab=set#state-form-card` now make the write job reachable without noticing the tab (P1 pass).
 8. **Compact the calendar head** (h1 + one line + swatch legend; state chips in one row) — pending, M; moves the
    month grid up ~140 px. This is now the largest remaining 排版 fix.
 9. **Day/profile polish** (session actions, drop the Profile link from the day subline, labeled profile links,
@@ -293,10 +304,10 @@ Notes:
 - Clamping day-menu/peek popups to the main column instead of `innerWidth` under a dock.
 - Extracting `renderChatBubble()`’s ~1,300-line inline script into a module; the tab logic is tested through the
   rendered page and the browser probe, not a unit seam.
-- The phone activity order: the columns stack program → metrics → splits → muscles, so the figure is ~3,500 px down.
-  A “Muscles” jump chip in the head is the cheap fix; a sticky sub-nav is the better one.
-- Segmented tabs are radio buttons, not ARIA tabs; screen readers announce a radio group. Correct for a CSS-only
-  switch, but an ARIA tablist with a tiny script is the upgrade if the pattern spreads further.
+- The phone activity order now has a **Muscles jump chip** in the head (P1 pass); a sticky sub-nav for the secondary
+  cards is still the better long-term fix.
+- Page controls are explicit **segmented controls** (`role="radiogroup"`); the dock tabs remain ARIA tabs. The
+  distinction is intentional, but a screen-reader pass is still pending.
 - The remaining structural mobile gap: a week/agenda plan view under 640 px (I-09), which no coach layout can fix.
 
 ## 9. P0 accessibility pass (2026-11-20)
@@ -313,3 +324,35 @@ this pass shipped them:
   [320 px sheet](../design/layout-review/phone-320-sheet.png).
 - The bubble test asserts the disclosure attributes, the named region, the inert sync selectors and the resize hook;
   516/516 green.
+
+## 10. P1/P2 pass (2026-11-20)
+
+The research review's remaining codeable recommendations shipped in one slice:
+
+- **Visible load signal.** The week summary shows a `Load … · signal` chip (or `Load: no data`) above the tab strip;
+  it links to `?tab=review#load-card`, the server renders Review selected, and the load card carries `id="load-card"`.
+  Evidence: [load chip](../design/layout-review/history-load-chip.png).
+- **States head action and deep links.** A “Set a state” chip beside the states summary links to
+  `?tab=set#state-form-card`; the server selects Set and the anchor lands on the form. Evidence:
+  [states action](../design/layout-review/states-set-action.png).
+- **URL-addressable page tabs.** History and states read `?tab=` on the server; the client `pushState`s on change and
+  restores the matching radio on `popstate`. Deep-link probes show Review/Set selected without a click.
+- **Explicit segmented-control semantics.** The page controls are native radios inside `role="radiogroup"`; the dock
+  tabs remain `role="tablist"`. This resolves the audit's consistency concern without a third visual model.
+- **1024 px dock-open density.** With the coach open at 1024–1199 px, activity and muscle stack (activity 988 px single
+  column; muscle 988 px slots) instead of ~330 px columns. With the coach closed they keep two columns (activity
+  524/446; muscle 360/610/360); at 1280 with the coach open they stay side-by-side (activity 459/391; muscle
+  360/490/360). Evidence: [1024 coach-open columns](../design/layout-review/tablet-columns-coach.png).
+- **Mobile Muscles jump.** The activity head has a “Muscles” chip that jumps to `#muscles-worked` (`tabindex="-1"`),
+  shortening the ~3,500 px phone path.
+- **Long-label reflow.** A 320 px pseudo-locale probe wraps and stacks the segmented labels with **0 horizontal
+  overflow**; `.seg-labels` is a wrapping flex row and `.seg-label` allows `overflow-wrap: anywhere`.
+- **Privacy-safe analytics hook.** `data-track` attributes feed a `poc3:track` CustomEvent on `window` with
+  `{ name, value, page }`; nothing leaves the page and no health/chat/state text is included. Events: `coach-open`,
+  `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`,
+  `muscle-checkin`.
+
+Probes confirm 0 horizontal overflow on the 320 px and 1024 px pages, Review/Set deep links, one `page-tab` event per
+change, and a `coach-tab` event for a keyboard ArrowRight switch. Remaining work is empirical: the study in
+[14-uiux-layout-research.md](14-uiux-layout-research.md) §11, a production collector with consent, and a 200% text-zoom
+and screen-reader pass.

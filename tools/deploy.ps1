@@ -163,12 +163,12 @@ try {
     if ($cssText -notmatch '\.coach-dock' -or $cssText -notmatch '\.coach-tabs' -or $cssText -notmatch 'body\.coach-open') {
         throw 'The deployed stylesheet does not contain the coach dock and tab styles.'
     }
-    if ($cssText -notmatch '\.seg-tabs' -or $cssText -notmatch '\.seg-panel' -or $cssText -notmatch '\.activity-columns' -or $cssText -notmatch '\.muscle-layout') {
-        throw 'The deployed stylesheet does not contain the pass-2 page regroup styles.'
+    if ($cssText -notmatch '\.seg-tabs' -or $cssText -notmatch '\.seg-panel' -or $cssText -notmatch '\.activity-columns' -or $cssText -notmatch '\.muscle-layout' -or $cssText -notmatch '\.history-load-chip' -or $cssText -notmatch 'body\.coach-open \.activity-columns') {
+        throw 'The deployed stylesheet does not contain the pass-2/P1 page regroup styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=27') {
-        throw 'The deployed login page does not reference app.css?v=27.'
+    if ($loginText -notmatch 'app\.css\?v=28') {
+        throw 'The deployed login page does not reference app.css?v=28.'
     }
 
     $gatewayText = [string]$gateway.Content

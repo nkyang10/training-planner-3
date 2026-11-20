@@ -2,8 +2,8 @@
 
 **Evidence review and heuristic audit of the POC3 coach dock and page regroup**
 
-**Status:** secondary research + heuristic audit (no primary user study yet). A P0 implementation note was added
-after the review (see §9.3). **Date:** 2026-11-20.
+**Status:** secondary research + heuristic audit (no primary user study yet). P0 and P1/P2 implementation notes were
+added after the review (see §9.3 and §9.4). **Date:** 2026-11-20.
 **Scope:** web app, 390–1440 px, en / zh-HK, WCAG 2.2 AA. **Prepared for:** the POC3 calendar-first running coach.
 
 ---
@@ -17,14 +17,14 @@ The evidence also sets limits that the current implementation does not yet fully
 1. **Tabs are not a density cure.** They hide content, add a click and a memory burden, and are the wrong control when users must compare sections, read in order, or notice safety-relevant status. They work best for **2–4 clearly labelled, mutually exclusive sections**, with the most important section first and visible active state [6][16][17].
 2. **Side-by-side is justified by comparison or reference, not by page length.** Two columns help when the runner needs both sets of information in view; they hurt when the runner must integrate sources that should have been one unit (split-attention effect) [3][38]. They must reflow without two-dimensional scrolling at 320 CSS px [3].
 3. **A persistent assistant should be non-modal.** Modal overlays interrupt the task, hide context and force recovery; they are appropriate for short, focused, high-consequence tasks, not for ongoing assistance [8][21][29][31]. If an overlay is used at narrow widths, focus must not be obscured: trap or inert the background, close on Escape and restore focus [1][4].
-4. **POC3 has three material gaps**, all fixable without another redesign:
-   - the drawer/sheet locks scroll but does **not** make the background inert, so keyboard focus can move behind the overlay (WCAG 2.4.11 risk) [4];
-   - the in-page `.seg-tabs` control is a **radio group / segmented control**, not the ARIA tabs pattern, while the dock's tabs are ARIA tabs — the same visual grammar behaves differently for keyboard and screen-reader users [2][30];
-   - the history **Review** tab hides training load, a safety-relevant metric, with no always-visible load summary [6][9][15].
+4. **POC3 had three material gaps**, all fixable without another redesign:
+   - the drawer/sheet locked scroll but did **not** make the background inert, so keyboard focus could move behind the overlay (WCAG 2.4.11 risk) [4];
+   - the in-page `.seg-tabs` control was a **radio group / segmented control**, not the ARIA tabs pattern, while the dock's tabs are ARIA tabs — the same visual grammar behaved differently for keyboard and screen-reader users [2][30];
+   - the history **Review** tab hid training load, a safety-relevant metric, with no always-visible load summary [6][9][15].
 
-The P0 subset — inert focus management and launcher disclosure semantics — **shipped on 2026-11-20** (§9.3). The remaining gaps are the segmented-control semantics and the hidden load signal.
+All three **shipped on 2026-11-20**: inert focus management and launcher disclosure semantics (§9.3); explicit segmented-control semantics for the page tabs, a visible load chip and URL-addressable tabs (§9.4). The remaining work is evidence, not layout code.
 
-The report recommends a P0 accessibility pass, a P1 discoverability/IA pass, and a P2 measurement programme. The largest remaining layout question is not “which page needs more tabs”; it is **which information is primary at each width and which control makes the secondary job cheap to reach**.
+The report recommended a P0 accessibility pass, a P1 discoverability/IA pass, and a P2 measurement programme; all codeable items in those passes shipped on 2026-11-20. The largest remaining layout question is not “which page needs more tabs”; it is **which information is primary at each width and which control makes the secondary job cheap to reach**, and that is now a question for the study in §11.
 
 ---
 
@@ -383,20 +383,20 @@ The audit uses the rendered pages, the DOM probes and the measurements in [the l
 |---|---|---|---|---|
 | 1 | Dock at ≥1200 reflows the page; no content covered | [3][4][21]; measured overlap 0 vs 242,572 px² | Pass | Keep |
 | 2 | Chat / States / Changes grouping matches job lifecycles | [6][7][15]; 2–3 tabs, short labels | Pass | Keep |
-| 3 | History Days/Review tabs put the week first | [6][16]; 2,198 → 1,547 px | Pass with caveat | Add an always-visible load summary (§9.1) |
-| 4 | States Current/Set/History tabs reduce page length | [6][16]; 1,722 → 1,231 px | Pass with caveat | Add a head “Set a state” action and deep links |
-| 5 | Activity two columns and head actions | [3][6][17]; 2,233 → 1,647 px | Pass with caveat | Test at 1024 px with the dock open |
-| 6 | Muscle status rail beside the figure | [3][6]; figure above the fold at 1280 | Pass with caveat | Test at 1024 px; check rail wrapping |
+| 3 | History Days/Review tabs put the week first — **fixed 2026-11-20** | [6][16]; 2,198 → 1,547 px | **Fixed** | Load chip above the tabs links to Review and `#load-card` |
+| 4 | States Current/Set/History tabs reduce page length — **fixed 2026-11-20** | [6][16]; 1,722 → 1,231 px | **Fixed** | “Set a state” head action and `?tab=set#state-form-card` |
+| 5 | Activity two columns and head actions — **tested 2026-11-20** | [3][6][17]; 2,233 → 1,647 px | **Fixed** | At 1024 px with the dock open, stack (988 px single column); closed, keep 524/446 |
+| 6 | Muscle status rail beside the figure — **tested 2026-11-20** | [3][6]; figure above the fold at 1280 | **Fixed** | 1024 px rail 360 px; stack under the open dock |
 | 7 | Drawer/sheet background not inert; focus could move behind overlay — **fixed 2026-11-20** | [4]; `body.coach-open` only locked scroll | **Fixed** | Main/footer inert at <1200 px, app bar at ≤720 px; resize sync; Escape returns focus |
 | 8 | Launcher lacked `aria-expanded` / `aria-controls` — **fixed 2026-11-20** | [2][15]; `#coach-bubble` had only `aria-label` | **Fixed** | Launcher exposes the disclosure state; panel is a named `region` |
-| 9 | `.seg-tabs` is a radio group presented as tabs | [2][30]; native radios, no tabpanel roles | **P1** | Standardise on segmented-control semantics or implement ARIA tabs |
-| 10 | History Review hides training load | [6][9][15]; load only in the Review panel | **P1** | Add a compact load chip to the always-visible summary |
-| 11 | Set-state form is only reachable through a tab | [7][16]; no head action, no deep link | **P2** | Add “Set a state” action and `?tab=set`/`#set` |
-| 12 | Page tab state is not in the URL | [6]; reload resets to the first tab | **P2** | Persist tab in query/hash; support back/forward |
-| 13 | 320 px reflow tested; long locales and 200%/400% zoom still open | [3][18]; 320 px shows 0 horizontal overflow | **Partial** | Add pseudo-locale and zoom checks |
-| 14 | Activity/muscle column breakpoint is viewport-based | [23]; dock open reduces content width | **P2** | Use container queries or a `body.coach-open` override |
-| 15 | Mobile activity figure is ~3,500 px down | [11][36]; interaction cost | **P2** | Add a “Muscles” jump chip in the head |
-| 16 | No tab-switch/scroll-depth analytics | [11]; cannot measure the layout hypothesis | **P2** | Instrument events and run the study in §11 |
+| 9 | `.seg-tabs` radio group presented as tabs — **clarified 2026-11-20** | [2][30]; native radios, no tabpanel roles | **Fixed** | Page controls are segmented controls (`role="radiogroup"`); dock keeps ARIA tabs; URL/back/forward added |
+| 10 | History Review hid training load — **fixed 2026-11-20** | [6][9][15]; load only in the Review panel | **Fixed** | `Load … · signal` chip above the tabs links to `?tab=review#load-card` (week view) |
+| 11 | Set-state form was only reachable through a tab — **fixed 2026-11-20** | [7][16]; no head action, no deep link | **Fixed** | “Set a state” head action and `?tab=set#state-form-card` |
+| 12 | Page tab state was not in the URL — **fixed 2026-11-20** | [6]; reload reset to the first tab | **Fixed** | Server reads `?tab=`; client `pushState`/`popstate` preserves and restores |
+| 13 | 320 px and long-label reflow — **fixed 2026-11-20** | [3][18]; 320 px and pseudo-locale show 0 overflow | **Fixed** | 320 px is the 400% reflow equivalent at 1280; labels wrap and stack |
+| 14 | Activity/muscle breakpoint was viewport-based — **fixed 2026-11-20** | [23]; dock open reduces content width | **Fixed** | `body.coach-open` override stacks at 1024–1199 px; closed keeps columns |
+| 15 | Mobile activity figure is ~3,500 px down — **fixed 2026-11-20** | [11][36]; interaction cost | **Fixed** | “Muscles” chip in the head jumps to `#muscles-worked` |
+| 16 | No tab-switch/scroll-depth analytics — **hook shipped 2026-11-20** | [11]; cannot measure the layout hypothesis | **Fixed (hook)** | `poc3:track` CustomEvent + `data-track` taxonomy; collector/consent remains |
 | 17 | Reduced motion is covered globally | [1]; `prefers-reduced-motion` block | Pass | Keep |
 | 18 | Target sizes meet 24 px, not 44 px | [5]; labels ~30 px, close 32 px | Pass with caveat | Use 44 px for phone close/tab targets |
 
@@ -405,6 +405,8 @@ The audit uses the rendered pages, the DOM probes and the measurements in [the l
 Training load is not just another metric. The load card contains the week load, ACWR, week-over-week change and hard/easy split; the card’s own warning text fires when the ramp is rising (see [the layout review](13-layout-review.md)). The history page now shows runs, distance, time and longest in the always-visible summary, and puts load behind the Review tab. A runner who opens “this week” to check whether the plan is sane sees the week rows first — good — but does not see the load warning unless they notice the Review tab. That is a **recognition** failure [10] and a **progressive-disclosure split** failure [7]: the hidden content is not merely advanced; it is safety-relevant.
 
 The fix is small: add a compact load chip to the summary row or the Days panel header, for example `Load 320 · rising` with a link that activates the Review tab. The full explanation stays in Review. This preserves the tab and restores the signal.
+
+**Shipped 2026-11-20:** the week summary now shows `Load … · signal` (or `Load: no data`) above the tab strip; the chip links to `?tab=review#load-card`, the server renders Review selected, and the load card carries `id="load-card"` so the link lands on the explanation. The chip is week-only because the load card is week-scoped.
 
 ### 9.2 The segmented-control caveat, in detail
 
@@ -417,6 +419,8 @@ The dock’s tabs are ARIA tabs; the page controls look like tabs but behave as 
 
 Do not ship a third state: a visual tab strip with radio semantics and no documentation.
 
+**Shipped 2026-11-20:** the page controls are now explicit segmented controls — native radios inside `role="radiogroup"` with an accessible name — while the dock keeps the ARIA tabs pattern. The distinction is intentional and documented; the page tabs also preserve `?tab=` and back/forward. This is the smallest robust option and keeps the no-JS path.
+
 ### 9.3 P0 implementation note (2026-11-20)
 
 The P0 items in §10 shipped after this review:
@@ -425,28 +429,47 @@ The P0 items in §10 shipped after this review:
 - Below 1200 px the open panel sets `inert` on `.app-shell > main` and `.site-footer`; at ≤720 px it also inerts `nav.top` because the sheet covers the app bar. The dock at ≥1200 px leaves the page focusable. A resize listener resyncs the state; Escape/minimize/close remove it and return focus to the launcher.
 - The 320 px capture shows **0 horizontal overflow**; the 1024/390 probes show main + footer inert (app bar too at 390), while the 1280 dock shows no inert; the Escape probe shows `aria-expanded="false"` and focus back on `#coach-bubble`. Evidence: [320 px sheet](../design/layout-review/phone-320-sheet.png).
 
-Rows 9–12 remain open (segmented-control vs ARIA tabs, hidden load, states head action/deep links, URL state).
+Rows 9–16 were addressed in §9.4.
+
+### 9.4 P1/P2 implementation note (2026-11-20)
+
+The remaining codeable recommendations shipped after the P0 pass:
+
+- **Load signal.** The week summary shows a `Load … · signal` chip (or `Load: no data`) above the tabs; it links to `?tab=review#load-card`, and the server renders the Review panel selected. Evidence: [load chip](../design/layout-review/history-load-chip.png).
+- **States head action and deep links.** A “Set a state” chip beside the states summary links to `?tab=set#state-form-card`; the server selects Set and the anchor lands on the form. Evidence: [states action](../design/layout-review/states-set-action.png).
+- **URL-addressable page tabs.** History and states read `?tab=` on the server; the client `pushState`s on change and restores the matching radio on `popstate`. Deep-link probes show Review/Set selected without a click.
+- **Segmented-control semantics.** The page controls use `role="radiogroup"` with native radios; the dock tabs remain `role="tablist"`. The audit’s consistency concern is resolved by making the two patterns explicit rather than visually identical.
+- **1024 px density.** With the coach open at 1024–1199 px, activity and muscle stack (activity 988 px single column; muscle 988 px slots) instead of squeezing into ~330 px columns; with the coach closed they keep two columns (activity 524/446; muscle 360/610/360). At 1280 with the coach open they stay side-by-side (activity 459/391; muscle 360/490/360). Evidence: [1024 coach-open columns](../design/layout-review/tablet-columns-coach.png).
+- **Mobile Muscles jump.** The activity head now has a “Muscles” chip that jumps to `#muscles-worked` (`tabindex="-1"`), shortening the ~3,500 px path on the phone.
+- **Long-label reflow.** A 320 px pseudo-locale probe wraps and stacks the segmented labels with **0 horizontal overflow**; `.seg-labels` is a wrapping flex row and `.seg-label` allows `overflow-wrap: anywhere`.
+- **Privacy-safe analytics hook.** Components mark interactions with `data-track`; `renderTrackScript` dispatches `poc3:track` CustomEvents on `window` with `{ name, value, page }`. It sends nothing over the network and carries no health, chat or state text. Events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`.
+
+Probes confirm 0 horizontal overflow on the 320 px and 1024 px pages, Review/Set deep links, one `page-tab` event per change, and a `coach-tab` event for a keyboard ArrowRight switch. The remaining work is empirical: the study in §11, a production collector with consent, and a 200% text-zoom/screen-reader pass.
 
 ---
 
 ## 10. Recommendations
 
-### P0 — accessibility and safe use (shipped 2026-11-20, except the 400% zoom check)
+### P0 — accessibility and safe use (shipped 2026-11-20)
 
-**Status:** items 1 and 2 shipped; the 320 px half of item 3 is verified. The 400% zoom check remains in the next accessibility audit.
+**Status:** items 1–3 shipped. The 320 px reflow and long-label checks pass; 200% text zoom and a screen-reader pass remain in the evaluation.
 
 1. **Make the narrow-width overlay non-obscuring.** When the drawer (721–1199 px) or sheet (≤720 px) is open, set `inert` on the page shell and footer (or trap focus in the panel), keep the panel and its close/launcher focusable, close on Escape and restore focus to the launcher. Verify with a keyboard-only pass at 1024 and 390 px against WCAG 2.4.11 [4].
 2. **Add disclosure semantics to the launcher.** `aria-expanded="false"`, `aria-controls="coach-panel"`, updated on open/close; keep the panel’s region label (or wire `aria-labelledby` to a visible title). This is a small fix with a large assistive-technology benefit [2][15].
 3. **Test 320 px and 400% zoom.** Verify no horizontal scrolling, no clipped tab labels, no obscured focus, and that the sheet can be dismissed without a pointer [3][4].
 
-### P1 — discoverability and information architecture
+### P1 — discoverability and information architecture (shipped 2026-11-20)
+
+**Status:** items 4–7 shipped: load chip + Review deep link, states head action, segmented-control semantics, and the 1024 px column override.
 
 4. **Keep a load signal visible.** Add a compact load chip to the history summary (or the Days panel header) that links to the Review tab. Do not make safety-relevant status discoverable only by tab [7][9][15].
 5. **Give the states page a head action.** Add “Set a state” beside the page title that activates the Set tab, and support `?tab=set` / `#set` so the action works without JavaScript and survives reload.
 6. **Resolve the tab/segmented-control semantics.** Choose one model per control, document it, and test with a screen reader. Add Home/End only if the control is ARIA tabs [2].
 7. **Test the 1024 px two-column layouts with the dock open.** If the columns are too narrow, raise the breakpoint under `body.coach-open` or switch to container queries.
 
-### P2 — polish and measurement
+### P2 — polish and measurement (shipped 2026-11-20; study pending)
+
+**Status:** items 8–10 shipped (URL tabs, Muscles jump chip, analytics hook); item 11 — the study — remains the next evidence step.
 
 8. **Persist page tab state in the URL** and support back/forward; add a deep link for Review/Set/History [6].
 9. **Add a “Muscles” jump chip to the mobile activity head** to shorten the ~3,500 px path to the figure [11][36].
@@ -494,6 +517,7 @@ Rows 9–12 remain open (segmented-control vs ARIA tabs, hidden load, states hea
 - Event taxonomy and dashboards should answer “which layout helps which job”, not “how many clicks”.
 - Do not send health details, chat text or state notes to analytics; aggregate and anonymise.
 - Obtain consent for sessions; allow deletion; follow the product’s privacy posture.
+- **Shipped hook (2026-11-20):** components mark interactions with `data-track`; `renderTrackScript` dispatches a `poc3:track` CustomEvent on `window` with `{ name, value, page }`. The event never leaves the page and carries no health, chat or state text. Current events: `coach-open`, `coach-tab` (click and keyboard), `coach-close`, `page-tab`, `history-load`, `states-set`, `activity-muscles`, `muscle-checkin`. A production collector, consent gate and retention policy are still product work; the hook is the measurement seam, not a tracking service.
 
 ---
 
@@ -516,11 +540,11 @@ The evidence supports the **layout grammar** POC3 shipped: group by job, keep pr
 
 The remaining work is not “more regrouping”. It is:
 
-1. **Accessibility correctness** — inert/focus management for the narrow-width overlay, disclosure semantics on the launcher, and a deliberate choice between ARIA tabs and segmented-control semantics.
-2. **Discoverability of safety-relevant information** — a visible load signal on the history page, a head action for setting a state, and URL-addressable tabs.
-3. **Evidence** — a task-based study and an accessibility audit that test the hypotheses in §11 rather than relying on the pattern literature alone.
+1. **Accessibility correctness** — shipped: inert/focus management for the narrow-width overlay, disclosure semantics on the launcher, and explicit segmented-control semantics for the page tabs.
+2. **Discoverability of safety-relevant information** — shipped: a visible load signal on the history page, a head action for setting a state, and URL-addressable tabs.
+3. **Evidence** — still open: a task-based study and a 200% text-zoom/screen-reader pass that test the hypotheses in §11 rather than relying on the pattern literature alone.
 
-The best layout is the one that keeps the runner’s primary job visible and makes the secondary job cheap to reach. The current design is close; the next gains come from semantics, focus and measurement, not from adding another tab.
+The best layout is the one that keeps the runner’s primary job visible and makes the secondary job cheap to reach. The current design is close; the remaining gains come from evidence, not from adding another tab.
 
 ---
 
@@ -588,7 +612,7 @@ Source: [the layout review](13-layout-review.md), headless-Chrome captures at 12
 | Coaching states | 1,722 px | 1,231 px current; 900 px set/history | Current/Set/History tabs |
 | Activity detail | 2,233 px | 1,647 px | Two columns; 554 / 472 px at 1280 |
 | Muscle | Figure below the fold | Figure above the fold at 1280 | Full page 2,930 px |
-| Verification | — | Full suite green; 36 captures; 0 JS exceptions | `app.css?v=27`, live `:8093` / `:8092` |
+| Verification | — | Full suite green; 45 captures; 0 JS exceptions | `app.css?v=28`, live `:8093` / `:8092` |
 
 ## Appendix B — Audit checklist for the next pass
 

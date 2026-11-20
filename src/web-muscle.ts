@@ -504,7 +504,7 @@ function formSection(input: MusclePageInput, tx: Translator = defaultTranslator)
       <label for="muscle-note">${escapeHtml(tx.t("muscle.noteLabel"))} <span class="muted small">${escapeHtml(tx.t("muscle.optional"))}</span></label>
       <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="${tx.t("muscle.notePlaceholder")}">
       <input type="hidden" name="musclesJson" id="muscle-json" value="">
-      <div class="review-actions"><button class="btn" type="submit">${escapeHtml(tx.t("muscle.saveButton"))}</button><button type="button" class="btn ghost" id="muscle-clear">${escapeHtml(tx.t("muscle.clearButton"))}</button></div>
+      <div class="review-actions"><button class="btn" type="submit" data-track="muscle-checkin" data-track-value="save">${escapeHtml(tx.t("muscle.saveButton"))}</button><button type="button" class="btn ghost" id="muscle-clear">${escapeHtml(tx.t("muscle.clearButton"))}</button></div>
     </form>
   </section>`;
 }
@@ -996,5 +996,5 @@ export function musclesWorkedCard(
   const linkedLine = linkedCheckIn === null
     ? ""
     : `<p class="muted small">${escapeHtml(tx.t("muscle.reportedAfterRun"))} <a href="/muscle?day=${escapeHtml(linkedCheckIn.day)}">${escapeHtml(summarizeCheckIn(linkedCheckIn))}</a></p>`;
-  return `<section class="card muscles-worked-card"><div class="splits-head"><h2>${escapeHtml(tx.t("muscle.workedHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.workedProse"))}</p></div>${panel}${statusLine}${linkedLine}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">${escapeHtml(tx.t("muscle.checkInButton"))}</a></div></section>`;
+  return `<section class="card muscles-worked-card" id="muscles-worked" tabindex="-1"><div class="splits-head"><h2>${escapeHtml(tx.t("muscle.workedHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.workedProse"))}</p></div>${panel}${statusLine}${linkedLine}<div class="review-actions"><a class="btn ghost" href="/muscle?activity=${encodeURIComponent(activityId)}">${escapeHtml(tx.t("muscle.checkInButton"))}</a></div></section>`;
 }

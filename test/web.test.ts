@@ -1463,9 +1463,13 @@ describe("training log", () => {
     expect(html).toContain('data-active="history"');
     expect(html).toContain(">Training log</a>");
     // The period rows come first; load/trend/review live behind the Review tab.
-    expect(html).toContain('class="seg-tabs history-tabs"');
-    expect(html).toContain('id="history-tab-period" checked');
-    expect(html).toContain('id="history-tab-review"');
+    expect(html).toContain('class="seg-tabs history-tabs" role="radiogroup"');
+    expect(html).toContain('id="history-tab-period" value="period" data-track="page-tab" checked');
+    expect(html).toContain('id="history-tab-review" value="review" data-track="page-tab"');
+    expect(html).toContain('class="chip history-load-chip"');
+    expect(html).toContain('data-track="history-load"');
+    expect(html).toContain('&tab=review#load-card"');
+    expect(html).toContain('id="load-card"');
     expect(html).toContain('data-seg-panel="period"');
     expect(html).toContain('data-seg-panel="review"');
     expect(html).toContain(">Days</label>");
@@ -1483,6 +1487,11 @@ describe("training log", () => {
     expect(html).toContain("Detail</a>");
     expect(html).toContain("Daily volume");
     expect(html).toContain('aria-label="Daily volume for 2–8 Nov 2026"');
+    // The tab is server-addressable: the load chip, a shared link and back/forward can land on Review.
+    const reviewTab = await (await fetch(`${base}/history?tab=review`, { headers: { cookie } })).text();
+    expect(reviewTab).toContain('id="history-tab-review" value="review" data-track="page-tab" checked');
+    expect(reviewTab).not.toContain('id="history-tab-period" value="period" data-track="page-tab" checked');
+    expect(reviewTab).toContain('id="load-card"');
     expect(html).toContain("Metric trend");
     expect(html).toContain('role="radiogroup" aria-label="Trend metric"');
     expect(html).toContain('data-default="pace"');
@@ -1738,6 +1747,10 @@ describe("training log", () => {
     expect(html).toContain('class="activity-columns"');
     expect(html).toContain('class="activity-col"');
     expect(html).toContain('class="head-actions" aria-label="Run actions"');
+    expect(html).toContain('data-track="activity-muscles"');
+    expect(html).toContain('href="#muscles-worked"');
+    expect(html).toContain('id="muscles-worked" tabindex="-1"');
+    expect(html).toContain(">Muscles</a>");
     expect(html.indexOf("Plan vs actual")).toBeLessThan(html.indexOf('class="activity-columns"'));
     expect(html.indexOf('class="activity-columns"')).toBeLessThan(html.indexOf("Ask the coach about this run"));
   });
@@ -2695,6 +2708,13 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     expect(html).toContain("app.css?v=");
+    // Privacy-safe UI events: components mark the interaction; a host listens for the CustomEvent.
+    expect(html).toContain("poc3:track");
+    expect(html).toContain('data-track="coach-open"');
+    expect(html).toContain("track('coach-tab'");
+    expect(html).toContain('data-track="coach-close"');
+    expect(html).toContain("window.history.pushState");
+    expect(html).toContain("popstate");
     const cssResponse = await fetch(`${base}/static/app.css`);
     expect(cssResponse.headers.get("cache-control")).toBe("no-store");
     const css = await cssResponse.text();
@@ -2702,11 +2722,15 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("min-height: 0");
     expect(css).toContain(".view-switch");
     expect(css).toContain(".history-summary");
+    expect(css).toContain(".history-load-chip");
     expect(css).toContain(".seg-tabs");
     expect(css).toContain(".seg-input");
     expect(css).toContain(".seg-panel");
+    expect(css).toContain("overflow-wrap: anywhere");
     expect(css).toContain(".activity-columns");
     expect(css).toContain(".muscle-layout");
+    expect(css).toContain("body.coach-open .activity-columns");
+    expect(css).toContain("body.coach-open .muscle-layout");
     expect(css).toContain(".history-activity");
     expect(css).toContain(".trend-chart");
     expect(css).toContain(".trend-picker");
@@ -2773,8 +2797,9 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('data-month="2026-11"');
     expect(html).toContain('data-day="2026-11-06"');
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
-    // The i18n bootstrap, the coach bubble, notifications, the account menu, the calendar wiring and the muscle attention badge.
-    expect(scripts).toHaveLength(6);
+    // The i18n bootstrap, the coach bubble, notifications, the account menu, the calendar wiring, the muscle attention badge
+    // and the privacy-safe UI event hook.
+    expect(scripts).toHaveLength(7);
     for (const script of scripts) expect(() => new Function(script[1] ?? "")).not.toThrow();
   });
 
@@ -3269,10 +3294,13 @@ describe("coach states page", () => {
     expect(html).toContain("Coaching states");
     expect(html).toContain("Active states");
     // The page is grouped into Current / Set / History so the write and log jobs stop stretching it.
-    expect(html).toContain('class="seg-tabs coach-states-tabs"');
-    expect(html).toContain('id="coach-states-tab-current" checked');
-    expect(html).toContain('id="coach-states-tab-set"');
-    expect(html).toContain('id="coach-states-tab-history"');
+    expect(html).toContain('class="seg-tabs coach-states-tabs" role="radiogroup"');
+    expect(html).toContain('id="coach-states-tab-current" value="current" data-track="page-tab" checked');
+    expect(html).toContain('id="coach-states-tab-set" value="set" data-track="page-tab"');
+    expect(html).toContain('id="coach-states-tab-history" value="history" data-track="page-tab"');
+    expect(html).toContain('id="state-form-card"');
+    expect(html).toContain('data-track="states-set"');
+    expect(html).toContain('href="/coach-states?tab=set#state-form-card"');
     expect(html).toContain('data-seg-panel="current"');
     expect(html).toContain('data-seg-panel="set"');
     expect(html).toContain('data-seg-panel="history"');
@@ -3292,6 +3320,10 @@ describe("coach states page", () => {
     expect(html).toContain("days, starting today");
     expect(html).toContain("Choose a state...");
     expect(html).toContain("never lock your calendar");
+    // The head action and a shared link land on the Set panel, not just the tab strip.
+    const setTab = await (await fetch(`${base}/coach-states?tab=set`, { headers: { cookie } })).text();
+    expect(setTab).toContain('id="coach-states-tab-set" value="set" data-track="page-tab" checked');
+    expect(setTab).not.toContain('id="coach-states-tab-current" value="current" data-track="page-tab" checked');
     expect(html).toContain("Not medical advice");
     expect(html).toContain("Recent state history");
     expect(html).toContain("Travel");

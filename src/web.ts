@@ -1760,6 +1760,33 @@ function renderMuscleBadgeScript(): string {
   </script>`;
 }
 
+/**
+ * Privacy-safe UI event hook. Components mark the events that matter with `data-track`; this dispatches a
+ * `poc3:track` CustomEvent on window. It never sends data over the network — a host that wants analytics listens for
+ * the event and applies its own consent and retention rules.
+ */
+function renderTrackScript(): string {
+  return `<script>
+  (() => {
+    const emit = (el) => {
+      const name = el.getAttribute('data-track');
+      if (!name) return;
+      const value = el.getAttribute('data-track-value') || (el instanceof HTMLInputElement ? el.value : '');
+      window.dispatchEvent(new CustomEvent('poc3:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
+    };
+    document.addEventListener('click', (event) => {
+      const el = event.target instanceof Element ? event.target.closest('[data-track]') : null;
+      // Inputs emit on change; a label click would otherwise count the same choice twice.
+      if (el !== null && !(el instanceof HTMLInputElement)) emit(el);
+    });
+    document.addEventListener('change', (event) => {
+      const el = event.target;
+      if (el instanceof Element && el.matches('[data-track]')) emit(el);
+    });
+  })();
+  </script>`;
+}
+
 function renderGarminModal(savedKey: GarminKey | undefined, next: string, keyError: string | null, tx: Translator): string {
   const replacing = savedKey !== undefined;
   return `<div class="modal" id="garmin-modal" hidden>
@@ -1961,18 +1988,19 @@ function layout(
   const localeTag = escapeHtml(tx.locale);
   const dir = tx.dir;
   const i18nScript = clientI18nScript(tx);
+  const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=27"></head>
-  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}</body></html>`;
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=28"></head>
+  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
 /** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
 function renderChatBubble(tx: Translator): string {
   const E = escapeHtml;
   return `<aside class="coach-dock" aria-label="${E(tx.t("coach.title"))}">
-  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
+  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel" data-track="coach-open" data-track-value="launcher">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
   <section id="coach-panel" hidden role="region" aria-label="${E(tx.t("coach.title"))}">
-    <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}">−</button></div></header>
+    <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}" data-track="coach-close" data-track-value="close">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}" data-track="coach-close" data-track-value="minimize">−</button></div></header>
     <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
     <div class="coach-tab-panel" id="coach-tabpanel-chat" role="tabpanel" aria-labelledby="coach-tab-chat" data-coach-panel="chat">
       <div id="coach-log" role="log" aria-live="polite"></div>
@@ -2042,9 +2070,14 @@ function renderChatBubble(tx: Translator): string {
       setCount('changes', 0, tr('changesBadgeTitle', 'new coach changes'));
     };
     let activeTab = 'chat';
+    const track = (name, value) => {
+      window.dispatchEvent(new CustomEvent('poc3:track', { detail: { name: name, value: value, page: document.body.dataset.pageContext || '' } }));
+    };
     const setTab = (name, options) => {
       const next = tabPanels.some((tabPanel) => tabPanel.dataset.coachPanel === name) ? name : 'chat';
+      const changed = next !== activeTab;
       activeTab = next;
+      if (changed) track('coach-tab', next);
       if (next === 'changes') markChangesSeen();
       for (const tabPanel of tabPanels) tabPanel.hidden = tabPanel.dataset.coachPanel !== next;
       for (const tab of tabs) {
@@ -3321,7 +3354,7 @@ function renderChatBubble(tx: Translator): string {
       if (!peek.hidden) { closeActivityPeek(); return; }
       if (!monthPicker.hidden) { closeMonthPicker(); return; }
       if (!dayMenu.hidden) { closeDayMenu(); return; }
-      if (!panel.hidden) minimizePanel();
+      if (!panel.hidden) { track('coach-close', 'escape'); minimizePanel(); }
     });
     window.addEventListener('resize', () => {
       if (!peek.hidden && peekTrigger !== null) positionPeek(peekTrigger);
@@ -3378,6 +3411,26 @@ function renderChatBubble(tx: Translator): string {
     });
     input.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); form.requestSubmit(); }
+    });
+    // Page segmented controls are URL-addressable: the server reads ?tab=..., and this keeps the URL in sync on
+    // change and restores the checked segment on back/forward. The radios stay the no-JS path.
+    for (const group of document.querySelectorAll('.seg-tabs')) {
+      for (const input of group.querySelectorAll('.seg-input')) {
+        input.addEventListener('change', () => {
+          if (!input.checked) return;
+          const url = new URL(location.href);
+          url.searchParams.set('tab', input.value);
+          window.history.pushState({ tab: input.value }, '', url);
+        });
+      }
+    }
+    window.addEventListener('popstate', () => {
+      const tab = new URL(location.href).searchParams.get('tab');
+      for (const group of document.querySelectorAll('.seg-tabs')) {
+        const inputs = [...group.querySelectorAll('.seg-input')];
+        const match = inputs.find((input) => input.value === tab) ?? inputs[0];
+        if (match !== undefined) match.checked = true;
+      }
     });
   })();
   </script>`;
@@ -3859,10 +3912,12 @@ export function createWeb(options: WebOptions): WebApp {
           const nowIso = now();
           const states = options.store.getActiveCoachStates(user.userId, nowIso);
           const history = options.store.listCoachStates(user.userId, 100);
+          const tabParam = url.searchParams.get("tab");
+          const selectedTab = tabParam === "set" || tabParam === "history" ? tabParam : "current";
           sendHtml(
             response,
             200,
-            renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout: pageLayout }, tx),
+            renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout: pageLayout }, tx, selectedTab),
           );
           return;
         }
@@ -4662,7 +4717,7 @@ export function createWeb(options: WebOptions): WebApp {
             : "";
           const loadSignalLabel = tx.t(`history.load.signal.${load.signal}` as const);
           const loadNote = `${tx.t(`history.load.note.${load.signal}` as const)}${load.reportEffort ? ` ${tx.t("history.load.reportedEffort")}` : ""}`;
-          loadCard = `<section class="card load-card"><div class="load-head"><div><p class="eyebrow">${escapeHtml(tx.t("history.loadEyebrow"))}</p><h2>${escapeHtml(tx.t("history.loadTitle"))}</h2></div><span class="load-chip ${load.signal}">${escapeHtml(loadSignalLabel)}</span></div>${warningLine}${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}${hardEasyNote}<p class="muted small">${escapeHtml(loadNote)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">${escapeHtml(tx.t("history.load.reviewWeek"))}</button>${rampChip}</div></section>`;
+          loadCard = `<section class="card load-card" id="load-card"><div class="load-head"><div><p class="eyebrow">${escapeHtml(tx.t("history.loadEyebrow"))}</p><h2>${escapeHtml(tx.t("history.loadTitle"))}</h2></div><span class="load-chip ${load.signal}">${escapeHtml(loadSignalLabel)}</span></div>${warningLine}${loadStats.length === 0 ? "" : `<div class="load-grid">${loadStats}</div>`}${intensityLine}${hardEasyNote}<p class="muted small">${escapeHtml(loadNote)}</p>${acwrNote}<div class="load-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(prompt)}" data-coach-intent="${escapeHtml(JSON.stringify(rampIntent))}">${escapeHtml(tx.t("history.load.reviewWeek"))}</button>${rampChip}</div></section>`;
         }
 
         let bestEffortsCard = "";
@@ -4685,10 +4740,19 @@ export function createWeb(options: WebOptions): WebApp {
           ? tx.t("history.noImport")
           : tx.t("history.lastImport", { time: localDateTime(lastImport, user.timezone) });
 
+        const selectedTab = url.searchParams.get("tab") === "review" ? "review" : "period";
+        const periodChecked = selectedTab === "period" ? " checked" : "";
+        const reviewChecked = selectedTab === "review" ? " checked" : "";
+        const loadSignalText = load === null ? "" : tx.t(`history.load.signal.${load.signal}` as const);
+        const loadChip = load === null
+          ? ""
+          : `<a class="chip history-load-chip" data-track="history-load" data-track-value="review" href="${historyHref(view, periodValue)}&tab=review#load-card" title="${escapeHtml(tx.t("history.loadChipTitle"))}">${escapeHtml(load.hasLoad ? tx.t("history.loadChip", { load: load.weekLoad, signal: loadSignalText }) : tx.t("history.loadChipNoData"))}</a>`;
+        const loadLine = loadChip === "" ? "" : `<p class="muted small history-load-line">${loadChip}</p>`;
         // The page used to open on summaries and bury the period rows. The tab strip puts the period first — days,
-        // weeks or months depending on the view — and keeps load/trend/review one tap away.
+        // weeks or months depending on the view — and keeps load/trend/review one tap away. The tab is in the URL
+        // (`?tab=review`) so the load chip, a reload and back/forward all land on the same panel.
         const periodTabLabel = view === "week" ? tx.t("history.tabDays") : view === "month" ? tx.t("history.tabWeeks") : tx.t("history.tabMonths");
-        const historyTabs = `<div class="seg-tabs history-tabs" role="group" aria-label="${escapeHtml(tx.t("history.tabsAria"))}"><input class="seg-input" type="radio" name="history-tab" id="history-tab-period" checked><input class="seg-input" type="radio" name="history-tab" id="history-tab-review"><div class="seg-labels"><label class="seg-label" for="history-tab-period">${escapeHtml(periodTabLabel)}</label><label class="seg-label" for="history-tab-review">${escapeHtml(tx.t("history.tabReview"))}</label></div><div class="seg-panels"><div class="seg-panel" data-seg-panel="period">${noActivities}${content}</div><div class="seg-panel" data-seg-panel="review">${manualReviewCard}${reviewCard}${loadCard}${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}${bestEffortsCard}</div></div></div>`;
+        const historyTabs = `<div class="seg-tabs history-tabs" role="radiogroup" aria-label="${escapeHtml(tx.t("history.tabsAria"))}"><input class="seg-input" type="radio" name="history-tab" id="history-tab-period" value="period" data-track="page-tab"${periodChecked}><input class="seg-input" type="radio" name="history-tab" id="history-tab-review" value="review" data-track="page-tab"${reviewChecked}><div class="seg-labels"><label class="seg-label" for="history-tab-period">${escapeHtml(periodTabLabel)}</label><label class="seg-label" for="history-tab-review">${escapeHtml(tx.t("history.tabReview"))}</label></div><div class="seg-panels"><div class="seg-panel" data-seg-panel="period">${noActivities}${content}</div><div class="seg-panel" data-seg-panel="review">${manualReviewCard}${reviewCard}${loadCard}${trendSection(activities, volumeBuckets, consistency, periodLabel, volumeTitle, volumeAria, consistencyUnit, tx)}${bestEffortsCard}</div></div></div>`;
         const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("history.eyebrow"))}</p><h1>${escapeHtml(tx.t("history.heading"))}</h1><p class="muted">${escapeHtml(tx.t("history.intro"))}</p></header>
           ${periodBar}
           ${garminPanel}
@@ -4699,6 +4763,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="stat"><strong>${longest > 0 ? `${longest} km` : "—"}</strong><span>${escapeHtml(tx.t("history.statLongest"))}</span></div>
           </section>
           <p class="muted small">${escapeHtml(lastImportText)}</p>
+          ${loadLine}
           ${historyTabs}`;
         sendHtml(response, 200, pageLayout(tx.t("history.eyebrow"), body, user, "history", flash));
         return;
@@ -4941,7 +5006,7 @@ export function createWeb(options: WebOptions): WebApp {
         const otherSessions = unmatched.length === 0
           ? ""
           : `<section class="card"><h2>${escapeHtml(tx.t("activity.otherPlanned"))}</h2><p class="muted small">${escapeHtml(tx.t("activity.otherPlannedNote"))}</p><p class="history-plan">${unmatched.map(sessionChip).join(" ")}</p></section>`;
-        const headActions = `<div class="head-actions" aria-label="${escapeHtml(tx.t("activity.actionsAria"))}"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a></div>`;
+        const headActions = `<div class="head-actions" aria-label="${escapeHtml(tx.t("activity.actionsAria"))}"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a><a class="chip" data-track="activity-muscles" data-track-value="muscles" href="#muscles-worked">${escapeHtml(tx.t("activity.jumpMuscles"))}</a></div>`;
         const body = `<header class="page-head"><p class="eyebrow"><a href="${weekHref}">← ${escapeHtml(tx.t("nav.log"))}</a> · ${escapeHtml(tx.t("activity.title"))}</p><h1>${escapeHtml(activity.title)}</h1><p class="muted"><a href="/day/${escapeHtml(activity.day)}">${escapeHtml(formatDayLabel(activity.day, tx.date))}</a> · <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(activitySourceLabel(activity, tx))}</span></p>${headActions}</header>
           <section class="history-summary detail-summary">
             <div class="stat"><strong>${activity.distanceKm === null ? "—" : `${activity.distanceKm} km`}</strong><span>${escapeHtml(tx.t("history.statDistance"))}</span></div>

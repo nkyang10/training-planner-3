@@ -198,6 +198,7 @@ export function renderCoachStates(
   error: string | undefined,
   deps: CoachStateRenderDeps,
   tx: Translator = defaultTranslator,
+  selectedTab: "current" | "set" | "history" = "current",
 ): string {
   const active = sortCoachStates(states.filter((state) => state.status === "active" && state.key !== "no_key"));
   const observing = sortCoachStates(states.filter((state) => state.status === "observing" && state.key !== "no_key"));
@@ -237,8 +238,11 @@ export function renderCoachStates(
           .join("")}</ul>`;
   const resolvedCount = resolved.length;
   const errorMessage = stateErrorMessage(error, tx);
+  const currentChecked = selectedTab === "current" ? " checked" : "";
+  const setChecked = selectedTab === "set" ? " checked" : "";
+  const historyChecked = selectedTab === "history" ? " checked" : "";
   const currentPanel = `<div class="seg-panel" data-seg-panel="current"><section class="card"><h2>${tx.t("coachStates.activeHeading")}</h2><form method="post" action="/coach-states/refresh" class="state-refresh"><button class="btn ghost" type="submit" title="${tx.t("coachStates.refreshTitle")}">${tx.t("coachStates.refreshButton")}</button></form>${activeHtml}</section>${observingHtml}</div>`;
-  const setPanel = `<div class="seg-panel" data-seg-panel="set"><section class="card"><h2>${tx.t("coachStates.setHeading")}</h2><p class="muted small">${tx.t("coachStates.setBody")}</p>
+  const setPanel = `<div class="seg-panel" data-seg-panel="set"><section class="card" id="state-form-card"><h2>${tx.t("coachStates.setHeading")}</h2><p class="muted small">${tx.t("coachStates.setBody")}</p>
       <form method="post" action="/coach-states" class="state-form">
         <label for="state-key">${tx.t("coachStates.fieldState")}</label><select id="state-key" name="key" required><option value="" disabled selected>${tx.t("coachStates.chooseState")}</option>${stateOptions}</select>
         <label for="state-ttl">${tx.t("coachStates.fieldTtl")}</label><div class="state-ttl-row"><input id="state-ttl" name="ttlDays" type="number" min="1" max="365" value="7" required aria-label="${tx.t("coachStates.ttlAria")}"> <span class="muted small">${tx.t("coachStates.ttlSuffix")}</span></div>
@@ -249,11 +253,11 @@ export function renderCoachStates(
     </section></div>`;
   const historyPanel = `<div class="seg-panel" data-seg-panel="history"><section class="card"><h2>${tx.t("coachStates.historyHeading")}</h2>${historyHtml}</section></div>`;
   // The page is the management surface behind the dock's compact States tab: current first, then the two write/log
-  // jobs. Radio tabs keep it working without script.
-  const tabs = `<div class="seg-tabs coach-states-tabs" role="group" aria-label="${escapeHtml(tx.t("coachStates.tabsAria"))}"><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-current" checked><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-set"><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-history"><div class="seg-labels"><label class="seg-label" for="coach-states-tab-current">${escapeHtml(tx.t("coachStates.tabCurrent"))}</label><label class="seg-label" for="coach-states-tab-set">${escapeHtml(tx.t("coachStates.tabSet"))}</label><label class="seg-label" for="coach-states-tab-history">${escapeHtml(tx.t("coachStates.tabHistory"))}</label></div><div class="seg-panels">${currentPanel}${setPanel}${historyPanel}</div></div>`;
+  // jobs. Native radios keep it working without script; the URL (`?tab=set`) and the head action deep-link to a panel.
+  const tabs = `<div class="seg-tabs coach-states-tabs" role="radiogroup" aria-label="${escapeHtml(tx.t("coachStates.tabsAria"))}"><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-current" value="current" data-track="page-tab"${currentChecked}><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-set" value="set" data-track="page-tab"${setChecked}><input class="seg-input" type="radio" name="coach-states-tab" id="coach-states-tab-history" value="history" data-track="page-tab"${historyChecked}><div class="seg-labels"><label class="seg-label" for="coach-states-tab-current">${escapeHtml(tx.t("coachStates.tabCurrent"))}</label><label class="seg-label" for="coach-states-tab-set">${escapeHtml(tx.t("coachStates.tabSet"))}</label><label class="seg-label" for="coach-states-tab-history">${escapeHtml(tx.t("coachStates.tabHistory"))}</label></div><div class="seg-panels">${currentPanel}${setPanel}${historyPanel}</div></div>`;
   return deps.layout(
     tx.t("account.coachStates"),
-    `<section class="page-head"><p class="eyebrow"><a href="/profile">${tx.t("coachStates.backToProfile")}</a></p><h1>${tx.t("account.coachStates")}</h1><p class="muted">${tx.t("coachStates.intro")}</p><p class="muted small">${tx.t("coachStates.summary", { active: active.length, proposed: observing.length, resolved: resolvedCount })}</p>${errorBanner(errorMessage)}</section>
+    `<section class="page-head"><p class="eyebrow"><a href="/profile">${tx.t("coachStates.backToProfile")}</a></p><h1>${tx.t("account.coachStates")}</h1><p class="muted">${tx.t("coachStates.intro")}</p><p class="muted small">${tx.t("coachStates.summary", { active: active.length, proposed: observing.length, resolved: resolvedCount })}</p><div class="head-actions"><a class="chip" data-track="states-set" data-track-value="set" href="/coach-states?tab=set#state-form-card">${escapeHtml(tx.t("coachStates.setAction"))}</a></div>${errorBanner(errorMessage)}</section>
     ${setupHtml}
     ${tabs}`,
     user,

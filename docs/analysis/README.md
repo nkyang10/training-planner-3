@@ -34,8 +34,9 @@ are the evidence behind them.
 | [10-implementation-record.md](10-implementation-record.md) | What was actually built for the consultant-friend coach and the honest load signal, in which files, with what verification? | the three workstream reports + this session's integration log | 224 |
 | [11-user-side-review.md](11-user-side-review.md) | What does a first-time runner actually experience on the live product - does the consultant-friend coach behave as promised, and what still confuses a new user? | live journey probe with verbatim coach turns + five vision-model first-impression critiques of the deployed screens (PR-16..PR-20, US-1..US-8) | 99 |
 | [12-improvement-record.md](12-improvement-record.md) | What was built from the user-side findings - the coach that finally sees reported effort, the plan_stale gate, the copy pass - and how did the unspecced muscle feature end up shipped? | the improvement slice's workstream reports + the owner's ship decision + the 22/22 live verification | 81 |
-| [13-layout-review.md](13-layout-review.md) | What does each page's 排版 look like today, and how should the coach bubble regroup - tabs, side-by-side, or both? | headless-Chrome captures at 1280/1024/390 before and after + DOM probes (overlap, panel geometry, tab state, focus, inert) + the shipped dock, pass-2 and P0 accessibility verification (516/516) | 314 |
-| [14-uiux-layout-research.md](14-uiux-layout-research.md) | What does modern UI/UX research and design-system guidance say about tabs, side-by-side panes, overlays and progressive disclosure - and how does POC3's layout grammar measure up? | 43 cited sources: W3C WCAG 2.2/APG, Material 3, Apple HIG, Fluent 2, Carbon, GOV.UK, NN/g, Laws of UX, HAX and PAIR; heuristic audit of the rendered pages, measurements and the P0 implementation note | 602 |
+| [13-layout-review.md](13-layout-review.md) | What does each page's 排版 look like today, and how should the coach bubble regroup - tabs, side-by-side, or both? | headless-Chrome captures at 1280/1024/390/320 before and after + DOM probes (overlap, panel geometry, tab state, focus, inert, URL tabs, analytics events) + the shipped dock, pass-2, P0 accessibility and P1/P2 verification (516/516) | 359 |
+| [14-uiux-layout-research.md](14-uiux-layout-research.md) | What does modern UI/UX research and design-system guidance say about tabs, side-by-side panes, overlays and progressive disclosure - and how does POC3's layout grammar measure up? | 43 cited sources: W3C WCAG 2.2/APG, Material 3, Apple HIG, Fluent 2, Carbon, GOV.UK, NN/g, Laws of UX, HAX and PAIR; heuristic audit of the rendered pages, measurements, the P0/P1/P2 implementation notes and the evaluation plan | 627 |
+| [15-coach-interaction-llm-plan.md](15-coach-interaction-llm-plan.md) | How does the coach talk and what is it fed - and how do we get peer-voice short replies, an append-only conversation the prefill cache can actually reuse, an explained re-prefill, and a silent per-runner preference profile? | owner directive 2026-11-20 (the four asks) + `src/coach.ts`/`gateway.ts`/`directives.ts`/`web.ts` anchors + a byte-level two-turn prompt probe on a mid-size synthetic runner (CI-01..CI-09, LL-1..LL-6, D19-D22); plan only, nothing implemented | 328 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -49,7 +50,8 @@ valid UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chi
 matrix's yes/partial/no glyphs (audited byte-by-byte in 06: the earlier "lone surrogate" alarm was a UTF-16 reporting
 artefact, not file corruption); 08 and 11 quote the calendar's own UI glyphs (the run checkmark and the workout
 diamond) in their findings tables; 09's tone book quotes both a lecturing and an advisory Traditional Chinese phrase
-pair; and 14 uses typographic dashes and quotes around its 43 cited sources. No document contains mojibake or
+pair; and 14 uses typographic dashes and quotes around its 43 cited sources. 15 is ASCII except the sample
+zh-HK loading-line copy in section 4.6. No document contains mojibake or
 replacement characters.
 
 ## ID conventions
@@ -78,9 +80,12 @@ replacement characters.
 | `D1-D7` | Owner decisions (00 section 9) | 00 |
 | `D8-D14` | Owner decisions, continuing the numbering | 08 |
 | `D15-D18` | Owner decisions from the coach-relationship directive | 09 |
+| `D19-D22` | Owner decisions from the coach-interaction LLM plan (reply cap, language persistence, snapshot persistence, preference write scope) | 15 |
 | `QW-1..QW-8` | Sub-one-day quick wins | 05 |
 | `UX-01..UX-30` | Measured UI/UX design-review findings, P0-P3 | 10 |
 | `F-01..F-22` | Reviewer findings | 06 |
+| `CI-01..CI-09` | Coach-interaction findings from the LLM-architect review (prompt rebuild, cache busts, reply voice, loading line, language heuristic, silent profile, what already works, snapshot freshness) | 15 |
+| `LL-1..LL-6` | Coach-interaction implementation slices (style contract, prompt restructure, epochs/snapshots, loading line, silent preferences, memory hygiene) | 15 |
 
 Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numbering is independent. Cite them as
 "02 S17" and "03 S17" to avoid ambiguity.

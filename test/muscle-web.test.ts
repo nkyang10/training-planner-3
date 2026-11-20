@@ -124,6 +124,7 @@ describe("the muscle tab page", () => {
     expect(response.status).toBe(200);
     const html = await response.text();
     expect(html).toContain("Muscle check-in");
+    expect(html).toContain('data-track="muscle-checkin"');
     expect(html).toContain('class="view-switch" data-active="muscle"');
     expect(html).toContain('href="/muscle" aria-current="page"');
     // From 1024px the status/readings rail sits beside the check-in figure; DOM order keeps status → form → readings

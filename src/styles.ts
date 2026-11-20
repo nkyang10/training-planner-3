@@ -129,6 +129,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .history-summary .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; box-shadow: var(--shadow); }
 .history-summary strong { display: block; font-size: 20px; letter-spacing: -.02em; }
 .history-summary span { display: block; margin-top: 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.history-load-line { margin: -4px 0 10px; }
+.history-load-chip { text-decoration: none; font-weight: 800; }
 .range-switch { display: flex; flex-wrap: wrap; gap: 6px; }
 .range-switch .chip { text-decoration: none; background: #fff; }
 .range-switch .chip.active { border-color: var(--ember); color: var(--ember-text); }
@@ -239,6 +241,16 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
   .activity-col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
   .activity-col > .card { margin-bottom: 0; }
 }
+/* The dock narrows the content area by 340px; at 1024–1199px with the coach open the two columns would be ~330px
+   each, so stack them. The tablet keeps side-by-side when the coach is closed. */
+@media (min-width: 1024px) and (max-width: 1199px) {
+  body.coach-open .activity-columns { display: block; }
+  body.coach-open .activity-col { display: block; }
+  body.coach-open .activity-col > .card { margin-bottom: 18px; }
+  body.coach-open .muscle-layout { display: block; }
+  body.coach-open .muscle-layout > div { display: block; }
+  body.coach-open .muscle-layout > div > .card { margin-bottom: 16px; }
+}
 @media (max-width: 640px) {
   .trend-grid { grid-template-columns: 1fr; }
   .plan-compare-grid { grid-template-columns: 1fr; }
@@ -254,8 +266,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
    at a time; with CSS disabled every panel is visible, so nothing is lost without script or :has support. */
 .seg-tabs { margin: 2px 0 14px; }
 .seg-tabs > .seg-input { position: absolute; inline-size: 1px; block-size: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.seg-labels { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 3px; background: var(--wash); border: 1px solid var(--line); border-radius: 999px; }
-.seg-label { padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 800; color: var(--muted); cursor: pointer; user-select: none; }
+.seg-labels { display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%; gap: 4px; padding: 3px; background: var(--wash); border: 1px solid var(--line); border-radius: 999px; }
+.seg-label { flex: 0 1 auto; min-width: 0; padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 800; color: var(--muted); cursor: pointer; user-select: none; max-width: 100%; overflow-wrap: anywhere; }
 .seg-label:hover { color: var(--ink); }
 .seg-panel { display: none; }
 .seg-tabs > .seg-input:nth-of-type(1):checked ~ .seg-labels > .seg-label:nth-child(1),
