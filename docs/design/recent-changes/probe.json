@@ -1,0 +1,5972 @@
+[
+  {
+    "label": "desktop-en",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 2069,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1945.8
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1945.8,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1153.2,
+      "y": 1809,
+      "w": 108.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1051,
+      "w": 1044,
+      "h": 864.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 92
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1092
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 975
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 975
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1173.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1176.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1207.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1237.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1248.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1294.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 1037.5,
+          "y": 1308.8,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1339.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1369.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1380.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1426.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1440.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1471.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1501.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1512.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1558.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1572.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1603.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1633.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1644.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1690.8,
+          "w": 1002,
+          "h": 204
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 139,
+          "y": 1770.8,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1800.8,
+          "w": 1002,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1847.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1858.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "desktop-en",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 2069,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1945.8
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1945.8,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1153.2,
+      "y": 1809,
+      "w": 108.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1051,
+      "w": 1044,
+      "h": 864.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 92
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1092
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 975
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 975
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1173.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1176.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1207.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1237.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1248.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1294.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 1037.5,
+          "y": 1308.8,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1339.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1369.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1380.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1426.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1440.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1471.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1501.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1512.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1558.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1572.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1603.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1633.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1644.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1690.8,
+          "w": 1002,
+          "h": 204
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 139,
+          "y": 1770.8,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1800.8,
+          "w": 1002,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1847.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1858.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "focus-undo",
+    "focus": {
+      "text": "Undo this change",
+      "focusVisible": true,
+      "outline": "rgb(16, 16, 16) auto 1px",
+      "outlineWidth": "1px",
+      "outlineStyle": "auto",
+      "outlineColor": "rgb(16, 16, 16)",
+      "outlineOffset": "0px",
+      "boxShadow": "none",
+      "borderColor": "rgb(240, 220, 203)"
+    }
+  },
+  {
+    "label": "ax-buttons",
+    "total": 30,
+    "undoNamed": 5,
+    "discussNamed": 5,
+    "names": [
+      "Talk to the coach",
+      "Notifications",
+      "Ada Runner",
+      "Ask coach",
+      "English",
+      "Planned session: Easy, 恢復輕鬆跑 (5 km). Show session details",
+      "Recorded run: 恢復跑 (5.1 km). Show run details",
+      "Planned session: Cross-training, 交叉訓練 (40 min). Show session details",
+      "Planned session: Easy, 輕鬆跑 (8 km). Show session details",
+      "Recorded run: 輕鬆跑 (8.2 km). Show run details",
+      "Planned session: Tempo, 節奏跑 3×8 分鐘 (11 km). Show session details",
+      "Recorded run: 節奏跑 (11.3 km). Show run details",
+      "Planned session: Cross-training, 大腿內側活動度與啟動 20 分鐘 (20 min). Show session details",
+      "Planned session: Long run, 長課 15 公里（含節奏段 2 組） (15 km). Show session details",
+      "Planned session: Easy, 輕鬆跑 6 公里 (6 km). Show session details",
+      "Planned session: Cross-training, 大腿內側活動度與啟動 15 分鐘 (15 min). Show session details",
+      "Planned session: Rest, 恢復日. Show session details",
+      "Planned session: Intervals, 200m 反覆 20 支 (8 km). Show session details",
+      "Planned session: Tempo, 節奏跑 2×15 分鐘 (12 km). Show session details",
+      "Planned session: Long run, 長課 22 公里 (22 km). Show session details",
+      "Undo this change",
+      "Discuss this change",
+      "Undo this change",
+      "Discuss this change",
+      "Undo this change",
+      "Discuss this change",
+      "Undo this change",
+      "Discuss this change",
+      "Undo this change",
+      "Discuss this change"
+    ]
+  },
+  {
+    "label": "desktop-zh",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "zh-HK",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 2069,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1945.8
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1945.8,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1167.2,
+      "y": 1809,
+      "w": 94.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1051,
+      "w": 1044,
+      "h": 864.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "近期變更",
+    "footnote": "每個教練批次按最新排列。復原本身亦會被記錄為一項變更。",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "你的計劃",
+        "y": 92
+      },
+      {
+        "level": "H2",
+        "text": "近期變更",
+        "y": 1092
+      },
+      {
+        "level": "H2",
+        "text": "連接 Garmin",
+        "y": 975
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 975
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1173.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1176.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "新增 大腿內側活動度與啟動 20 分鐘 · 新增 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 41,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1207.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1237.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1248.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1294.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 1 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1308.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 長課 15 公里（含節奏段 2 組） (11月22日 → 11月22日)",
+        "detailChars": 40,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1339.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1369.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1380.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1426.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1440.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 200m 反覆 20 支 (11月26日 → 11月26日) · 已移動 長課 15 公里（含節奏段 2 組） (11月22日 → 11月22日)",
+        "detailChars": 77,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1471.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1501.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1512.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1558.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1572.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 200m 反覆 15 支 (11月26日 → 11月26日) · 已移動 長課 22 公里 (11月29日 → 11月29日)",
+        "detailChars": 67,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1603.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1633.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1644.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1690.8,
+          "w": 1002,
+          "h": 204
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月16日 · 14 項變更",
+        "metaRect": {
+          "x": 139,
+          "y": 1770.8,
+          "w": 120.6,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "新增 恢復輕鬆跑 · 新增 交叉訓練 · 新增 輕鬆跑 · 新增 節奏跑 3×8 分鐘 · 新增 長課 15 公里（含節奏段 2 組） · 新增 輕鬆跑 6 公里 · 新增 恢復日 · 新增 200m 反覆 20 支 · 新增 節奏跑 2×15 分鐘 · 新增 長課 22 公里 · 新增 間歇 5×1000 公尺 · 新增 間歇 6×800 公尺 · 新增 長課 22 公里 · 新增 台北全馬 2026",
+        "detailChars": 203,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1800.8,
+          "w": 1002,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1847.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1858.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "desktop-zh",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "zh-HK",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 2069,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1945.8
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1945.8,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1167.2,
+      "y": 1809,
+      "w": 94.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1051,
+      "w": 1044,
+      "h": 864.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "近期變更",
+    "footnote": "每個教練批次按最新排列。復原本身亦會被記錄為一項變更。",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "你的計劃",
+        "y": 92
+      },
+      {
+        "level": "H2",
+        "text": "近期變更",
+        "y": 1092
+      },
+      {
+        "level": "H2",
+        "text": "連接 Garmin",
+        "y": 975
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 975
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1173.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1176.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "新增 大腿內側活動度與啟動 20 分鐘 · 新增 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 41,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1207.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1237.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1248.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1294.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 1 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1308.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 長課 15 公里（含節奏段 2 組） (11月22日 → 11月22日)",
+        "detailChars": 40,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1339.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1369.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1380.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1426.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1440.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 200m 反覆 20 支 (11月26日 → 11月26日) · 已移動 長課 15 公里（含節奏段 2 組） (11月22日 → 11月22日)",
+        "detailChars": 77,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1471.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1501.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1512.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1558.8,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月19日 · 2 項變更",
+        "metaRect": {
+          "x": 1027.5,
+          "y": 1572.8,
+          "w": 113.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "已移動 200m 反覆 15 支 (11月26日 → 11月26日) · 已移動 長課 22 公里 (11月29日 → 11月29日)",
+        "detailChars": 67,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1603.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1633.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1644.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1690.8,
+          "w": 1002,
+          "h": 204
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "11月16日 · 14 項變更",
+        "metaRect": {
+          "x": 139,
+          "y": 1770.8,
+          "w": 120.6,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "新增 恢復輕鬆跑 · 新增 交叉訓練 · 新增 輕鬆跑 · 新增 節奏跑 3×8 分鐘 · 新增 長課 15 公里（含節奏段 2 組） · 新增 輕鬆跑 6 公里 · 新增 恢復日 · 新增 200m 反覆 20 支 · 新增 節奏跑 2×15 分鐘 · 新增 長課 22 公里 · 新增 間歇 5×1000 公尺 · 新增 間歇 6×800 公尺 · 新增 長課 22 公里 · 新增 台北全馬 2026",
+        "detailChars": 203,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1800.8,
+          "w": 1002,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "復原此變更",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1847.8,
+              "w": 118,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "討論此變更",
+            "title": "與教練討論這次變更的內容。你的日曆不會被修改。",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 265,
+              "y": 1858.1,
+              "w": 80,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "dock-changes",
+    "panel": {
+      "x": 922,
+      "y": 84,
+      "w": 340,
+      "h": 800,
+      "hidden": false
+    },
+    "cards": [
+      {
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "meta": "Nov 19 · 2 sessions",
+        "entries": [
+          "Add 大腿內側活動度與啟動 20 分鐘 (Nov 21)",
+          "Add 大腿內側活動度與啟動 15 分鐘 (Nov 24)"
+        ],
+        "actions": [
+          "Undo this change",
+          "Discuss this change",
+          "Show on calendar"
+        ]
+      },
+      {
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "meta": "Nov 19 · 1 session",
+        "entries": [
+          "Update 長課 15 公里（含節奏段 2 組） (Nov 22)"
+        ],
+        "actions": [
+          "Undo this change",
+          "Discuss this change",
+          "Show on calendar"
+        ]
+      },
+      {
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "meta": "Nov 19 · 2 sessions",
+        "entries": [
+          "Update 200m 反覆 20 支 (Nov 26)",
+          "Update 長課 15 公里（含節奏段 2 組） (Nov 22)"
+        ],
+        "actions": [
+          "Undo this change",
+          "Discuss this change",
+          "Show on calendar"
+        ]
+      },
+      {
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "meta": "Nov 19 · 2 sessions",
+        "entries": [
+          "Update 200m 反覆 15 支 (Nov 26)",
+          "Update 長課 22 公里 (Nov 29)"
+        ],
+        "actions": [
+          "Undo this change",
+          "Discuss this change",
+          "Show on calendar"
+        ]
+      },
+      {
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "meta": "Nov 16 · 14 sessions",
+        "entries": [
+          "Add 恢復輕鬆跑 (Nov 17)",
+          "Add 交叉訓練 (Nov 18)",
+          "Add 輕鬆跑 (Nov 19)",
+          "Add 節奏跑 3×8 分鐘 (Nov 20)",
+          "Add 長課 15 公里（含節奏段 2 組） (Nov 22)",
+          "Add 輕鬆跑 6 公里 (Nov 23)",
+          "Add 恢復日 (Nov 25)",
+          "Add 200m 反覆 20 支 (Nov 26)",
+          "Add 節奏跑 2×15 分鐘 (Nov 28)",
+          "Add 長課 22 公里 (Nov 29)",
+          "Add 間歇 5×1000 公尺 (Dec 1)",
+          "Add 間歇 6×800 公尺 (Dec 3)",
+          "Add 長課 22 公里 (Dec 6)",
+          "Add 台北全馬 2026 (Dec 13)"
+        ],
+        "actions": [
+          "Undo this change",
+          "Discuss this change",
+          "Show on calendar"
+        ]
+      }
+    ]
+  },
+  {
+    "label": "discuss-open",
+    "panel": {
+      "x": 922,
+      "y": 84,
+      "w": 340,
+      "h": 800,
+      "hidden": false
+    },
+    "bubbles": [],
+    "input": ""
+  },
+  {
+    "label": "phone-en",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "dpr": 2
+    },
+    "documentHeight": 2598,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 0,
+      "y": 101,
+      "w": 390,
+      "h": 2415.9
+    },
+    "shell": {
+      "x": 0,
+      "y": 101,
+      "w": 390,
+      "h": 2415.9,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 277.2,
+      "y": 1768,
+      "w": 100.8,
+      "h": 44,
+      "display": "block"
+    },
+    "card": {
+      "x": 10,
+      "y": 1056.1,
+      "w": 370,
+      "h": 1382.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 117
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1097
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 980
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 980
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1195.9,
+          "w": 328,
+          "h": 193
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1264.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1294.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1341.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1352.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1398.9,
+          "w": 328,
+          "h": 183
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 2,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 31,
+          "y": 1457.9,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1487.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1534.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1545.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1591.9,
+          "w": 328,
+          "h": 204
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1671.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1701.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1748.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1759.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1805.9,
+          "w": 328,
+          "h": 204
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1885.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1915.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1962.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1973.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2019.9,
+          "w": 328,
+          "h": 398
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 8,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2225.9,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 6,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2255.9,
+          "w": 328,
+          "h": 102
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2370.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 2381.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "phone-en",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "dpr": 2
+    },
+    "documentHeight": 2598,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 0,
+      "y": 101,
+      "w": 390,
+      "h": 2415.9
+    },
+    "shell": {
+      "x": 0,
+      "y": 101,
+      "w": 390,
+      "h": 2415.9,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 277.2,
+      "y": 1768,
+      "w": 100.8,
+      "h": 44,
+      "display": "block"
+    },
+    "card": {
+      "x": 10,
+      "y": 1056.1,
+      "w": 370,
+      "h": 1382.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 117
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1097
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 980
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 980
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1195.9,
+          "w": 328,
+          "h": 193
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1264.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1294.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1341.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1352.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1398.9,
+          "w": 328,
+          "h": 183
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 2,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 31,
+          "y": 1457.9,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1487.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1534.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1545.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1591.9,
+          "w": 328,
+          "h": 204
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1671.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1701.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1748.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1759.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1805.9,
+          "w": 328,
+          "h": 204
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1885.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1915.9,
+          "w": 328,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1962.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 1973.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2019.9,
+          "w": 328,
+          "h": 398
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 8,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2225.9,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 6,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2255.9,
+          "w": 328,
+          "h": 102
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2370.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 213.4,
+              "y": 2381.2,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "fab-overlap-390",
+    "fab": {
+      "x": 277,
+      "y": 788,
+      "w": 101,
+      "h": 44
+    },
+    "buttons": [
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 784,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 213,
+          "y": 784,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 65,
+          "h": 23,
+          "pctOfButton": 51
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 784,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 213,
+          "y": 784,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 65,
+          "h": 23,
+          "pctOfButton": 51
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 784,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 213,
+          "y": 784,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 65,
+          "h": 23,
+          "pctOfButton": 51
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 784,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 213,
+          "y": 784,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 65,
+          "h": 23,
+          "pctOfButton": 51
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 784,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 213,
+          "y": 784,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 65,
+          "h": 23,
+          "pctOfButton": 51
+        }
+      }
+    ]
+  },
+  {
+    "label": "phone-320",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 320,
+      "h": 700,
+      "dpr": 2
+    },
+    "documentHeight": 3003,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 0,
+      "y": 117,
+      "w": 320,
+      "h": 2788.9
+    },
+    "shell": {
+      "x": 0,
+      "y": 117,
+      "w": 320,
+      "h": 2788.9,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 207.2,
+      "y": 1706,
+      "w": 100.8,
+      "h": 44,
+      "display": "block"
+    },
+    "card": {
+      "x": 10,
+      "y": 1138.1,
+      "w": 300,
+      "h": 1689.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 133
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1179
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 1062
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 1062
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1277.9,
+          "w": 258,
+          "h": 248.4
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 4,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1367.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1397.9,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1444.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 1499.9,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1536.3,
+          "w": 258,
+          "h": 217.4
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 2,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 31,
+          "y": 1595.3,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1625.3,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1672.3,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 1727.3,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1763.7,
+          "w": 258,
+          "h": 276.4
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 4,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1864.7,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 3,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1894.7,
+          "w": 258,
+          "h": 51
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1958.7,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2013.7,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2050.1,
+          "w": 258,
+          "h": 238.4
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2130.1,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2160.1,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2207.1,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2262.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2298.5,
+          "w": 258,
+          "h": 508.4
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 10,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2546.5,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 7,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2576.5,
+          "w": 258,
+          "h": 136
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2725.5,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2780.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "phone-320",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "locale": "en",
+    "viewport": {
+      "w": 320,
+      "h": 700,
+      "dpr": 2
+    },
+    "documentHeight": 3003,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 0,
+      "y": 117,
+      "w": 320,
+      "h": 2788.9
+    },
+    "shell": {
+      "x": 0,
+      "y": 117,
+      "w": 320,
+      "h": 2788.9,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 207.2,
+      "y": 1706,
+      "w": 100.8,
+      "h": 44,
+      "display": "block"
+    },
+    "card": {
+      "x": 10,
+      "y": 1138.1,
+      "w": 300,
+      "h": 1689.8,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 133
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1179
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 1062
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 1062
+      }
+    ],
+    "buttonsInCard": 10,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1277.9,
+          "w": 258,
+          "h": 248.4
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 4,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1367.9,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1397.9,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1444.9,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 1499.9,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1536.3,
+          "w": 258,
+          "h": 217.4
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 2,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 31,
+          "y": 1595.3,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1625.3,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1672.3,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 1727.3,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 1763.7,
+          "w": 258,
+          "h": 276.4
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 4,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 1864.7,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 3,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 1894.7,
+          "w": 258,
+          "h": 51
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 1958.7,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2013.7,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2050.1,
+          "w": 258,
+          "h": 238.4
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 3,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2130.1,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 2,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2160.1,
+          "w": 258,
+          "h": 34
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2207.1,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2262.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 31,
+          "y": 2298.5,
+          "w": 258,
+          "h": 508.4
+        },
+        "summary": "add \"恢復輕鬆跑\" on 2026-11-17; add \"交叉訓練\" on 2026-11-18; add \"輕鬆跑\" on 2026-11-19; add \"節奏跑 3×8 分鐘\" on 2026-11-20; add \"長課 15 公里（含節奏段 2 組）\" on 2026-11-22; add \"輕鬆跑 6 公里\" on 2026-11-23; add \"恢復日\" on 2026-11-25; add \"200m 反覆 20 支\" on 2026-11-26; add \"節奏跑 2×15 分鐘\" on 2026-11-28; add \"長課…",
+        "summaryChars": 280,
+        "summaryLines": 10,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "16 Nov · 14 changes",
+        "metaRect": {
+          "x": 31,
+          "y": 2546.5,
+          "w": 116,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 恢復輕鬆跑 · Added 交叉訓練 · Added 輕鬆跑 · Added 節奏跑 3×8 分鐘 · Added 長課 15 公里（含節奏段 2 組） · Added 輕鬆跑 6 公里 · Added 恢復日 · Added 200m 反覆 20 支 · Added 節奏跑 2×15 分鐘 · Added 長課 22 公里 · Added 間歇 5×1000 公尺 · Added 間歇 6×800 公尺 · Added 長課 22 公里 · Added 台北全馬 2026",
+        "detailChars": 245,
+        "detailLines": 7,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 31,
+          "y": 2576.5,
+          "w": 258,
+          "h": 136
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 31,
+              "y": 2725.5,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 31,
+              "y": 2780.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "fab-overlap-320",
+    "fab": {
+      "x": 207,
+      "y": 644,
+      "w": 101,
+      "h": 44
+    },
+    "buttons": [
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 0,
+          "h": 22,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 0,
+          "h": 23,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 0,
+          "h": 22,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 0,
+          "h": 22,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Undo this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 174,
+          "h": 47
+        },
+        "covered": {
+          "w": 0,
+          "h": 43,
+          "pctOfButton": 0
+        }
+      },
+      {
+        "text": "Discuss this change",
+        "button": {
+          "x": 31,
+          "y": 640,
+          "w": 129,
+          "h": 26
+        },
+        "covered": {
+          "w": 0,
+          "h": 23,
+          "pctOfButton": 0
+        }
+      }
+    ]
+  },
+  {
+    "label": "after-undo-landing",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11&undone=1",
+    "scrollY": 0,
+    "banner": {
+      "text": "Change undone. The calendar is back to its previous state.",
+      "role": "status",
+      "y": 92
+    },
+    "card": {
+      "y": 1083,
+      "h": 762
+    },
+    "viewport": {
+      "w": 1280,
+      "h": 900
+    }
+  },
+  {
+    "label": "after-undo",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11&undone=1",
+    "locale": "en",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 1998,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1875.2
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1875.2,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1153.2,
+      "y": 1841,
+      "w": 108.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1083,
+      "w": 1044,
+      "h": 762.2,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 145
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1124
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 1007
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 1007
+      }
+    ],
+    "buttonsInCard": 9,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1205.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "Undo: add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 80,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "21 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1208.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Reverted 大腿內側活動度與啟動 15 分鐘 · Reverted 大腿內側活動度與啟動 20 分鐘",
+        "detailChars": 53,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1239.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1269.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1280.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": true,
+        "row": {
+          "x": 139,
+          "y": 1326.8,
+          "w": 1002,
+          "h": 101.4
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes · undone",
+        "metaRect": {
+          "x": 978,
+          "y": 1340.8,
+          "w": 163,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1371.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 139,
+              "y": 1401.8,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1438.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 1037.5,
+          "y": 1452.2,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1483.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1513.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1523.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1570.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1584.2,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1615.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1645.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1655.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1702.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1716.2,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1747.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1777.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1787.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  },
+  {
+    "label": "after-undo",
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11&undone=1",
+    "locale": "en",
+    "viewport": {
+      "w": 1280,
+      "h": 900,
+      "dpr": 1
+    },
+    "documentHeight": 1998,
+    "horizontalOverflow": 0,
+    "main": {
+      "x": 100,
+      "y": 68,
+      "w": 1080,
+      "h": 1875.2
+    },
+    "shell": {
+      "x": 0,
+      "y": 68,
+      "w": 1280,
+      "h": 1875.2,
+      "columns": "none"
+    },
+    "fab": {
+      "x": 1153.2,
+      "y": 1841,
+      "w": 108.8,
+      "h": 48,
+      "display": "block"
+    },
+    "card": {
+      "x": 118,
+      "y": 1083,
+      "w": 1044,
+      "h": 762.2,
+      "background": "rgb(255, 255, 255)",
+      "padding": "20px",
+      "borderRadius": "20px"
+    },
+    "heading": "Recent changes",
+    "footnote": "Every coach batch, newest first. Undo is itself recorded as a change.",
+    "headings": [
+      {
+        "level": "H1",
+        "text": "Your plan",
+        "y": 145
+      },
+      {
+        "level": "H2",
+        "text": "Recent changes",
+        "y": 1124
+      },
+      {
+        "level": "H2",
+        "text": "Connect Garmin",
+        "y": 1007
+      },
+      {
+        "level": "H2",
+        "text": "",
+        "y": 1007
+      }
+    ],
+    "buttonsInCard": 9,
+    "rows": [
+      {
+        "index": 0,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1205.8,
+          "w": 1002,
+          "h": 111
+        },
+        "summary": "Undo: add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 80,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "21 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1208.8,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Reverted 大腿內側活動度與啟動 15 分鐘 · Reverted 大腿內側活動度與啟動 20 分鐘",
+        "detailChars": 53,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1239.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1269.8,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1280.1,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 1,
+        "undone": true,
+        "row": {
+          "x": 139,
+          "y": 1326.8,
+          "w": 1002,
+          "h": 101.4
+        },
+        "summary": "add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+        "summaryChars": 74,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes · undone",
+        "metaRect": {
+          "x": 978,
+          "y": 1340.8,
+          "w": 163,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Added 大腿內側活動度與啟動 20 分鐘 · Added 大腿內側活動度與啟動 15 分鐘",
+        "detailChars": 47,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1371.8,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 139,
+              "y": 1401.8,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 2,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1438.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 49,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 1 change",
+        "metaRect": {
+          "x": 1037.5,
+          "y": 1452.2,
+          "w": 103.5,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 42,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1483.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1513.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1523.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 3,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1570.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 20 支\" 2026-11-26 → 2026-11-26; move \"長課 15 公里（含節奏段 2 組）\" 2026-11-22 → 2026-11-22",
+        "summaryChars": 94,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1584.2,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 20 支 (26 Nov → 26 Nov) · Moved 長課 15 公里（含節奏段 2 組） (22 Nov → 22 Nov)",
+        "detailChars": 81,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1615.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1645.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1655.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      },
+      {
+        "index": 4,
+        "undone": false,
+        "row": {
+          "x": 139,
+          "y": 1702.2,
+          "w": 1002,
+          "h": 122
+        },
+        "summary": "move \"200m 反覆 15 支\" 2026-11-26 → 2026-11-26; move \"長課 22 公里\" 2026-11-29 → 2026-11-29",
+        "summaryChars": 84,
+        "summaryLines": 1,
+        "summaryStyle": {
+          "fontSize": "16px",
+          "fontWeight": "700",
+          "color": "rgb(27, 18, 12)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "meta": "19 Nov · 2 changes",
+        "metaRect": {
+          "x": 1032,
+          "y": 1716.2,
+          "w": 109,
+          "h": 17
+        },
+        "metaStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detail": "Moved 200m 反覆 15 支 (26 Nov → 26 Nov) · Moved 長課 22 公里 (29 Nov → 29 Nov)",
+        "detailChars": 71,
+        "detailLines": 1,
+        "detailStyle": {
+          "fontSize": "13px",
+          "fontWeight": "400",
+          "color": "rgb(122, 100, 85)",
+          "lineHeight": "normal",
+          "opacity": "1",
+          "display": "block"
+        },
+        "detailRect": {
+          "x": 139,
+          "y": 1747.2,
+          "w": 1002,
+          "h": 17
+        },
+        "buttons": [
+          {
+            "text": "Undo this change",
+            "title": null,
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "submit",
+            "rect": {
+              "x": 139,
+              "y": 1777.2,
+              "w": 174.4,
+              "h": 47
+            },
+            "style": {
+              "fontSize": "16px",
+              "fontWeight": "800",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "normal",
+              "opacity": "1",
+              "display": "block"
+            }
+          },
+          {
+            "text": "Discuss this change",
+            "title": "Chat with the coach about what this change did. Your calendar will not change.",
+            "ariaLabel": null,
+            "describedBy": null,
+            "type": "button",
+            "rect": {
+              "x": 321.4,
+              "y": 1787.5,
+              "w": 129,
+              "h": 26.4
+            },
+            "style": {
+              "fontSize": "12px",
+              "fontWeight": "700",
+              "color": "rgb(27, 18, 12)",
+              "lineHeight": "14.4px",
+              "opacity": "1",
+              "display": "block"
+            }
+          }
+        ]
+      }
+    ],
+    "emptyState": false
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "target": {
+    "id": "change:cf2bd189-42ef-4e87-a8ce-4c9b3f3e2d5d",
+    "summary": "Undo: add \"大腿內側活動度與啟動 20 分鐘\" on 2026-11-21; add \"大腿內側活動度與啟動 15 分鐘\" on 2026-11-24",
+    "buttons": [
+      "Undo this change",
+      "Discuss this change"
+    ]
+  },
+  "after": {
+    "pageRowFound": true,
+    "pageRowUndone": true,
+    "pageRowButtons": [],
+    "pageRowHasUndoForm": false,
+    "dockCardUndone": true,
+    "dockCardButtons": [
+      "Discuss this change"
+    ],
+    "toast": [
+      "Change undone"
+    ],
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11",
+    "scrollY": 0
+  }
+}
