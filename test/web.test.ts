@@ -302,6 +302,14 @@ describe("authentication pages", () => {
     expect(loginHtml).toContain('action="/login"');
     expect(loginHtml).toContain('name="username"');
     expect(loginHtml).toContain('type="password"');
+    expect(loginHtml).toContain('class="auth-shell"');
+    expect(loginHtml).toContain('class="site-mark"');
+    expect(loginHtml).toContain('id="password-toggle"');
+    expect(loginHtml).toContain('id="username-error"');
+    expect(loginHtml).toContain('id="password-error"');
+    expect(loginHtml).toContain('aria-label="Show password"');
+    expect(loginHtml).toContain('class="auth-mode-link" href="/signup"');
+    expect(loginHtml).toContain('novalidate');
     expect(loginHtml).not.toContain("demo-token");
 
     const signupPage = await fetch(`${base}/signup`);
@@ -311,6 +319,59 @@ describe("authentication pages", () => {
     expect(signupHtml).toContain('name="displayName"');
     expect(signupHtml).toContain('value="Asia/Hong_Kong"');
     expect(signupHtml).toContain('name="goal"');
+    expect(signupHtml).toContain('class="auth-goal-disclosure"');
+    expect(signupHtml).toContain('novalidate');
+    expect(signupHtml).toContain('data-auth-goal-saved');
+    expect(signupHtml).toContain('Goal saved');
+    expect(signupHtml).toMatch(/class="auth-goal-chips"[^>]*hidden/);
+    expect(signupHtml).toMatch(/id="password-strength"[^>]*hidden/);
+    expect(signupHtml).toMatch(/id="password-toggle"[^>]*hidden/);
+    expect(signupHtml).toContain('<select id="timezone"');
+    expect(signupHtml).toContain('id="password-strength"');
+    expect(signupHtml).toContain('role="meter"');
+    expect(signupHtml).toContain('aria-describedby="username-hint username-error"');
+    expect(signupHtml).toContain('aria-describedby="goal-hint"');
+  });
+
+  it("associates auth errors with fields and opens the goal disclosure when needed", async () => {
+    const { base } = await start();
+
+    const login = await (await fetch(`${base}/login?error=invalid-credentials`)).text();
+    expect(login).toContain("<title>Error: Sign in · Milebook</title>");
+    expect(login).toContain('id="auth-error"');
+    expect(login).toContain('id="password-error"');
+    expect(login).toContain('aria-invalid="true"');
+    expect(login).toContain('aria-describedby="username-error auth-error"');
+    expect(login).toContain('aria-describedby="password-error auth-error"');
+
+    const signup = await (await fetch(`${base}/signup?error=username-taken`)).text();
+    expect(signup).toContain("<title>Error: Create an account · Milebook</title>");
+    expect(signup).toContain('aria-describedby="username-hint username-error auth-error"');
+    expect(signup).toContain('data-server-invalid="true"');
+    expect(signup).toContain('id="displayName-error"');
+    expect(signup).toContain('id="timezone-error"');
+    expect(signup).toContain('href="#username"');
+    expect(signup).toContain("Choose another username.");
+
+    const notFound = await (await fetch(`${base}/login?error=not-found`)).text();
+    expect(notFound).toContain("Check the username.");
+
+    const zhError = await (await fetch(`${base}/login?error=invalid-credentials`, { headers: { cookie: "milebook_lang=zh-HK" } })).text();
+    expect(zhError).toContain("<title>錯誤：登入 · Milebook</title>");
+
+    const invalid = await (await fetch(`${base}/signup?error=invalid-input`)).text();
+    expect(invalid).toContain('<details class="auth-goal-disclosure" open>');
+  });
+
+  it("serves the auth art as cacheable WebP", async () => {
+    const { base } = await start();
+    for (const name of ["auth-hero.webp", "calendar-object.webp", "paper-grain.webp"]) {
+      const response = await fetch(`${base}/static/${name}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("image/webp");
+      expect(response.headers.get("cache-control")).toContain("max-age=86400");
+      expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+    }
   });
 
   it("signs up, logs in, rejects a bad password and logs out", async () => {
@@ -1161,14 +1222,19 @@ describe("account menu", () => {
     expect(profile).toContain('href="/logout"');
   });
 
-  it("keeps the anonymous header as plain sign in and sign up links", async () => {
+  it("renders the dedicated auth shell without account chrome", async () => {
     const { base } = await start();
 
     const login = await (await fetch(`${base}/login`)).text();
     expect(login).not.toContain('id="account-btn"');
     expect(login).not.toContain("getElementById('account-btn')");
-    expect(login).toContain('class="top-link" href="/login"');
-    expect(login).toContain('class="top-link ghost" href="/signup"');
+    expect(login).toContain('class="auth-shell"');
+    expect(login).toContain('href="/login" aria-current="page"');
+    expect(login).toContain('href="/signup"');
+    expect(login).toContain('class="auth-panel"');
+    expect(login).toContain('src="/static/auth-hero.webp"');
+    expect(login).toContain('src="/static/calendar-object.webp"');
+    expect(login).not.toContain('class="top-link"');
   });
 
   it("hides the account menu until the name is clicked", async () => {
@@ -1617,7 +1683,8 @@ describe("training log", () => {
     expect(html).not.toContain("Best efforts");
     expect(html).toContain("November fast");
     expect(html).toContain("繁體中文（香港）");
-    expect(html).toContain('class="lang-btn" role="button" aria-current="true"');
+    expect(html).toContain('class="lang-btn" aria-current="true"');
+    expect(html).not.toContain('class="lang-btn" role="button" aria-current="true"');
     // Trend + load chrome localize too; English labels must not leak through.
     expect(html).toContain("趨勢");
     expect(html).toContain("平均配速");

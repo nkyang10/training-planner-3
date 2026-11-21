@@ -1,0 +1,90 @@
+{
+  "goalCollapsed": {
+    "open": false,
+    "summaryText": "Add a training goal (optional) Goal saved",
+    "summaryHeight": 42,
+    "inputLabel": "Training goal",
+    "describedBy": "goal-hint",
+    "chipsHidden": false,
+    "formAction": "/signup"
+  },
+  "goalOpen": {
+    "open": true,
+    "detailsHeight": 163.1,
+    "inputVisible": true,
+    "chipsHidden": false,
+    "chipsVisible": true,
+    "summaryAfter": "\"−\"",
+    "submitBottom": 924.9,
+    "pageHeight": 1000
+  },
+  "focusOrderOpen": [
+    "Skip to the form",
+    "Milebook",
+    "繁體中文（香港）",
+    "Sign in",
+    "Create an account",
+    "username",
+    "displayName",
+    "password",
+    "password-toggle",
+    "timezone",
+    "Add a training goal (optional) Goal save",
+    "goal",
+    "First 10K",
+    "Half under 2h",
+    "Run 3× a week",
+    "Create account →"
+  ],
+  "invalidInput": {
+    "detailsOpen": true,
+    "goalInvalid": "true",
+    "goalDescribedBy": "goal-hint auth-error",
+    "errorText": "Could not create the account Please check the fields and try again.",
+    "active": "username",
+    "pageHeight": 1085
+  },
+  "restore": {
+    "goalValue": "Half under 2h",
+    "detailsOpen": false,
+    "username": "ada_runs",
+    "pageHeight": 1000,
+    "submitBottom": 909.2
+  },
+  "appBar": {
+    "url": "/calendar",
+    "brandText": "Milebook",
+    "brandHtml": "<span class=\"site-mark\" aria-hidden=\"true\"><svg viewBox=\"0 0 32 32\" focusable=\"false\"><path d=\"M6 25V8l10 10L26 7v18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"></path><circle cx=\"6\" ",
+    "brandRect": {
+      "w": 114.9,
+      "h": 32
+    },
+    "markRect": {
+      "w": 22,
+      "h": 22
+    },
+    "brandColor": "rgb(194, 58, 10)",
+    "overflowX": false
+  },
+  "appBarMobile": {
+    "brandText": "Milebook",
+    "brandRect": {
+      "w": 114.9,
+      "h": 32
+    },
+    "markRect": {
+      "w": 22,
+      "h": 22
+    },
+    "overflowX": false
+  },
+  "nojsHtml": {
+    "hasClosedDetails": true,
+    "goalChipsHidden": true,
+    "strengthHidden": true,
+    "revealHidden": true,
+    "goalLabel": true,
+    "timezoneSelect": true,
+    "languageRole": false
+  }
+}

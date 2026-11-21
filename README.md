@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 556 passing" src="https://img.shields.io/badge/tests-556%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 562 passing" src="https://img.shields.io/badge/tests-562%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (556 tests in 21 files). |
+| `pnpm test` | Run the Vitest suite (562 tests in 21 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -276,7 +276,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 556 Vitest tests across 21 files. |
+| `test/` | 562 Vitest tests across 21 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -318,10 +318,11 @@ restart cannot silently drop the coach's model credentials. Logs are `data/mileb
 
 | Gate | State |
 |---|---|
-| Tests | **560 / 560** in 21 files |
+| Tests | **562 / 562** in 21 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
+| Auth page (worktree) | Four-cycle `/login` + `/signup` redesign in `dsh-signup-login-page-professional`: original ComfyUI + Blender art, progressive goal disclosure, client validation, autofill/forced-colors/zoom checks; 562/562. **Not deployed** - live still serves the prior auth card. |
 | Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the daily-pages slice — the training log's one period summary line and the day page's native log disclosure — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=30`, 560/560 green. **Live-verified 20/20:** the day disclosure, the removed subline, the period summary, and a real manual-run POST (5 km / 30 min) that appeared on the day and in the history line; the temporary account was removed. Earlier the same day: the entry slice (today-first hero, one primary action, row key), the coach-interaction slice (peer voice, epoch-gated cached prefill, silent preference profile), the en/zh-HK localization, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: the real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,

@@ -1,0 +1,276 @@
+{
+  "forcedColors": {
+    "matches": true,
+    "storyBg": "rgb(255, 255, 255)",
+    "storyColor": "rgb(0, 0, 0)",
+    "panelBg": "rgb(255, 255, 255)",
+    "submitBg": "rgb(255, 255, 255)",
+    "submitColor": "rgb(0, 0, 0)",
+    "submitBorder": "rgb(0, 0, 0)",
+    "inputBg": "rgb(255, 255, 255)",
+    "inputBorder": "rgb(0, 0, 0)",
+    "activeBg": "rgb(55, 0, 110)",
+    "activeColor": "rgb(255, 255, 255)",
+    "activeOutline": "rgb(55, 0, 110)",
+    "heroImgDisplay": "none",
+    "objectDisplay": "none"
+  },
+  "zoom200Login": {
+    "scrollW": 720,
+    "innerWidth": 720,
+    "scrollH": 855,
+    "overflowX": false,
+    "submitBottom": 732.1,
+    "formWidth": 420,
+    "h1Overflow": false
+  },
+  "zoom200Signup": {
+    "scrollW": 720,
+    "innerWidth": 720,
+    "scrollH": 1088,
+    "overflowX": false,
+    "submitBottom": 1023.9,
+    "formWidth": 420,
+    "h1Overflow": false
+  },
+  "textSpacing": {
+    "scrollW": 390,
+    "innerWidth": 390,
+    "overflowX": false,
+    "pageHeight": 1495,
+    "modeOverflow": false,
+    "titleOverflow": false,
+    "fieldOverflow": false,
+    "submitBottom": 1394.4
+  },
+  "focusRings": [
+    {
+      "tag": "INPUT",
+      "id": "username",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(27, 18, 12) none 3px",
+      "outlineColor": "rgb(27, 18, 12)",
+      "outlineWidth": "3px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "INPUT",
+      "id": "displayName",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.05) 0px 0px 0px 0.946293px"
+    },
+    {
+      "tag": "INPUT",
+      "id": "password",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.016) 0px 0px 0px 0.306342px"
+    },
+    {
+      "tag": "BUTTON",
+      "id": "password-toggle",
+      "cls": "auth-reveal",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "SELECT",
+      "id": "timezone",
+      "cls": "",
+      "text": "Asia/Taipei · UTC+8Asia/Hong_Kong · UTC+8A",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.05) 0px 0px 0px 0.946293px"
+    },
+    {
+      "tag": "SUMMARY",
+      "id": "",
+      "cls": "",
+      "text": "Add a training goal (optional) Goal saved",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "cls": "auth-submit",
+      "text": "Create account →",
+      "outline": "rgb(27, 18, 12) solid 2px",
+      "outlineColor": "rgb(27, 18, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.22) 0px 10px 24px 0px"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "",
+      "text": "Sign in",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "BODY",
+      "id": "",
+      "cls": "auth-page",
+      "text": "Skip to the form Milebook Private training",
+      "outline": "rgb(27, 18, 12) none 3px",
+      "outlineColor": "rgb(27, 18, 12)",
+      "outlineWidth": "3px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "auth-skip",
+      "text": "Skip to the form",
+      "outline": "rgb(255, 176, 32) solid 2px",
+      "outlineColor": "rgb(255, 176, 32)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "auth-brand",
+      "text": "Milebook",
+      "outline": "rgb(255, 176, 32) solid 2px",
+      "outlineColor": "rgb(255, 176, 32)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "lang-btn",
+      "text": "繁體中文（香港）",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "auth-mode-link",
+      "text": "Sign in",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    },
+    {
+      "tag": "A",
+      "id": "",
+      "cls": "auth-mode-link",
+      "text": "Create an account",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(27, 18, 12, 0.11) 0px 2px 9px 0px"
+    },
+    {
+      "tag": "INPUT",
+      "id": "username",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.05) 0px 0px 0px 0.945864px"
+    },
+    {
+      "tag": "INPUT",
+      "id": "displayName",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.05) 0px 0px 0px 0.945864px"
+    },
+    {
+      "tag": "INPUT",
+      "id": "password",
+      "cls": "",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "rgba(185, 56, 12, 0.05) 0px 0px 0px 0.945864px"
+    },
+    {
+      "tag": "BUTTON",
+      "id": "password-toggle",
+      "cls": "auth-reveal",
+      "text": "",
+      "outline": "rgb(185, 56, 12) solid 2px",
+      "outlineColor": "rgb(185, 56, 12)",
+      "outlineWidth": "2px",
+      "boxShadow": "none"
+    }
+  ],
+  "busy": {
+    "submitCount": 1,
+    "formBusy": "true",
+    "submitDisabled": "true",
+    "submitBusyClass": true,
+    "label": "Creating account…",
+    "spinner": "block"
+  },
+  "busyReset": {
+    "formBusy": null,
+    "submitDisabled": null,
+    "submitBusyClass": false,
+    "label": "Create account"
+  },
+  "error-link-1440": {
+    "title": "Error: Create an account · Milebook",
+    "errorText": "Could not create the account That username is already taken. Choose another username.",
+    "linkText": "Choose another username.",
+    "href": "#username",
+    "linkRect": {
+      "w": 162.9,
+      "h": 17
+    },
+    "linkColor": "rgb(125, 37, 28)",
+    "linkDecoration": "underline",
+    "pageHeight": 1000,
+    "submitBottom": 909.2
+  },
+  "error-link-390": {
+    "title": "Error: Create an account · Milebook",
+    "errorText": "Could not create the account That username is already taken. Choose another username.",
+    "linkText": "Choose another username.",
+    "href": "#username",
+    "linkRect": {
+      "w": 280,
+      "h": 36.5
+    },
+    "linkColor": "rgb(125, 37, 28)",
+    "linkDecoration": "underline",
+    "pageHeight": 1283,
+    "submitBottom": 1207
+  },
+  "css": {
+    "hasAutofill": true,
+    "hasWebkitAutofill": true,
+    "hasForcedColors": true,
+    "hasNovalidateInHtml": null
+  }
+}

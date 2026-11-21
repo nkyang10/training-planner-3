@@ -141,6 +141,16 @@ const BUFFER_GEOMETRY_UTILS_MODULE = readFileSync(new URL("./vendor/BufferGeomet
  * procedural sculpt when it cannot load or render.
  */
 const ANATOMY_MUSCLES_GLB = readFileSync(new URL("./vendor/anatomy-muscles.glb", import.meta.url));
+/**
+ * Original sign-in art: a ComfyUI-generated dawn-track plate and a Blender-rendered November calendar sculpture.
+ * Both are read once at startup and served as static assets, so the auth page keeps the zero-runtime-dependency rule.
+ */
+const AUTH_HERO_WEBP = readFileSync(new URL("./vendor/signin/auth-hero.webp", import.meta.url));
+const AUTH_OBJECT_WEBP = readFileSync(new URL("./vendor/signin/calendar-object.webp", import.meta.url));
+const AUTH_GRAIN_WEBP = readFileSync(new URL("./vendor/signin/paper-grain.webp", import.meta.url));
+
+/** Bump when the auth or shared stylesheet changes; tests only assert the cache-busting prefix. */
+const APP_CSS_VERSION = 31;
 
 const SESSION_COOKIE = "milebooksid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -1926,22 +1936,27 @@ function renderViewSwitch(activeView: ViewName, tx: Translator): string {
   return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
 }
 
-/**
- * Common footer shown on every rendered page: a localized tagline and the language switcher. Each control posts a
- * plain GET to /language, so switching works without JavaScript; the server remembers the choice in a cookie and
- * sends the runner back to the page they were on.
- */
-function renderFooter(tx: Translator): string {
+function renderLanguageSwitch(tx: Translator, extraClass = ""): string {
   const options = LOCALES.map((meta) => {
     const active = meta.code === tx.locale;
     const label = escapeHtml(meta.nativeName);
     const title = escapeHtml(meta.englishName);
     const href = escapeHtml(`/language?locale=${encodeURIComponent(meta.code)}`);
     return active
-      ? `<span class="lang-btn" role="button" aria-current="true" title="${title}">${label}</span>`
+      ? `<span class="lang-btn" aria-current="true" title="${title}">${label}</span>`
       : `<a class="lang-btn" href="${href}" title="${title}">${label}</a>`;
   }).join("");
-  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span><nav class="lang-switch" aria-label="${escapeHtml(tx.t("footer.language"))}"><span class="lang-switch-label" aria-hidden="true">${escapeHtml(tx.t("footer.language"))}</span>${options}</nav></div></footer>`;
+  const className = extraClass.length > 0 ? `lang-switch ${extraClass}` : "lang-switch";
+  return `<nav class="${className}" aria-label="${escapeHtml(tx.t("footer.language"))}"><span class="lang-switch-label" aria-hidden="true">${escapeHtml(tx.t("footer.language"))}</span>${options}</nav>`;
+}
+
+/**
+ * Common footer shown on every rendered page: a localized tagline and the language switcher. Each control posts a
+ * plain GET to /language, so switching works without JavaScript; the server remembers the choice in a cookie and
+ * sends the runner back to the page they were on.
+ */
+function renderFooter(tx: Translator): string {
+  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span>${renderLanguageSwitch(tx)}</div></footer>`;
 }
 
 /**
@@ -1977,7 +1992,7 @@ function layout(
     ? `<div class="top-actions"><a class="top-link" href="/login">${escapeHtml(tx.t("header.signin"))}</a><a class="top-link ghost" href="/signup">${escapeHtml(tx.t("header.signup"))}</a></div>`
     : `<div class="top-actions">${renderNotificationBell(tx)}${renderAccountMenu(user, tx)}</div>`;
   const viewSwitch = user === undefined ? "" : renderViewSwitch(activeView, tx);
-  const nav = `<nav class="top"><a class="brand" href="/calendar">${escapeHtml(tx.t("app.brand"))}</a>${viewSwitch}${topActions}</nav>`;
+  const nav = `<nav class="top"><a class="brand" href="/calendar">${SITE_MARK}<span>${escapeHtml(tx.t("app.name"))}</span></a>${viewSwitch}${topActions}</nav>`;
   const bubble = user === undefined ? "" : renderChatBubble(tx);
   const notificationScript = user === undefined ? "" : renderNotificationScript();
   const accountScript = user === undefined ? "" : renderAccountMenuScript();
@@ -1990,7 +2005,7 @@ function layout(
   const i18nScript = clientI18nScript(tx);
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=30"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=${APP_CSS_VERSION}"></head>
   <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
@@ -3512,49 +3527,625 @@ function authErrorText(code: string | undefined, fallbackKey: MessageKey, tx: Tr
   }
 }
 
-function renderLogin(error: string | undefined, tx: Translator): string {
-  return layout(
-    tx.t("login.title"),
-    `<section class="card narrow"><h1>${escapeHtml(tx.t("login.heading"))}</h1>
-      <p class="muted">${escapeHtml(tx.t("login.subtitle"))}</p>
-      ${errorBanner(authErrorText(error, "error.couldNotSignIn", tx))}
-      <form method="post" action="/login" class="stack">
-        <label for="username">${escapeHtml(tx.t("login.username"))}</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24">
-        <label for="password">${escapeHtml(tx.t("login.password"))}</label><input id="password" name="password" type="password" required autocomplete="current-password" minlength="8">
-        <button class="btn" type="submit">${escapeHtml(tx.t("login.submit"))}</button>
+const SITE_MARK = `<span class="site-mark" aria-hidden="true"><svg viewBox="0 0 32 32" focusable="false"><path d="M6 25V8l10 10L26 7v18" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="6" cy="8" r="1.8" fill="currentColor"/></svg></span>`;
+
+const AUTH_ICON_LOCK = `<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="4" y="9" width="12" height="8" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const AUTH_ICON_CALENDAR = `<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><rect x="3" y="4" width="14" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 8h14M7 2.5V5M13 2.5V5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+const AUTH_ICON_ROUTE = `<svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><path d="M2 14.5l4.5-6 3.8 4.2 3.2-3.2 4.5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="2.5" cy="14.5" r="1.2" fill="currentColor"/></svg>`;
+
+const AUTH_EYE_ICONS = `<svg class="auth-eye" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 12s3.4-6 9.5-6 9.5 6 9.5 6-3.4 6-9.5 6-9.5-6-9.5-6Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.7" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><svg class="auth-eye-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2.5 12s3.4-6 9.5-6c2 0 3.7.7 5.1 1.7M21.5 12s-3.4 6-9.5 6c-2 0-3.7-.7-5.1-1.7M4 4l16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+/** The curated IANA zones offered on sign-up. The browser may add the device's zone when it is not in this list. */
+const AUTH_TIMEZONE_GROUPS: ReadonlyArray<{ label: MessageKey; zones: readonly string[] }> = [
+  {
+    label: "auth.timezone.asiaPacific",
+    zones: [
+      "Asia/Taipei",
+      "Asia/Hong_Kong",
+      "Asia/Tokyo",
+      "Asia/Seoul",
+      "Asia/Shanghai",
+      "Asia/Singapore",
+      "Asia/Bangkok",
+      "Asia/Jakarta",
+      "Asia/Kolkata",
+      "Australia/Sydney",
+      "Australia/Perth",
+      "Pacific/Auckland",
+    ],
+  },
+  {
+    label: "auth.timezone.europeAfrica",
+    zones: [
+      "Europe/London",
+      "Europe/Dublin",
+      "Europe/Paris",
+      "Europe/Berlin",
+      "Europe/Madrid",
+      "Europe/Rome",
+      "Europe/Amsterdam",
+      "Europe/Stockholm",
+      "Europe/Warsaw",
+      "Europe/Istanbul",
+      "Africa/Johannesburg",
+      "Africa/Cairo",
+    ],
+  },
+  {
+    label: "auth.timezone.americas",
+    zones: [
+      "America/New_York",
+      "America/Toronto",
+      "America/Chicago",
+      "America/Denver",
+      "America/Los_Angeles",
+      "America/Vancouver",
+      "America/Mexico_City",
+      "America/Sao_Paulo",
+      "America/Bogota",
+      "America/Santiago",
+    ],
+  },
+  { label: "auth.timezone.utc", zones: ["UTC"] },
+];
+
+function authTimezoneOffset(zone: string): string {
+  try {
+    const part = new Intl.DateTimeFormat("en-US", { timeZone: zone, timeZoneName: "shortOffset" })
+      .formatToParts(new Date())
+      .find((entry) => entry.type === "timeZoneName")?.value;
+    if (part === undefined) return "UTC";
+    const offset = part.replace(/^GMT/, "UTC");
+    return offset === "UTC" ? "UTC+0" : offset;
+  } catch {
+    return "UTC";
+  }
+}
+
+function renderAuthTimezoneOptions(tx: Translator): string {
+  return AUTH_TIMEZONE_GROUPS.map((group) => {
+    const options = group.zones.map((zone) => {
+      const selected = zone === "Asia/Hong_Kong" ? " selected" : "";
+      return `<option value="${escapeHtml(zone)}"${selected}>${escapeHtml(zone)} · ${escapeHtml(authTimezoneOffset(zone))}</option>`;
+    }).join("");
+    return `<optgroup label="${escapeHtml(tx.t(group.label))}">${options}</optgroup>`;
+  }).join("");
+}
+
+interface AuthErrorInfo {
+  title: string;
+  message: string;
+  fields: readonly string[];
+  link?: { href: string; label: string };
+}
+
+function authErrorInfo(code: string | undefined, mode: "login" | "signup", tx: Translator): AuthErrorInfo | undefined {
+  if (code === undefined) return undefined;
+  const signupTitle = tx.t("error.couldNotCreateAccount");
+  const loginTitle = tx.t("error.couldNotSignIn");
+  const title = mode === "signup" ? signupTitle : loginTitle;
+  const credentials = ["username", "password"];
+  const signupFields = ["username", "displayName", "password", "timezone", "goal"];
+  switch (code) {
+    case "invalid-credentials":
+      return { title: loginTitle, message: tx.t("authErr.invalidCredentials"), fields: credentials };
+    case "username-taken":
+      return { title: signupTitle, message: tx.t("authErr.usernameTaken"), fields: ["username"], link: { href: "#username", label: tx.t("auth.error.chooseUsername") } };
+    case "invalid-input":
+      return { title, message: tx.t("authErr.invalidInput"), fields: mode === "signup" ? signupFields : credentials };
+    case "not-found":
+      return { title: loginTitle, message: tx.t("authErr.notFound"), fields: ["username"], link: { href: "#username", label: tx.t("auth.error.checkUsername") } };
+    default:
+      return { title, message: tx.t("authErr.invalidInput"), fields: [] };
+  }
+}
+
+function authInvalid(info: AuthErrorInfo | undefined, field: string): string {
+  return info !== undefined && info.fields.includes(field) ? ' aria-invalid="true"' : "";
+}
+
+function authDescribedBy(info: AuthErrorInfo | undefined, field: string, ids: readonly string[]): string {
+  const list = [...ids];
+  if (info !== undefined && info.fields.includes(field)) list.push("auth-error");
+  return list.length > 0 ? ` aria-describedby="${list.join(" ")}"` : "";
+}
+
+function renderAuthError(info: AuthErrorInfo): string {
+  const E = escapeHtml;
+  return `<div class="auth-error" id="auth-error" role="alert" aria-atomic="true" tabindex="-1">
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 5.6v5.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="10" cy="14.1" r="1" fill="currentColor"/></svg>
+    <div><p class="auth-error-title">${E(info.title)}</p> <p class="auth-error-message">${E(info.message)}${info.link === undefined ? "" : ` <a class="auth-error-link" href="${E(info.link.href)}">${E(info.link.label)}</a>`}</p></div>
+  </div>`;
+}
+
+function renderAuthStory(tx: Translator): string {
+  const E = escapeHtml;
+  const proof = [
+    { icon: AUTH_ICON_LOCK, text: tx.t("auth.story.pointPrivate") },
+    { icon: AUTH_ICON_CALENDAR, text: tx.t("auth.story.pointCoach") },
+    { icon: AUTH_ICON_ROUTE, text: tx.t("auth.story.pointLongRun") },
+  ].map((item) => `<li>${item.icon}<span>${E(item.text)}</span></li>`).join("");
+  return `<section class="auth-story" aria-labelledby="auth-story-title">
+    <img class="auth-story-bg" src="/static/auth-hero.webp" alt="" width="1024" height="1280" fetchpriority="high" decoding="async">
+    <div class="auth-story-shade" aria-hidden="true"></div>
+    <div class="auth-story-inner">
+      <a class="auth-brand" href="/login" data-track="auth-brand">${SITE_MARK}<span>${E(tx.t("app.name"))}</span></a>
+      <p class="auth-eyebrow">${E(tx.t("auth.story.eyebrow"))}</p>
+      <h1 class="auth-story-title" id="auth-story-title">${E(tx.t("auth.story.heading"))}</h1>
+      <p class="auth-story-sub">${E(tx.t("auth.story.subtitle"))}</p>
+      <ul class="auth-proof">${proof}</ul>
+      <p class="auth-story-note">${E(tx.t("auth.story.note"))}</p>
+    </div>
+    <img class="auth-object" src="/static/calendar-object.webp" alt="" width="1200" height="899" fetchpriority="low" decoding="async">
+  </section>`;
+}
+
+function renderAuthPanel(mode: "login" | "signup", info: AuthErrorInfo | undefined, tx: Translator): string {
+  const E = escapeHtml;
+  const isSignup = mode === "signup";
+  const usernameLabel = E(tx.t(isSignup ? "signup.username" : "login.username"));
+  const passwordLabel = E(tx.t(isSignup ? "signup.password" : "login.password"));
+  const submitLabel = tx.t(isSignup ? "auth.signup.submit" : "auth.login.submit");
+  const busyLabel = tx.t(isSignup ? "auth.signup.submitBusy" : "auth.login.submitBusy");
+  const usernameServerInvalid = info !== undefined && info.fields.includes("username") ? ' data-server-invalid="true"' : "";
+  const usernameHint = isSignup ? `<p class="auth-hint" id="username-hint">${E(tx.t("auth.username.hint"))}</p>` : "";
+  const passwordHint = isSignup ? `<p class="auth-hint" id="password-hint">${E(tx.t("auth.password.hint"))}</p>` : "";
+  const passwordStrength = isSignup
+    ? `<div class="auth-strength" id="password-strength" data-score="0" hidden>
+        <div class="auth-strength-bars" role="meter" aria-label="${E(tx.t("auth.password.strengthLabel"))}" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0"><span class="auth-strength-bar"></span><span class="auth-strength-bar"></span><span class="auth-strength-bar"></span></div>
+        <p class="auth-strength-text" id="password-strength-text" aria-live="polite"></p>
+      </div>`
+    : "";
+  const usernameDescribedBy = authDescribedBy(info, "username", isSignup ? ["username-hint", "username-error"] : ["username-error"]);
+  const passwordDescribedBy = authDescribedBy(info, "password", isSignup ? ["password-hint", "password-strength-text", "password-error"] : ["password-error"]);
+  const displayNameDescribedBy = authDescribedBy(info, "displayName", ["displayName-error"]);
+  const timezoneDescribedBy = authDescribedBy(info, "timezone", ["timezone-hint", "timezone-error"]);
+  const goalDescribedBy = authDescribedBy(info, "goal", ["goal-hint"]);
+  const usernameError = `<p class="auth-field-error" id="username-error" role="alert" hidden></p>`;
+  const displayNameError = `<p class="auth-field-error" id="displayName-error" role="alert" hidden></p>`;
+  const passwordError = `<p class="auth-field-error" id="password-error" role="alert" hidden></p>`;
+  const timezoneError = `<p class="auth-field-error" id="timezone-error" role="alert" hidden></p>`;
+  const fields = [
+    `<div class="auth-field">
+      <div class="auth-label-row"><label for="username">${usernameLabel}</label></div>
+      <input id="username" name="username" type="text" required autocomplete="username" minlength="3" maxlength="24"${isSignup ? ' pattern="[a-z0-9_]{3,24}"' : ""} spellcheck="false" autocapitalize="none" autocorrect="off" enterkeyhint="next" data-auth-persist="username"${usernameServerInvalid}${authInvalid(info, "username")}${usernameDescribedBy}>
+      ${usernameHint}
+      ${usernameError}
+    </div>`,
+    isSignup
+      ? `<div class="auth-field">
+          <label for="displayName">${E(tx.t("signup.displayName"))}</label>
+          <input id="displayName" name="displayName" type="text" required autocomplete="name" maxlength="60" data-auth-persist="displayName"${authInvalid(info, "displayName")}${displayNameDescribedBy}>
+          ${displayNameError}
+        </div>`
+      : "",
+    `<div class="auth-field">
+      <div class="auth-label-row"><label for="password">${passwordLabel}</label></div>
+      <div class="auth-password">
+        <input id="password" name="password" type="password" required autocomplete="${isSignup ? "new-password" : "current-password"}" minlength="8" spellcheck="false" autocapitalize="none" autocorrect="off" enterkeyhint="go"${authInvalid(info, "password")}${passwordDescribedBy}>
+        <button class="auth-reveal" id="password-toggle" type="button" aria-controls="password" aria-pressed="false" aria-label="${E(tx.t("auth.password.show"))}" hidden>${AUTH_EYE_ICONS}</button>
+      </div>
+      ${passwordHint}
+      <p class="auth-caps" id="password-caps" role="status" hidden>${E(tx.t("auth.password.caps"))}</p>
+      ${passwordStrength}
+      ${passwordError}
+    </div>`,
+    isSignup
+      ? `<div class="auth-field">
+          <label for="timezone">${E(tx.t("signup.timezone"))}</label>
+          <select id="timezone" name="timezone" required autocomplete="off" data-auth-persist="timezone"${authInvalid(info, "timezone")}${timezoneDescribedBy}>${renderAuthTimezoneOptions(tx)}</select>
+          <p class="auth-hint" id="timezone-hint" data-auth-tz-hint>${E(tx.t("auth.timezone.hint"))}</p>
+          ${timezoneError}
+        </div>`
+      : "",
+    isSignup
+      ? `<details class="auth-goal-disclosure"${info !== undefined && info.fields.includes("goal") ? " open" : ""}>
+          <summary><span class="auth-goal-summary-label">${E(tx.t("auth.goal.disclosure"))} <span class="auth-goal-saved" data-auth-goal-saved hidden>${E(tx.t("auth.goal.saved"))}</span></span></summary>
+          <div class="auth-field auth-goal-field">
+            <label class="sr-only" for="goal">${E(tx.t("signup.goal"))}</label>
+            <input id="goal" name="goal" type="text" maxlength="120" autocomplete="off" data-auth-persist="goal"${authInvalid(info, "goal")}${goalDescribedBy}>
+            <p class="auth-hint" id="goal-hint">${E(tx.t("auth.goal.hint"))}</p>
+            <div class="auth-goal-chips" role="group" aria-label="${E(tx.t("auth.goal.picksAria"))}" hidden>
+              <button class="auth-goal-chip" type="button" data-auth-goal="${E(tx.t("auth.goal.pick1"))}" data-track="auth-goal">${E(tx.t("auth.goal.pick1"))}</button>
+              <button class="auth-goal-chip" type="button" data-auth-goal="${E(tx.t("auth.goal.pick2"))}" data-track="auth-goal">${E(tx.t("auth.goal.pick2"))}</button>
+              <button class="auth-goal-chip" type="button" data-auth-goal="${E(tx.t("auth.goal.pick3"))}" data-track="auth-goal">${E(tx.t("auth.goal.pick3"))}</button>
+            </div>
+          </div>
+        </details>`
+      : "",
+  ].filter((field) => field.length > 0).join("");
+  const foot = isSignup
+    ? `<p class="auth-switch-line">${E(tx.t("auth.signup.haveAccount"))} <a href="/login" data-track="auth-mode" data-track-value="login">${E(tx.t("auth.signup.signin"))}</a></p>`
+    : `<p class="auth-switch-line">${E(tx.t("auth.login.newHere"))} <a href="/signup" data-track="auth-mode" data-track-value="signup">${E(tx.t("auth.login.createAccount"))}</a></p>
+       <details class="auth-help"><summary>${E(tx.t("auth.help.summary"))}</summary><p>${E(tx.t("auth.help.body"))}</p><a href="/signup">${E(tx.t("auth.help.signup"))}</a></details>`;
+  return `<main id="auth-main" class="auth-panel" tabindex="-1">
+    <div class="auth-panel-top">${renderLanguageSwitch(tx, "auth-lang")}</div>
+    <div class="auth-panel-body">
+      <nav class="auth-mode" data-mode="${mode}" aria-label="${E(tx.t("auth.mode.aria"))}">
+        <a class="auth-mode-link" href="/login"${isSignup ? "" : ' aria-current="page"'} data-track="auth-mode" data-track-value="login">${E(tx.t("login.title"))}</a>
+        <a class="auth-mode-link" href="/signup"${isSignup ? ' aria-current="page"' : ""} data-track="auth-mode" data-track-value="signup">${E(tx.t("signup.title"))}</a>
+      </nav>
+      <div class="auth-head">
+        <p class="auth-eyebrow">${E(tx.t(isSignup ? "auth.signup.eyebrow" : "auth.login.eyebrow"))}</p>
+        <h2 id="auth-heading">${E(tx.t(isSignup ? "auth.signup.heading" : "auth.login.heading"))}</h2>
+        <p class="auth-sub">${E(tx.t(isSignup ? "auth.signup.subtitle" : "auth.login.subtitle"))}</p>
+      </div>
+      ${info === undefined ? "" : renderAuthError(info)}
+      <form class="auth-form" method="post" action="${isSignup ? "/signup" : "/login"}" aria-labelledby="auth-heading" novalidate${info === undefined ? "" : ' aria-describedby="auth-error"'}>
+        ${fields}
+        <button class="auth-submit" type="submit" data-auth-submit data-label-default="${E(submitLabel)}" data-busy-label="${E(busyLabel)}" data-track="auth-submit" data-track-value="${mode}">
+          <span class="auth-submit-label">${E(submitLabel)}</span>
+          <span class="auth-submit-arrow" aria-hidden="true">→</span>
+          <span class="auth-spinner" aria-hidden="true"></span>
+        </button>
       </form>
-      <p class="muted small">${escapeHtml(tx.t("login.newHere"))} <a href="/signup">${escapeHtml(tx.t("login.createAccount"))}</a></p>
-    </section>`,
-    undefined,
-    "none",
-    0,
-    "",
-    tx,
-  );
+      <div class="auth-foot">${foot}</div>
+    </div>
+  </main>`;
+}
+
+function renderAuthScript(): string {
+  return `<script>
+  (() => {
+    const ui = window.__I18N__ || {};
+    const tr = (key, fallback) => (typeof ui[key] === 'string' ? ui[key] : fallback);
+    const page = document.querySelector('.auth-page');
+    const form = document.querySelector('.auth-form');
+    if (!page || !form) return;
+    const mode = page.getAttribute('data-mode') === 'signup' ? 'signup' : 'login';
+    const username = document.getElementById('username');
+    const password = document.getElementById('password');
+    const reveal = document.getElementById('password-toggle');
+    const caps = document.getElementById('password-caps');
+    const strength = document.getElementById('password-strength');
+    const strengthText = document.getElementById('password-strength-text');
+    const strengthMeter = strength ? strength.querySelector('[role="meter"]') : null;
+    const usernameError = document.getElementById('username-error');
+    const usernameHint = document.getElementById('username-hint');
+    const displayName = document.getElementById('displayName');
+    const displayNameError = document.getElementById('displayName-error');
+    const passwordError = document.getElementById('password-error');
+    const passwordHint = document.getElementById('password-hint');
+    const timezoneError = document.getElementById('timezone-error');
+    const submit = form.querySelector('[data-auth-submit]');
+    const submitLabel = submit ? submit.querySelector('.auth-submit-label') : null;
+    const busyLabel = submit ? submit.getAttribute('data-busy-label') || '' : '';
+    const persistFields = Array.from(document.querySelectorAll('[data-auth-persist]'));
+    const storageKey = 'milebook.auth.' + mode;
+    const hasError = new URLSearchParams(location.search).has('error');
+    const readSaved = () => {
+      try {
+        const raw = sessionStorage.getItem(storageKey);
+        return raw ? JSON.parse(raw) : {};
+      } catch (error) {
+        return {};
+      }
+    };
+    const writeSaved = (values) => {
+      try {
+        sessionStorage.setItem(storageKey, JSON.stringify(values));
+      } catch (error) {
+        // Private mode or a full storage quota: the page still works without persistence.
+      }
+    };
+    const save = () => {
+      const values = {};
+      for (const field of persistFields) {
+        if (field.name) values[field.name] = field.value;
+      }
+      writeSaved(values);
+    };
+    const saved = hasError ? readSaved() : {};
+    const offsetLabel = (zone) => {
+      try {
+        const part = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'shortOffset' }).formatToParts(new Date()).find((entry) => entry.type === 'timeZoneName');
+        if (!part) return 'UTC';
+        const offset = part.value.replace('GMT', 'UTC');
+        return offset === 'UTC' ? 'UTC+0' : offset;
+      } catch (error) {
+        return 'UTC';
+      }
+    };
+    const timezone = document.getElementById('timezone');
+    const timezoneHint = document.querySelector('[data-auth-tz-hint]');
+    const ensureTimezone = (zone) => {
+      if (!timezone) return;
+      if (!Array.from(timezone.options).some((option) => option.value === zone)) {
+        const option = document.createElement('option');
+        option.value = zone;
+        option.textContent = zone + ' · ' + offsetLabel(zone);
+        timezone.appendChild(option);
+      }
+    };
+    if (saved && typeof saved === 'object') {
+      for (const field of persistFields) {
+        const value = saved[field.name];
+        if (typeof value !== 'string' || value.length === 0) continue;
+        if (field instanceof HTMLSelectElement) {
+          ensureTimezone(value);
+          field.value = value;
+        } else if (field instanceof HTMLInputElement && field.value.length === 0) {
+          field.value = value;
+        }
+      }
+    }
+    const savedTimezone = saved && typeof saved.timezone === 'string' ? saved.timezone : '';
+    const goalSaved = document.querySelector('[data-auth-goal-saved]');
+    if (goalSaved && saved && typeof saved.goal === 'string' && saved.goal.length > 0) goalSaved.hidden = false;
+    if (timezone && savedTimezone.length === 0) {
+      let detected = '';
+      try {
+        detected = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      } catch (error) {
+        detected = '';
+      }
+      if (detected.length > 0) {
+        ensureTimezone(detected);
+        timezone.value = detected;
+        if (timezoneHint) timezoneHint.textContent = tr('authTzDetected', 'Detected {zone}. Change it if needed.').replace('{zone}', detected);
+      }
+    }
+    for (const field of persistFields) {
+      field.addEventListener('input', save);
+      field.addEventListener('change', save);
+    }
+    if (reveal && password) {
+      reveal.hidden = false;
+      reveal.addEventListener('click', () => {
+        const showing = password.type === 'password';
+        password.type = showing ? 'text' : 'password';
+        reveal.setAttribute('aria-pressed', showing ? 'true' : 'false');
+        reveal.setAttribute('aria-label', tr(showing ? 'authHidePassword' : 'authShowPassword', showing ? 'Hide password' : 'Show password'));
+        reveal.classList.toggle('is-visible', showing);
+        password.focus({ preventScroll: true });
+      });
+    }
+    if (caps && password) {
+      const updateCaps = (event) => {
+        if (typeof event.getModifierState !== 'function') return;
+        caps.hidden = !(event.getModifierState('CapsLock') && document.activeElement === password);
+      };
+      password.addEventListener('keydown', updateCaps);
+      password.addEventListener('keyup', updateCaps);
+      password.addEventListener('blur', () => { caps.hidden = true; });
+    }
+    if (strength && strengthText && strengthMeter && password) {
+      const updateStrength = () => {
+        const value = password.value;
+        if (value.length === 0) {
+          strength.hidden = true;
+          strength.setAttribute('data-score', '0');
+          strength.removeAttribute('data-tone');
+          strengthMeter.setAttribute('aria-valuenow', '0');
+          strengthMeter.removeAttribute('aria-valuetext');
+          strengthText.textContent = '';
+          return;
+        }
+        let score = 1;
+        let tone = 'danger';
+        let label = tr('authTooShort', 'Use at least 8 characters.');
+        if (value.length >= 16) {
+          score = 3;
+          tone = 'ok';
+          label = tr('authStrong', 'Strong — a long passphrase.');
+        } else if (value.length >= 12) {
+          score = 2;
+          tone = 'ok';
+          label = tr('authGood', 'Good — a longer passphrase is stronger.');
+        } else if (value.length >= 8) {
+          tone = 'warn';
+          label = tr('authFair', 'Fair — add a few more characters.');
+        }
+        if (value.length >= 12) {
+          const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((rule) => rule.test(value)).length;
+          if (classes >= 3) {
+            score = 3;
+            tone = 'ok';
+            label = tr('authStrong', 'Strong — a long passphrase.');
+          }
+        }
+        strength.hidden = false;
+        strength.setAttribute('data-score', String(score));
+        strength.setAttribute('data-tone', tone);
+        strengthMeter.setAttribute('aria-valuenow', String(score));
+        strengthMeter.setAttribute('aria-valuetext', label);
+        if (strengthText.textContent !== label) strengthText.textContent = label;
+      };
+      password.addEventListener('input', updateStrength);
+      updateStrength();
+    }
+    if (username && usernameError && mode === 'signup') {
+      const validateUsername = () => {
+        if (username.getAttribute('data-server-invalid') === 'true') return;
+        const value = username.value.trim();
+        if (value.length === 0) {
+          usernameError.hidden = true;
+          usernameError.textContent = '';
+          username.removeAttribute('aria-invalid');
+          if (usernameHint) usernameHint.hidden = false;
+          return;
+        }
+        const valid = /^[a-z0-9_]{3,24}$/.test(value);
+        usernameError.textContent = valid ? '' : tr('authUsernameInvalid', 'Use 3–24 lowercase letters, numbers or underscores.');
+        usernameError.hidden = valid;
+        if (usernameHint) usernameHint.hidden = !valid;
+        if (valid) username.removeAttribute('aria-invalid');
+        else username.setAttribute('aria-invalid', 'true');
+      };
+      username.addEventListener('blur', validateUsername);
+      username.addEventListener('input', () => {
+        usernameError.hidden = true;
+        usernameError.textContent = '';
+        if (username.getAttribute('data-server-invalid') === 'true') {
+          username.removeAttribute('data-server-invalid');
+          username.removeAttribute('aria-invalid');
+        }
+      });
+    }
+    const goal = document.getElementById('goal');
+    const goalChips = document.querySelector('.auth-goal-chips');
+    const errorLink = document.querySelector('.auth-error-link');
+    if (errorLink) {
+      errorLink.addEventListener('click', () => {
+        const href = errorLink.getAttribute('href') || '';
+        const target = href.startsWith('#') ? document.getElementById(href.slice(1)) : null;
+        if (target instanceof HTMLElement) target.focus({ preventScroll: true });
+      });
+    }
+    if (goal && goalChips) {
+      goalChips.hidden = false;
+      for (const chip of goalChips.querySelectorAll('[data-auth-goal]')) {
+        chip.addEventListener('click', () => {
+          goal.value = chip.getAttribute('data-auth-goal') || '';
+          goal.dispatchEvent(new Event('input', { bubbles: true }));
+          goal.focus({ preventScroll: true });
+        });
+      }
+    }
+    const clearFieldError = (input, error) => {
+      if (error) {
+        error.hidden = true;
+        error.textContent = '';
+      }
+      if (input) input.removeAttribute('aria-invalid');
+      if (input === username && usernameHint) usernameHint.hidden = false;
+      if (input === password) {
+        if (passwordHint) passwordHint.hidden = false;
+        if (strength && password && password.value.length > 0 && strength.getAttribute('data-score') !== '0') strength.hidden = false;
+      }
+      if (input === timezone && timezoneHint) timezoneHint.hidden = false;
+    };
+    const showFieldError = (input, error, message) => {
+      if (!input || !error) return;
+      error.textContent = message;
+      error.hidden = false;
+      input.setAttribute('aria-invalid', 'true');
+      if (input === username && usernameHint) usernameHint.hidden = true;
+      if (input === password) {
+        if (passwordHint) passwordHint.hidden = true;
+        if (strength) strength.hidden = true;
+      }
+      if (input === timezone && timezoneHint) timezoneHint.hidden = true;
+    };
+    const validateFields = () => {
+      let firstInvalid = null;
+      const required = (input, error, message) => {
+        if (!input) return true;
+        if (input.value.trim().length === 0) {
+          showFieldError(input, error, message);
+          if (!firstInvalid) firstInvalid = input;
+          return false;
+        }
+        clearFieldError(input, error);
+        return true;
+      };
+      required(username, usernameError, tr('authUsernameRequired', 'Enter a username.'));
+      if (mode === 'signup') {
+        if (username && username.value.trim().length > 0 && !/^[a-z0-9_]{3,24}$/.test(username.value.trim())) {
+          showFieldError(username, usernameError, tr('authUsernameInvalid', 'Use 3–24 lowercase letters, numbers or underscores.'));
+          if (!firstInvalid) firstInvalid = username;
+        }
+        required(displayName, displayNameError, tr('authDisplayNameRequired', 'Enter a display name.'));
+        if (password && password.value.length > 0 && password.value.length < 8) {
+          showFieldError(password, passwordError, tr('authTooShort', 'Use at least 8 characters.'));
+          if (!firstInvalid) firstInvalid = password;
+        } else {
+          required(password, passwordError, tr('authPasswordRequired', 'Enter a password.'));
+        }
+        if (timezone && timezone.value.trim().length === 0) {
+          showFieldError(timezone, timezoneError, tr('authTimezoneRequired', 'Choose a timezone.'));
+          if (!firstInvalid) firstInvalid = timezone;
+        } else if (timezone) {
+          clearFieldError(timezone, timezoneError);
+        }
+      } else {
+        required(password, passwordError, tr('authPasswordRequired', 'Enter a password.'));
+      }
+      if (firstInvalid) {
+        firstInvalid.focus();
+        return false;
+      }
+      return true;
+    };
+    for (const [input, error] of [[username, usernameError], [displayName, displayNameError], [password, passwordError], [timezone, timezoneError]]) {
+      if (!input || !error) continue;
+      input.addEventListener('input', () => clearFieldError(input, error));
+    }
+    let submitting = false;
+    const resetSubmit = () => {
+      submitting = false;
+      form.removeAttribute('aria-busy');
+      if (!submit) return;
+      submit.classList.remove('is-busy');
+      submit.removeAttribute('aria-disabled');
+      if (submitLabel) submitLabel.textContent = submit.getAttribute('data-label-default') || submitLabel.textContent;
+    };
+    form.addEventListener('submit', (event) => {
+      if (submitting) {
+        event.preventDefault();
+        return;
+      }
+      if (!validateFields()) {
+        event.preventDefault();
+        return;
+      }
+      submitting = true;
+      save();
+      form.setAttribute('aria-busy', 'true');
+      if (submit) {
+        submit.classList.add('is-busy');
+        submit.setAttribute('aria-disabled', 'true');
+        if (submitLabel && busyLabel.length > 0) submitLabel.textContent = busyLabel;
+      }
+    });
+    window.addEventListener('pageshow', resetSubmit);
+    const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (hasError) {
+      const invalid = document.querySelector('[aria-invalid="true"]');
+      const banner = document.getElementById('auth-error');
+      const target = finePointer && invalid ? invalid : banner;
+      if (target) {
+        try {
+          target.focus({ preventScroll: true });
+        } catch (error) {
+          target.focus();
+        }
+      }
+    } else if (finePointer && window.innerWidth >= 980 && username) {
+      try {
+        username.focus({ preventScroll: true });
+      } catch (error) {
+        // Focus is an enhancement; the page remains usable without it.
+      }
+    }
+  })();
+  </script>`;
+}
+
+function renderAuthPage(mode: "login" | "signup", title: string, error: string | undefined, tx: Translator): string {
+  const E = escapeHtml;
+  const info = authErrorInfo(error, mode, tx);
+  const localeTag = E(tx.locale);
+  const dir = tx.dir;
+  const pageTitle = E((info === undefined ? "" : tx.t("auth.error.titlePrefix")) + documentTitle(title, undefined, "none", 0, tx));
+  const context = E(pageContext(title, undefined, "none", tx));
+  return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${pageTitle}</title><meta name="description" content="${E(tx.t("auth.meta.description"))}"><meta name="theme-color" content="#fbf4ea"><meta name="color-scheme" content="light">
+  <link rel="preload" as="image" href="/static/auth-hero.webp" type="image/webp" fetchpriority="high">
+  <link rel="stylesheet" href="/static/app.css?v=${APP_CSS_VERSION}"></head>
+  <body class="auth-page" data-mode="${mode}" data-site-name="${E(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${context}" data-timezone="Asia/Hong_Kong">
+    <a class="auth-skip" href="#username">${E(tx.t("auth.skip"))}</a>
+    <div class="auth-shell">${renderAuthStory(tx)}${renderAuthPanel(mode, info, tx)}</div>
+    ${clientI18nScript(tx)}${renderTrackScript()}${renderAuthScript()}
+  </body></html>`;
+}
+
+function renderLogin(error: string | undefined, tx: Translator): string {
+  return renderAuthPage("login", tx.t("login.title"), error, tx);
 }
 
 function renderSignup(error: string | undefined, tx: Translator): string {
-  return layout(
-    tx.t("signup.title"),
-    `<section class="card narrow"><h1>${escapeHtml(tx.t("signup.heading"))}</h1>
-      <p class="muted">${escapeHtml(tx.t("signup.subtitle"))}</p>
-      ${errorBanner(authErrorText(error, "error.couldNotCreateAccount", tx))}
-      <form method="post" action="/signup" class="stack">
-        <label for="username">${escapeHtml(tx.t("signup.username"))}</label><input id="username" name="username" required autocomplete="username" minlength="3" maxlength="24" pattern="[a-z0-9_]{3,24}">
-        <label for="displayName">${escapeHtml(tx.t("signup.displayName"))}</label><input id="displayName" name="displayName" required autocomplete="name" maxlength="60">
-        <label for="password">${escapeHtml(tx.t("signup.password"))}</label><input id="password" name="password" type="password" required autocomplete="new-password" minlength="8">
-        <label for="timezone">${escapeHtml(tx.t("signup.timezone"))}</label><input id="timezone" name="timezone" value="Asia/Hong_Kong" required autocomplete="off">
-        <label for="goal">${escapeHtml(tx.t("signup.goal"))} <span class="muted small">${escapeHtml(tx.t("signup.goalOptional"))}</span></label><input id="goal" name="goal" maxlength="120" autocomplete="off">
-        <button class="btn" type="submit">${escapeHtml(tx.t("signup.submit"))}</button>
-      </form>
-      <p class="muted small">${escapeHtml(tx.t("signup.haveAccount"))} <a href="/login">${escapeHtml(tx.t("signup.signin"))}</a></p>
-    </section>`,
-    undefined,
-    "none",
-    0,
-    "",
-    tx,
-  );
+  return renderAuthPage("signup", tx.t("signup.title"), error, tx);
 }
 
 function renderProfile(user: AuthUser, saved: boolean, error: string | undefined, unread: number, flash: string, goalChanged: boolean, tx: Translator): string {
@@ -3777,6 +4368,21 @@ export function createWeb(options: WebOptions): WebApp {
       if (url.pathname === "/static/utils/BufferGeometryUtils.js") {
         response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
         response.end(BUFFER_GEOMETRY_UTILS_MODULE);
+        return;
+      }
+      if (url.pathname === "/static/auth-hero.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(AUTH_HERO_WEBP);
+        return;
+      }
+      if (url.pathname === "/static/calendar-object.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(AUTH_OBJECT_WEBP);
+        return;
+      }
+      if (url.pathname === "/static/paper-grain.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(AUTH_GRAIN_WEBP);
         return;
       }
       if (url.pathname === "/static/anatomy-muscles.glb") {
