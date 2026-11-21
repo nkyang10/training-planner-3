@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { createStore, type StoreHandle } from "../src/store";
+import { buildMuscleProposal, type MuscleProposalDraft } from "../src/muscle-proposals";
 import type { SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
@@ -854,5 +855,185 @@ describe("the coach's view of muscle check-ins", () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as { error?: { detail?: string } };
     expect(payload.error?.detail).toContain("muscleId");
+  });
+});
+
+describe("coach muscle suggestions on the page and the decision endpoint", () => {
+  const draft = (overrides: Partial<MuscleProposalDraft> = {}): MuscleProposalDraft => ({
+    action: "report",
+    muscleId: "calves",
+    soreness: 6,
+    conditions: ["tight"],
+    side: "right",
+    warmUp: "eases",
+    note: "calf felt tight after the tempo",
+    evidence: ["my right calf is 6/10 and tight"],
+    confidence: 0.8,
+    ...overrides,
+  });
+
+  const seedProposal = (
+    handle: StoreHandle,
+    userId: string,
+    input: { day?: string; overrides?: Partial<MuscleProposalDraft> } = {},
+  ): ReturnType<typeof buildMuscleProposal> => {
+    const proposal = buildMuscleProposal({
+      userId,
+      draft: draft(input.overrides),
+      today: input.day ?? TODAY,
+      now: `${TODAY}T08:00:00.000Z`,
+    });
+    handle.store.appendMuscleProposal(proposal);
+    return proposal;
+  };
+
+  const postProposal = (
+    base: string,
+    cookie: string,
+    proposalId: string,
+    decision: "confirm" | "dismiss",
+    json = false,
+  ): Promise<Response> =>
+    fetch(`${base}/muscle/proposals/${encodeURIComponent(proposalId)}/${decision}`, {
+      method: "POST",
+      headers: { cookie, ...(json ? { accept: "application/json" } : {}) },
+      redirect: "manual",
+    });
+
+  it("renders a pending suggestion with the runner's quote and the two decisions", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(html).toContain("Coach suggestions");
+    expect(html).toContain("Nothing is written until you confirm it");
+    expect(html).toContain("Report Calves: 6/10 clear doms · Tight / stiff · Right");
+    expect(html).toContain("You said: “my right calf is 6/10 and tight”");
+    expect(html).toContain("Your note: “calf felt tight after the tempo”");
+    const encodedId = encodeURIComponent(proposal.proposalId);
+    expect(html).toContain(`action="/muscle/proposals/${encodedId}/confirm"`);
+    expect(html).toContain(`formaction="/muscle/proposals/${encodedId}/dismiss"`);
+    // A fresh page with nothing pending shows no suggestion card at all.
+    const empty = await start();
+    expect(await (await fetch(`${empty.base}/muscle`, { headers: { cookie: empty.cookie } })).text()).not.toContain(
+      "Coach suggestions",
+    );
+  });
+
+  it("confirms a report into a check-in and a fading status", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const response = await postProposal(base, cookie, proposal.proposalId, "confirm");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/muscle?saved=proposal");
+    const checkIns = handle.store.listMuscleCheckIns(user.userId);
+    expect(checkIns).toHaveLength(1);
+    expect(checkIns[0]?.muscles[0]).toMatchObject({
+      muscleId: "calves",
+      soreness: 6,
+      conditions: ["tight"],
+      side: "right",
+      warmUp: "eases",
+    });
+    expect(checkIns[0]?.note).toBe("calf felt tight after the tempo");
+    expect(handle.store.listMuscleStatusControls(user.userId).find((control) => control.muscleId === "calves")).toMatchObject({
+      hold: false,
+      resolvedDay: null,
+    });
+    expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("confirmed");
+    const html = await (await fetch(`${base}/muscle?saved=proposal`, { headers: { cookie } })).text();
+    expect(html).toContain("Suggestion confirmed — your muscle record is updated");
+    expect(html).not.toContain("Coach suggestions");
+    expect(html).toContain("Calves");
+    expect(html).toContain("6/10");
+  });
+
+  it("dismisses a suggestion without touching the record", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const response = await postProposal(base, cookie, proposal.proposalId, "dismiss");
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/muscle?saved=dismissed");
+    expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("dismissed");
+    expect(handle.store.listMuscleCheckIns(user.userId)).toHaveLength(0);
+    expect(handle.store.listMuscleStatusControls(user.userId)).toHaveLength(0);
+    const html = await (await fetch(`${base}/muscle?saved=dismissed`, { headers: { cookie } })).text();
+    expect(html).toContain("Suggestion dismissed. Nothing about your muscles changed");
+    expect(html).not.toContain("Coach suggestions");
+  });
+
+  it("confirms hold, release and all-better on an active status", async () => {
+    const { base, cookie, handle, user } = await start();
+    await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
+    const hold = seedProposal(handle, user.userId, {
+      overrides: { action: "hold", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    expect((await postProposal(base, cookie, hold.proposalId, "confirm")).status).toBe(303);
+    expect(handle.store.listMuscleStatusControls(user.userId).find((control) => control.muscleId === "calves")?.hold).toBe(true);
+    expect(await (await fetch(`${base}/muscle`, { headers: { cookie } })).text()).toContain("Held constant since");
+    const release = seedProposal(handle, user.userId, {
+      overrides: { action: "release", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    expect((await postProposal(base, cookie, release.proposalId, "confirm")).status).toBe(303);
+    expect(handle.store.listMuscleStatusControls(user.userId).find((control) => control.muscleId === "calves")?.hold).toBe(false);
+    const resolve = seedProposal(handle, user.userId, {
+      overrides: { action: "resolve", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    expect((await postProposal(base, cookie, resolve.proposalId, "confirm")).status).toBe(303);
+    expect(handle.store.listMuscleStatusControls(user.userId).find((control) => control.muscleId === "calves")?.resolvedDay).toBe(TODAY);
+    const cleared = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(cleared).toContain("All perfect");
+  });
+
+  it("refuses an expired suggestion and a status action with nothing to change", async () => {
+    const { base, cookie, handle, user } = await start();
+    const expired = seedProposal(handle, user.userId, { day: "2026-10-01" });
+    const expiredResponse = await postProposal(base, cookie, expired.proposalId, "confirm");
+    expect(expiredResponse.status).toBe(303);
+    expect(expiredResponse.headers.get("location")).toBe("/muscle?error=proposal-expired");
+    const expiredHtml = await (await fetch(`${base}/muscle?error=proposal-expired`, { headers: { cookie } })).text();
+    expect(expiredHtml).toContain("That suggestion has expired");
+    const orphan = seedProposal(handle, user.userId, {
+      overrides: { action: "resolve", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    const orphanResponse = await postProposal(base, cookie, orphan.proposalId, "confirm");
+    expect(orphanResponse.status).toBe(303);
+    expect(orphanResponse.headers.get("location")).toBe("/muscle?error=proposal-status");
+    const orphanHtml = await (await fetch(`${base}/muscle?error=proposal-status`, { headers: { cookie } })).text();
+    expect(orphanHtml).toContain("no longer has an active status");
+    expect(handle.store.listMuscleCheckIns(user.userId)).toHaveLength(0);
+    expect(handle.store.getMuscleProposal(user.userId, orphan.proposalId)?.status).toBe("proposed");
+  });
+
+  it("answers the dock's JSON call and hides a foreign suggestion", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const confirmed = await postProposal(base, cookie, proposal.proposalId, "confirm", true);
+    expect(confirmed.status).toBe(200);
+    expect(await confirmed.json()).toMatchObject({ ok: true, decision: "confirm" });
+    const foreign = seedProposal(handle, "someone-else");
+    const missing = await postProposal(base, cookie, foreign.proposalId, "dismiss", true);
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toMatchObject({ ok: false, detail: "not-found" });
+    const again = await postProposal(base, cookie, proposal.proposalId, "confirm", true);
+    expect(again.status).toBe(409);
+    expect(await again.json()).toMatchObject({ ok: false, detail: "not-pending" });
+  });
+
+  it("lists pending suggestions in the coach dock history", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const history = (await (await fetch(`${base}/chat/history`, { headers: { cookie } })).json()) as {
+      muscleProposals: Array<{ proposalId: string; line: string; evidence: string[]; status: string }>;
+    };
+    expect(history.muscleProposals).toHaveLength(1);
+    expect(history.muscleProposals[0]).toMatchObject({
+      proposalId: proposal.proposalId,
+      line: "Report Calves: 6/10 clear doms · Tight / stiff · Right",
+      evidence: ["my right calf is 6/10 and tight"],
+      status: "proposed",
+    });
+    await postProposal(base, cookie, proposal.proposalId, "dismiss", true);
+    const after = (await (await fetch(`${base}/chat/history`, { headers: { cookie } })).json()) as { muscleProposals: unknown[] };
+    expect(after.muscleProposals).toHaveLength(0);
   });
 });

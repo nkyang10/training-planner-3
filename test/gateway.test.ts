@@ -14,6 +14,7 @@ interface TurnOverrides {
   suggestions?: string[];
   revertChangeSetId?: string | null;
   stateProposals?: unknown[];
+  muscleProposals?: unknown[];
   profileUpdates?: Record<string, unknown>;
 }
 
@@ -1982,6 +1983,128 @@ describe("muscle check-ins in the gateway", () => {
     expect(body.error?.code).toBe("reference-not-found");
     expect(body.error?.detail).toContain("unknown muscle");
     expect(model.prompts).toHaveLength(0);
+  });
+});
+
+describe("muscle-condition suggestions in the gateway", () => {
+  const proposal = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    action: "report",
+    muscleId: "calves",
+    soreness: 6,
+    conditions: ["tight"],
+    side: "right",
+    warmUp: "eases",
+    note: null,
+    evidence: ["my right calf is 6/10 and tight"],
+    confidence: 0.8,
+    ...overrides,
+  });
+  const quietWithProposals = (muscleProposals: unknown[]): Record<string, unknown> =>
+    turn({ memories: [], sessions: [], muscleProposals });
+
+  it("records pending suggestions without writing a check-in or a control", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(quietWithProposals([proposal()]));
+    const response = await post(url, {
+      model: "milebook-coach",
+      messages: [{ role: "user", content: "My right calf is 6/10 and tight" }],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.milebook.muscleProposals).toHaveLength(1);
+    expect(body.milebook.muscleProposals[0]).toMatchObject({ action: "report", muscleId: "calves", status: "proposed" });
+    const stored = handle.store.listMuscleProposals(USER, "proposed", 5);
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      action: "report",
+      muscleId: "calves",
+      soreness: 6,
+      conditions: ["tight"],
+      side: "right",
+      day: TODAY,
+      status: "proposed",
+      evidence: ["my right calf is 6/10 and tight"],
+    });
+    // Nothing about the body is written until the runner taps Confirm.
+    expect(handle.store.listMuscleCheckIns(USER)).toHaveLength(0);
+    expect(handle.store.listMuscleStatusControls(USER)).toHaveLength(0);
+  });
+
+  it("does not stack an identical suggestion that is still waiting, but a changed level is new", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(quietWithProposals([proposal()]));
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "My right calf is 6/10 and tight" }] });
+    model.answers.push(quietWithProposals([proposal()]));
+    const second = await post(url, {
+      model: "milebook-coach",
+      messages: [{ role: "user", content: "My right calf is still 6/10 and tight" }],
+    });
+    expect(((await second.json()) as Completion).milebook.muscleProposals).toHaveLength(0);
+    expect(handle.store.listMuscleProposals(USER, "proposed", 5)).toHaveLength(1);
+    model.answers.push(quietWithProposals([proposal({ soreness: 8 })]));
+    const third = await post(url, {
+      model: "milebook-coach",
+      messages: [{ role: "user", content: "Now it is 8/10" }],
+    });
+    expect(((await third.json()) as Completion).milebook.muscleProposals).toHaveLength(1);
+    expect(handle.store.listMuscleProposals(USER, "proposed", 5)).toHaveLength(2);
+  });
+
+  it("puts the pending suggestion in the next snapshot and refreshes the epoch once", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    model.answers.push(quietWithProposals([proposal()]));
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "My right calf is 6/10 and tight" }] });
+    model.answers.push(turn({ memories: [], sessions: [] }));
+    const second = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Thanks" }] });
+    const body = (await second.json()) as Completion;
+    expect(model.prompts[1]).toContain("Pending muscle suggestions");
+    expect(model.prompts[1]).toContain("Calves: report 6/10 clear doms tight / stiff, right");
+    expect(model.prompts[1]).toContain("not confirmed yet");
+    expect(body.milebook.prefill.refreshed).toEqual(["muscle-suggestion-changed"]);
+    expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(2);
+    // A third turn with nothing changed appends no snapshot: the pending block is stable history now.
+    model.answers.push(turn({ memories: [], sessions: [] }));
+    const third = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Ok" }] });
+    expect(((await third.json()) as Completion).milebook.prefill.refreshed).toEqual([]);
+    expect(handle.store.listPromptSnapshots(USER, 3)).toHaveLength(2);
+  });
+
+  it("records suggestions on a comment-only review turn and keeps the calendar unchanged", async () => {
+    const model = queueResponses();
+    const { handle, url } = await base(model.fetchImpl);
+    model.responses.push(modelResponse(quietWithProposals([proposal({ action: "resolve", soreness: null })])));
+    const response = await post(url, {
+      model: "milebook-coach",
+      messages: [{ role: "user", content: "My calves feel fine now" }],
+      milebook: {
+        directive: {
+          mode: "review",
+          allowCalendarWrites: false,
+          allowMemoryWrites: true,
+          background: "Comment only: discuss the referenced run.",
+          source: "run-peek",
+          style: { language: "auto", tone: "supportive" },
+        },
+      },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.milebook.writesAllowed).toBe(false);
+    expect(body.milebook.muscleProposals).toHaveLength(1);
+    expect(body.milebook.sessions).toBe(0);
+    expect(handle.store.listMuscleProposals(USER, "proposed", 5)).toHaveLength(1);
+    expect(handle.store.listMuscleCheckIns(USER)).toHaveLength(0);
+  });
+
+  it("keeps the pending block out of prompts when nothing is pending", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    model.answers.push(turn({ memories: [], sessions: [] }));
+    await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "Hello" }] });
+    expect(model.prompts[0]).not.toContain("Pending muscle suggestions");
   });
 });
 

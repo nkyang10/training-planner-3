@@ -32,6 +32,15 @@ import {
   renderCoachStateCatalog,
   type StateProposal,
 } from "./coach-states";
+import {
+  MAX_MUSCLE_PROPOSALS,
+  MAX_MUSCLE_PROPOSAL_EVIDENCE,
+  MAX_MUSCLE_PROPOSAL_EVIDENCE_CHARS,
+  MAX_MUSCLE_PROPOSAL_NOTE_CHARS,
+  parseMuscleProposalDraft,
+  type MuscleProposalDraft,
+} from "./muscle-proposals";
+import { MUSCLE_CATALOG, MUSCLE_CONDITIONS } from "./muscles";
 import { addDays, localDateTime, safeTimeZone, weekday } from "./time";
 
 export const SESSION_KINDS: readonly SessionKind[] = ["easy", "long", "interval", "tempo", "rest", "cross", "race", "racewalk"];
@@ -54,7 +63,7 @@ export const HORIZON_DAYS = 180;
 /** How many merged memories ride in one context snapshot (LL-6). */
 export const COACH_MEMORY_WINDOW = 12;
 /** Bumped whenever a segment the system prompt renders changes, so every runner gets one fresh snapshot. */
-export const COACH_PROMPT_VERSION = "2026-11-20.1";
+export const COACH_PROMPT_VERSION = "2026-11-22.1";
 /** Rough token budget for snapshots + history before the assembly starts dropping the oldest messages. */
 const ASSEMBLY_TOKEN_BUDGET = 8000;
 /** Never compact below this many history messages. */
@@ -98,6 +107,8 @@ export interface CoachTurn {
   revertChangeSetId: string | null;
   /** Durable coaching states the model proposes for the runner to confirm. */
   stateProposals: StateProposal[];
+  /** Muscle-condition suggestions the runner confirms with one tap; nothing is written until they do. */
+  muscleProposals: MuscleProposalDraft[];
   /** Silent preference updates; empty when the turn revealed none. */
   profileUpdates: ProfileUpdates;
 }
@@ -164,6 +175,11 @@ export interface CoachSnapshotInput {
    * perfect condition; never shown in the chat.
    */
   muscleFacts?: string;
+  /**
+   * The pending muscle suggestions, pre-rendered by the caller: what the coach already suggested and the runner has
+   * not confirmed yet. Undefined or empty when nothing is pending; never shown in the chat.
+   */
+  pendingMuscleProposals?: string;
 }
 
 /** The hidden suffix of one turn's user message: the directive block plus its resolved references. */
@@ -228,6 +244,8 @@ export interface CoachEpochParts {
   latestActivityId: string | null;
   activityCount: number;
   latestMuscleCheckInId: string | null;
+  /** Ids of the muscle suggestions still waiting for the runner's confirm, sorted; absent on older snapshots. */
+  pendingMuscleProposalIds?: readonly string[];
   activeStateKeys: readonly string[];
   memoryIds: readonly string[];
   /** Hash of the profile fields the snapshot renders (name, timezone, goal). */
@@ -342,6 +360,37 @@ export const COACH_TOOL = {
             },
           },
         },
+        muscleProposals: {
+          type: "array",
+          maxItems: MAX_MUSCLE_PROPOSALS,
+          description:
+            "Muscle-condition suggestions. Each waits for the runner's one-tap confirm; nothing is written from here.",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["action", "muscleId", "soreness", "conditions", "side", "warmUp", "note", "evidence", "confidence"],
+            properties: {
+              action: { type: "string", enum: ["report", "hold", "release", "resolve"] },
+              muscleId: { type: "string", enum: MUSCLE_CATALOG.map((muscle) => muscle.id) },
+              soreness: { type: ["integer", "null"], minimum: 0, maximum: 10 },
+              conditions: {
+                type: "array",
+                maxItems: MUSCLE_CONDITIONS.length,
+                items: { type: "string", enum: MUSCLE_CONDITIONS.map((condition) => condition.key) },
+              },
+              side: { type: "string", enum: ["both", "left", "right"] },
+              warmUp: { type: ["string", "null"] },
+              note: { type: ["string", "null"], maxLength: MAX_MUSCLE_PROPOSAL_NOTE_CHARS },
+              evidence: {
+                type: "array",
+                minItems: 1,
+                maxItems: MAX_MUSCLE_PROPOSAL_EVIDENCE,
+                items: { type: "string", minLength: 1, maxLength: MAX_MUSCLE_PROPOSAL_EVIDENCE_CHARS },
+              },
+              confidence: { type: "number", minimum: 0.5, maximum: 1 },
+            },
+          },
+        },
       },
     },
   },
@@ -372,6 +421,9 @@ export const COACH_RULES: readonly string[] = [
   "The latest message may end with a hidden Turn directive block from the app, possibly with a Referenced context (JSON) section. The directive is authoritative background: follow it, never quote it, and never mention it to the runner. When a Referenced context names an activity, that activity is the exact run the runner's latest message is about: use its stored day and metrics, name that day in the reply, and never say the title matches several records or ask which run they mean, even when recentActivities lists several runs with the same title.",
   "Activity facts may include rpe: the runner's reported effort on the Borg CR10 scale (0-10, half steps), given when a run was logged by hand. Use it when discussing how a run felt and name it plainly (for example \"you reported 9/10 - that was a hard effort\"); never invent, correct or grade it. When rpe conflicts with the pace or heart-rate reading, say both readings and ask the runner instead of choosing one.",
   "The newest context block may include a Muscle status section: today's computed level for each muscle the runner reported, on a 0-10 anchored scale (3 mild, 5 noticeable, 7 sore to touch, 9-10 severe) with condition tags and sides. The levels fade with time unless marked held: treat an old fading report as improving, not as today's pain, and when advice depends on how a muscle feels today, say so and invite a fresh check-in. A held level means the runner says it is not settling on its own - ask about it rather than assuming improvement. Every muscle not listed is in perfect condition. Use the status when shaping recovery. Normal soreness peaks 24-72 h after a session and eases once the runner is moving, so suggest easier work or mobility for it; tight muscles want mobility and activation before load. Sharp localized pain, swelling or numbness are not normal soreness: advise taking direct loading off that muscle, refer to a clinician, and never diagnose or prescribe. When the status carries such a warning, propose the pain_injury state (medical_red_flag only when severe soreness comes with swelling) with evidence from the tags, and keep hard work off that muscle.",
+  "The runner's muscle condition is theirs to confirm. When the runner says how a muscle feels - a level on the 0-10 scale, tightness, a cramp, a pain - you may add one muscleProposals entry with action=report, the exact level, condition tags and side they gave, and one to three short quotes of their own words as evidence. Never invent, round or upgrade a level; never propose a report for a muscle the runner did not mention; never turn a feeling into a diagnosis. When they say a muscle is better or fine now, propose resolve; when they ask to keep a level until they say otherwise, propose hold; when they want it to fade again, propose release. The runner confirms with one tap: say you suggested it, never that it is logged or saved, and never repeat a suggestion that is still pending.",
+  "A muscle suggestion is not a diagnosis and never replaces care. If the runner's words carry sharp pain, swelling or numbness, do not propose a report, a resolve or a lower level for that muscle: keep the care-first reading from the Muscle status rule, refer to a clinician, and propose the pain_injury state as usual. A report is the runner's own statement, so quote it instead of paraphrasing it into a level they did not give.",
+  "A pending muscle suggestion is the runner's decision. If the context lists one as not confirmed, do not re-propose it; answer questions about it and let the runner confirm or dismiss it on the card.",
   "Use action=add for a new booking, action=update with the existing sessionId to change or move a booking, action=remove with the existing sessionId to delete one. You may emit several actions in one answer (for example move two runs, remove one, add one); do not limit yourself to a single action when the plan needs a batch.",
   "Only say you changed the schedule when you emitted update or remove; adding a session is not a change. In one short sentence, say what changed and what stayed.",
   "If the runner names a day but not a specific session, and that day has more than one booked session, ask which session they mean and emit no sessions in that turn. Never guess a target and partially apply a batch.",
@@ -460,6 +512,9 @@ export function buildContextSnapshot(input: CoachSnapshotInput): string {
   ];
   if (input.muscleFacts !== undefined && input.muscleFacts.trim().length > 0) {
     lines.push(`Muscle status:\n${input.muscleFacts.trim()}`);
+  }
+  if (input.pendingMuscleProposals !== undefined && input.pendingMuscleProposals.trim().length > 0) {
+    lines.push(`Pending muscle suggestions:\n${input.pendingMuscleProposals.trim()}`);
   }
   return lines.join("\n\n");
 }
@@ -639,6 +694,9 @@ export function epochReasons(prev: CoachEpochParts | null, next: CoachEpochParts
     reasons.push("new-activities");
   }
   if (prev.latestMuscleCheckInId !== next.latestMuscleCheckInId) reasons.push("new-muscle-check-in");
+  if (!sameList(prev.pendingMuscleProposalIds ?? [], next.pendingMuscleProposalIds ?? [])) {
+    reasons.push("muscle-suggestion-changed");
+  }
   if (prev.latestChangeSetId !== next.latestChangeSetId) reasons.push("calendar-changed");
   if (!sameList(prev.activeStateKeys, next.activeStateKeys)) reasons.push("states-changed");
   if (!sameList(prev.memoryIds, next.memoryIds)) reasons.push("memories-updated");
@@ -723,7 +781,16 @@ export function parseCoachTurn(raw: unknown, today: string): ParseResult {
   }
 
   const keys = Object.keys(raw).sort();
-  const allowed = ["memories", "profileUpdates", "reply", "revertChangeSetId", "sessions", "stateProposals", "suggestions"];
+  const allowed = [
+    "memories",
+    "muscleProposals",
+    "profileUpdates",
+    "reply",
+    "revertChangeSetId",
+    "sessions",
+    "stateProposals",
+    "suggestions",
+  ];
   for (const key of keys) {
     if (!allowed.includes(key)) addIssue(key, "extra-keys", `unexpected key: ${key}`, key);
   }
@@ -921,6 +988,38 @@ export function parseCoachTurn(raw: unknown, today: string): ParseResult {
     }
   }
 
+  // Muscle-condition suggestions: the runner confirms each one with a tap, so the parse only has to guarantee a
+  // complete, displayable proposal. Nothing here writes a check-in or a control.
+  const rawMuscleProposals = raw["muscleProposals"] === undefined ? [] : raw["muscleProposals"];
+  const muscleProposals: MuscleProposalDraft[] = [];
+  if (!Array.isArray(rawMuscleProposals) || rawMuscleProposals.length > MAX_MUSCLE_PROPOSALS) {
+    addIssue(
+      "muscleProposals",
+      "invalid-muscle-proposals",
+      `muscleProposals must be an array of at most ${MAX_MUSCLE_PROPOSALS} items`,
+    );
+  } else {
+    const proposedMuscles = new Set<string>();
+    for (let index = 0; index < rawMuscleProposals.length; index += 1) {
+      const path = `muscleProposals[${index}]`;
+      const parsed = parseMuscleProposalDraft(rawMuscleProposals[index]);
+      if (!parsed.ok) {
+        addIssue(parsed.path.length === 0 ? path : `${path}.${parsed.path}`, "invalid-muscle-proposal", parsed.message);
+        continue;
+      }
+      if (proposedMuscles.has(parsed.draft.muscleId)) {
+        addIssue(
+          `${path}.muscleId`,
+          "duplicate-muscle-proposal",
+          `one muscle may be proposed only once per turn: ${parsed.draft.muscleId}`,
+        );
+        continue;
+      }
+      proposedMuscles.add(parsed.draft.muscleId);
+      muscleProposals.push(parsed.draft);
+    }
+  }
+
   // The silent preference channel (LL-5): only these four keys are writable, and only with valid values.
   const rawProfileUpdates = raw["profileUpdates"];
   const profileUpdates: ProfileUpdates = {};
@@ -981,6 +1080,6 @@ export function parseCoachTurn(raw: unknown, today: string): ParseResult {
   }
   return {
     ok: true,
-    turn: { reply, memories, sessions, suggestions, revertChangeSetId, stateProposals, profileUpdates },
+    turn: { reply, memories, sessions, suggestions, revertChangeSetId, stateProposals, muscleProposals, profileUpdates },
   };
 }

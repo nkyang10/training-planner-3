@@ -920,8 +920,153 @@ describe("coaching state proposals", () => {
   });
 });
 
-describe("extended race horizon", () => {
-  it("accepts a racewalk race on 2027-01-15 and keeps a far date rejected", () => {
+describe("muscle-condition suggestions", () => {
+  const proposal = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    action: "report",
+    muscleId: "calves",
+    soreness: 6,
+    conditions: ["tight"],
+    side: "right",
+    warmUp: "eases",
+    note: null,
+    evidence: ["my right calf is 6/10 and tight"],
+    confidence: 0.8,
+    ...overrides,
+  });
+  const parse = (muscleProposals: unknown): unknown =>
+    parseCoachTurn({ reply: "Noted.", suggestions: ["Plan the week"], muscleProposals }, TODAY);
+
+  it("parses a valid report and defaults the absent fields", () => {
+    const result = parseCoachTurn(
+      {
+        reply: "Noted.",
+        suggestions: ["Plan the week"],
+        muscleProposals: [proposal(), { ...proposal({ muscleId: "hamstrings", action: "resolve", soreness: null }) }],
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.turn.muscleProposals).toHaveLength(2);
+      expect(result.turn.muscleProposals[0]).toMatchObject({
+        action: "report",
+        muscleId: "calves",
+        soreness: 6,
+        conditions: ["tight"],
+        side: "right",
+        warmUp: "eases",
+        evidence: ["my right calf is 6/10 and tight"],
+        confidence: 0.8,
+      });
+      expect(result.turn.muscleProposals[1]).toMatchObject({ action: "resolve", muscleId: "hamstrings", soreness: null });
+    }
+  });
+
+  it("defaults to no suggestions and rejects a non-array list", () => {
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"] }, TODAY)).toMatchObject({ ok: true, turn: { muscleProposals: [] } });
+    expect(parseCoachTurn({ reply: "x", suggestions: ["a"], muscleProposals: null }, TODAY)).toMatchObject({
+      ok: false,
+      code: "invalid-muscle-proposals",
+    });
+  });
+
+  it("rejects unknown muscles, bad levels, bad actions and missing evidence", () => {
+    expect(parse([proposal({ muscleId: "tail" })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ soreness: 12 })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ action: "log" })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ evidence: [] })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ conditions: ["bruised"] })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ diagnosis: "strain" })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+    expect(parse([proposal({ confidence: 0.1 })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+  });
+
+  it("rejects the same muscle twice, more than three items and a non-array", () => {
+    expect(parse([proposal(), proposal()])).toMatchObject({ ok: false, code: "duplicate-muscle-proposal" });
+    expect(parse("calves")).toMatchObject({ ok: false, code: "invalid-muscle-proposals" });
+    expect(
+      parse(
+        Array.from({ length: 4 }, (_value, index) =>
+          proposal({ muscleId: ["calves", "quads", "glutes", "hamstrings"][index] }),
+        ),
+      ),
+    ).toMatchObject({ ok: false, code: "invalid-muscle-proposals" });
+    expect(parse([42])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+  });
+
+  it("names the field path in the validation issue", () => {
+    const result = parseCoachTurn(
+      { reply: "Noted.", suggestions: ["Plan"], muscleProposals: [proposal({ muscleId: "tail" })] },
+      TODAY,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.issues[0]?.path).toBe("muscleProposals[0].muscleId");
+    }
+  });
+
+  it("exposes the muscle ids and actions in the tool schema", () => {
+    const properties = COACH_TOOL.function.parameters.properties;
+    expect(properties).toHaveProperty("muscleProposals");
+    const proposals = properties.muscleProposals;
+    expect(proposals.type).toBe("array");
+    expect(proposals.maxItems).toBe(3);
+    expect(proposals.items.properties.action.enum).toEqual(["report", "hold", "release", "resolve"]);
+    expect(proposals.items.properties.muscleId.enum).toContain("calves");
+    expect(proposals.items.properties.muscleId.enum).toContain("hamstrings");
+    expect(proposals.items.properties.conditions.items.enum).toContain("sharp_pain");
+    expect(proposals.items.required).toContain("evidence");
+  });
+
+  it("teaches the confirm-first rule and the no-diagnosis limit in the system prompt", () => {
+    const prompt = buildCoachSystemPrompt();
+    expect(prompt).toContain("muscleProposals");
+    expect(prompt).toContain("The runner confirms with one tap");
+    expect(prompt).toContain("A muscle suggestion is not a diagnosis");
+    expect(prompt).toContain("do not propose a report, a resolve or a lower level");
+  });
+
+  it("renders the pending suggestions in the newest context snapshot only when there are some", () => {
+    const base = {
+      today: TODAY,
+      memories: [],
+      sessions: [],
+      activities: [],
+      recentChanges: [],
+    };
+    expect(buildContextSnapshot(base)).not.toContain("Pending muscle suggestions");
+    const withPending = buildContextSnapshot({
+      ...base,
+      pendingMuscleProposals: "Pending muscle suggestions (the runner has not confirmed these):\n- Calves: report 6/10 clear doms",
+    });
+    expect(withPending).toContain("Pending muscle suggestions:");
+    expect(withPending).toContain("- Calves: report 6/10 clear doms");
+  });
+
+  it("adds a muscle-suggestion reason to the epoch diff", () => {
+    const parts: CoachEpochParts = {
+      promptVersion: COACH_PROMPT_VERSION,
+      today: TODAY,
+      latestChangeSetId: null,
+      latestActivityId: null,
+      activityCount: 0,
+      latestMuscleCheckInId: null,
+      pendingMuscleProposalIds: [],
+      activeStateKeys: [],
+      memoryIds: [],
+      profileKey: "p",
+      preferenceKey: "q",
+    };
+    expect(epochReasons(parts, { ...parts, pendingMuscleProposalIds: ["muscle-proposal:1"] })).toEqual([
+      "muscle-suggestion-changed",
+    ]);
+    // An older snapshot without the field is not a change of its own.
+    const legacy = { ...parts } as CoachEpochParts;
+    delete legacy.pendingMuscleProposalIds;
+    expect(epochReasons(legacy, parts)).toEqual([]);
+  });
+});
+
+describe("extended race horizon", () => {  it("accepts a racewalk race on 2027-01-15 and keeps a far date rejected", () => {
     const race = parseCoachTurn(
       {
         reply: "Booked the race walk.",

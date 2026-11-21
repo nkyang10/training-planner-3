@@ -47,10 +47,17 @@ import {
 } from "./muscles";
 import { computeMuscleStatuses } from "./muscle-status";
 import {
+  confirmMuscleProposal,
+  dismissMuscleProposal,
+  listPendingMuscleProposals,
+} from "./muscle-proposals";
+import {
   muscleCalendarChip,
+  muscleProposalView,
   musclesWorkedCard,
   renderMusclePage,
   type MuscleActivityOption,
+  type MuscleProposalView,
   type MuscleTrainingRow,
 } from "./web-muscle";
 import { CSS } from "./styles";
@@ -1990,7 +1997,7 @@ function layout(
   const i18nScript = clientI18nScript(tx);
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=30"></head>
+  <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=31"></head>
   <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
@@ -2211,6 +2218,9 @@ function renderChatBubble(tx: Translator): string {
           if (Array.isArray(data.states)) {
             addStateCards(data.states.filter((state) => state && state.status === 'observing'));
           }
+          // Pending muscle suggestions are durable rows too: the runner can still confirm or dismiss them after a
+          // refresh, not only on the turn that produced them.
+          addMuscleProposalCards(data.muscleProposals);
         }
         // The context tabs read the same durable rows: states are what the coach currently believes, changes are
         // what it actually wrote. Refreshing them after a turn keeps the three groups in step without a page load.
@@ -2497,6 +2507,82 @@ function renderChatBubble(tx: Translator): string {
         scrollToLatest();
       }
     };
+    /**
+     * One pending coach muscle suggestion. It is the coach's notice, not a write: Confirm posts exactly the record
+     * the Muscle tab's own form would have written, Dismiss drops it, and the card says which one happened.
+     */
+    const buildMuscleProposalCard = (proposal) => {
+      const card = document.createElement('div');
+      card.className = 'bubble muscle-suggestion';
+      card.dataset.proposalId = proposal.proposalId;
+      card.setAttribute('role', 'status');
+      const head = document.createElement('strong');
+      head.textContent = tr('muscleSuggestion', 'Muscle suggestion');
+      card.appendChild(head);
+      const line = document.createElement('p');
+      line.textContent = typeof proposal.line === 'string' ? proposal.line : '';
+      card.appendChild(line);
+      if (Array.isArray(proposal.evidence) && proposal.evidence.length > 0) {
+        const evidence = document.createElement('p');
+        evidence.className = 'muted small';
+        const quotes = proposal.evidence.map((quote) => '“' + String(quote) + '”').join(' · ');
+        evidence.textContent = tr('muscleSuggestionEvidence', 'You said: {quotes}').replace('{quotes}', quotes);
+        card.appendChild(evidence);
+      }
+      if (typeof proposal.note === 'string' && proposal.note.length > 0) {
+        const note = document.createElement('p');
+        note.className = 'muted small';
+        note.textContent = tr('muscleSuggestionNote', 'Your note: {note}').replace('{note}', proposal.note);
+        card.appendChild(note);
+      }
+      const pending = document.createElement('p');
+      pending.className = 'muted small muscle-suggestion-pending';
+      pending.textContent = tr('muscleSuggestionPending', 'Waiting for your confirm - nothing is saved yet.');
+      card.appendChild(pending);
+      const actions = document.createElement('div');
+      actions.className = 'proposal-actions';
+      const decide = async (decision, button) => {
+        button.disabled = true;
+        try {
+          const result = await fetch('/muscle/proposals/' + encodeURIComponent(proposal.proposalId) + '/' + decision, {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          });
+          if (!result.ok) throw new Error('decision failed');
+          card.replaceChildren();
+          card.classList.add(decision === 'confirm' ? 'ok' : 'muted');
+          card.textContent = decision === 'confirm'
+            ? tr('muscleConfirmed', 'Muscle record updated')
+            : tr('muscleDismissed', 'Suggestion dismissed');
+          setWaitFlag('Muscle');
+          void loadConversation(true);
+        } catch {
+          button.disabled = false;
+          pending.textContent = tr('muscleFailed', 'That suggestion could not be applied. Open the Muscle tab to check in.');
+        }
+      };
+      const confirm = document.createElement('button');
+      confirm.type = 'button';
+      confirm.className = 'btn';
+      confirm.textContent = tr('confirm', 'Confirm');
+      confirm.addEventListener('click', () => { void decide('confirm', confirm); });
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'btn ghost';
+      dismiss.textContent = tr('dismiss', 'Dismiss');
+      dismiss.addEventListener('click', () => { void decide('dismiss', dismiss); });
+      actions.append(confirm, dismiss);
+      card.appendChild(actions);
+      return card;
+    };
+    const addMuscleProposalCards = (proposals) => {
+      if (!Array.isArray(proposals) || proposals.length === 0) return;
+      for (const proposal of proposals) {
+        if (!proposal || typeof proposal.proposalId !== 'string' || proposal.status !== 'proposed') continue;
+        log.appendChild(buildMuscleProposalCard(proposal));
+      }
+      scrollToLatest();
+    };
     // The States tab is the durable half of the conversation: active and proposed states stay put instead of
     // scrolling away with the messages that produced them. Proposals that need a decision come first, and the badge
     // counts only those — an active state is context, not an alert.
@@ -2734,6 +2820,7 @@ function renderChatBubble(tx: Translator): string {
           addGuardrail(tr('calendarUnchanged', 'Calendar unchanged'));
         }
         addStateCards(data.states);
+        addMuscleProposalCards(data.muscleProposals);
         if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
           const labels = data.blockedByStates.map((s) => (s && s.label ? String(s.label) : tr('blockedByDefault', 'a coaching state')));
           addGuardrail(tr('guardrailProtected', 'Calendar unchanged — {labels} is protecting the plan · want to talk through what would work instead?').replace('{labels}', labels.join(', ')));
@@ -4123,7 +4210,10 @@ export function createWeb(options: WebOptions): WebApp {
                 formDay,
                 saved: url.searchParams.get("saved") === "1",
                 statusSaved: url.searchParams.get("saved") === "status",
+                proposalSaved: url.searchParams.get("saved") === "proposal",
+                proposalDismissed: url.searchParams.get("saved") === "dismissed",
                 errorCode: url.searchParams.get("error"),
+                pendingProposals: listPendingMuscleProposals(options.store, user.userId, today),
                 dayCheckIn,
                 history: checkIns,
                 statuses,
@@ -4273,6 +4363,62 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      /**
+       * The one-tap decision on a coach suggestion. A confirm writes exactly what the Muscle tab's own form would
+       * have written — a check-in, a hold, a release or an all-better claim — and only then is the suggestion
+       * marked confirmed. The dock calls it with an Accept header and gets JSON; a no-script form gets a redirect
+       * back to the Muscle tab, where the record now lives.
+       */
+      const proposalAction = /^\/muscle\/proposals\/([^/]+)\/(confirm|dismiss)$/.exec(url.pathname);
+      if (proposalAction !== null) {
+        if (method !== "POST") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          return;
+        }
+        let proposalId = "";
+        try {
+          proposalId = decodeURIComponent(proposalAction[1] ?? "");
+        } catch {
+          proposalId = "";
+        }
+        const decision = proposalAction[2];
+        const wantsJson = (request.headers["accept"] ?? "").includes("application/json");
+        let outcome: { ok: true } | { ok: false; detail: string };
+        if (proposalId.length === 0) {
+          outcome = { ok: false, detail: "not-found" };
+        } else if (decision === "confirm") {
+          const confirmed = options.store.transaction(() =>
+            confirmMuscleProposal({ store: options.store, userId: user.userId, proposalId, today, now: now() }),
+          );
+          outcome = confirmed.ok ? { ok: true } : { ok: false, detail: confirmed.detail };
+        } else {
+          const dismissed = options.store.transaction(() =>
+            dismissMuscleProposal({ store: options.store, userId: user.userId, proposalId, now: now() }),
+          );
+          outcome = dismissed ? { ok: true } : { ok: false, detail: "not-found" };
+        }
+        if (wantsJson) {
+          if (!outcome.ok) {
+            sendJson(response, outcome.detail === "not-found" ? 404 : 409, { ok: false, detail: outcome.detail });
+            return;
+          }
+          sendJson(response, 200, { ok: true, decision });
+          return;
+        }
+        if (!outcome.ok) {
+          const code =
+            outcome.detail === "expired"
+              ? "proposal-expired"
+              : outcome.detail === "no-active-status" || outcome.detail === "incomplete"
+                ? "proposal-status"
+                : "proposal-missing";
+          redirect(response, `/muscle?error=${code}`);
+          return;
+        }
+        redirect(response, decision === "confirm" ? "/muscle?saved=proposal" : "/muscle?saved=dismissed");
+        return;
+      }
+
       /** The attention feed the app-bar badge reads: the count of muscles in a special status, plus the rows. */
       if (url.pathname === "/muscle/attention.json" && method === "GET") {
         const checkIns = options.store.listMuscleCheckIns(user.userId, 40);
@@ -4372,6 +4518,7 @@ export function createWeb(options: WebOptions): WebApp {
               blockedWrites?: number;
               directiveId?: string | null;
               states?: unknown[];
+              muscleProposals?: unknown[];
               blockedByStates?: unknown[];
               prefill?: {
                 epoch?: string;
@@ -4445,6 +4592,20 @@ export function createWeb(options: WebOptions): WebApp {
               blockedByStates.push({ key: value, label: tx.t(`coachState.label.${value}` as const) });
             }
           }
+          // Muscle suggestions ride back with the turn so the dock can render one card per suggestion. The rows
+          // are read from the store, never trusted from the upstream payload.
+          const rawMuscleProposals = Array.isArray(payload.milebook?.muscleProposals)
+            ? payload.milebook.muscleProposals
+            : [];
+          const muscleProposals: MuscleProposalView[] = [];
+          for (const value of rawMuscleProposals) {
+            if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+            const proposalId = (value as Record<string, unknown>)["proposalId"];
+            if (typeof proposalId !== "string" || proposalId.length === 0) continue;
+            const stored = options.store.getMuscleProposal(user.userId, proposalId);
+            if (stored === undefined) continue;
+            muscleProposals.push(muscleProposalView(stored, tx));
+          }
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(JSON.stringify({
             reply,
@@ -4463,6 +4624,7 @@ export function createWeb(options: WebOptions): WebApp {
             blockedWrites: typeof payload.milebook?.blockedWrites === "number" ? payload.milebook.blockedWrites : 0,
             directiveId: typeof payload.milebook?.directiveId === "string" ? payload.milebook.directiveId : null,
             states,
+            muscleProposals,
             blockedByStates,
             prefill: typeof payload.milebook?.prefill === "object" && payload.milebook?.prefill !== null
               ? payload.milebook.prefill
@@ -4521,8 +4683,13 @@ export function createWeb(options: WebOptions): WebApp {
             toDay: entry.toDay,
           })),
         }));
+        // Pending coach muscle suggestions are durable rows, not DOM-only cards: after a refresh the runner must
+        // still be able to confirm or dismiss them here.
+        const muscleProposals = listPendingMuscleProposals(options.store, user.userId, today).map((proposal) =>
+          muscleProposalView(proposal, tx),
+        );
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(JSON.stringify({ messages, states, changes }));
+        response.end(JSON.stringify({ messages, states, changes, muscleProposals }));
         return;
       }
 
@@ -5275,6 +5442,7 @@ export function createWeb(options: WebOptions): WebApp {
           changeSets: options.store.listChangeSets(user.userId, 500),
           muscleCheckIns: options.store.listMuscleCheckIns(user.userId, 500),
           muscleStatusControls: options.store.listMuscleStatusControls(user.userId),
+          muscleProposals: options.store.listMuscleProposals(user.userId, undefined, 200),
         });
         response.writeHead(200, {
           "content-type": "application/json; charset=utf-8",

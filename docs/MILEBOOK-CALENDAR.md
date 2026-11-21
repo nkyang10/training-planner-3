@@ -131,7 +131,7 @@ Key properties:
 | Period selector | Week / Month / Year | `src/web.ts` + `src/styles.ts` | mode switch, previous/next/current and date/month/year picker; preserves the period anchor |
 | Activity detail | `/activity/<activityId>` (`:8091`) | `src/web.ts` + `src/garmin.ts` + `src/garmin-workout.ts` + `src/training.ts` | one run's metrics, rich Garmin metrics, fastest efforts, per-kilometre splits, Garmin laps/intervals, HR zones, PR badges, Garmin workout step card, planned-vs-actual deltas, comparison bars, comment-only Ask coach |
 | View switcher | Plan / Training log / Muscles | `layout()` in `src/web.ts` | sliding segmented control inside the app bar; rendered only on the pages that name a view (calendar, day detail, training log, activity detail, muscle tab) |
-| Muscle tab | `/muscle?day=…&activity=…` (`:8091`) | `src/web-muscle.ts` + `src/muscles.ts` + `src/muscle-map.ts` + `src/muscle-rig.ts` + `src/vendor/` (three.js r170, GLTFLoader, the real BodyParts3D muscle figure) + `src/styles.ts` | an interactive 3D muscle figure built from real BodyParts3D muscles-and-skeleton (CC BY 4.0, hover/click/orbit/pause on the real meshes, procedural rig as the automatic fallback); 0-10 anchored soreness with condition tags, deterministic readings (normal soreness → watch → warning → urgent), drill suggestions matched to the tags, per-muscle coach knowledge, one-tap pain/red-flag states, history; `POST /muscle/checkin` stores it; the muscles a run worked appear on the activity detail and can prefill a check-in |
+| Muscle tab | `/muscle?day=…&activity=…` (`:8091`) | `src/web-muscle.ts` + `src/muscles.ts` + `src/muscle-map.ts` + `src/muscle-rig.ts` + `src/muscle-proposals.ts` + `src/vendor/` (three.js r170, GLTFLoader, the real BodyParts3D muscle figure) + `src/styles.ts` | an interactive 3D muscle figure built from real BodyParts3D muscles-and-skeleton (CC BY 4.0, hover/click/orbit/pause on the real meshes, procedural rig as the automatic fallback); 0-10 anchored soreness with condition tags, deterministic readings (normal soreness → watch → warning → urgent), drill suggestions matched to the tags, per-muscle coach knowledge, one-tap pain/red-flag states, history; `POST /muscle/checkin` stores it; the coach's pending `muscleProposals` suggestions render as a Confirm/Dismiss card (`POST /muscle/proposals/<id>/confirm\|dismiss`); the muscles a run worked appear on the activity detail and can prefill a check-in |
 | Coach bubble | bottom-right of both views | self-implemented in `renderChatBubble()` | short turns, bookings, CRUD, revert, suggestions, animation; reloads the recent conversation on open |
 | Coach gateway | `:8090/v1` | `src/gateway.ts` | OpenAI-compatible model `milebook-coach`; the only writer |
 | Accounts | `/signup`, `/login`, `/logout` | `src/auth.ts` + `src/web.ts` | standalone multi-user accounts |
@@ -164,6 +164,8 @@ SQLite tables (created by `src/store.ts`):
 | `coach_states` | `state_id`, `user_id`, `state_key`, `status`, `source`, `updated_at`, `expires_at`, `resolved_at`, `payload` | durable coaching context; history is kept; active/observing rows drive the prompt and guardrails |
 | `coach_state_events` | `event_id`, `user_id`, `state_id`, `state_key`, `action`, `from_status`, `to_status`, `source`, `confidence`, `evidence`, `created_at`, `payload` | immutable state transition log (activate/update/confirm/resolve/expire/set); retention 180 days |
 | `muscle_checkins` | `check_in_id`, `user_id`, `day`, `created_at`, `payload` | per-muscle check-ins from the Muscle tab; append-only, indexes on `(user_id, day)` and `(user_id, created_at)`; `payload` is the full tags JSON (soreness 0-10, condition tags, side, warm-up answer, optional linked run and note) |
+| `muscle_status_controls` | `user_id`, `muscle_id` (PK pair), `updated_at`, `payload` | one row per muscle: the hold-constant choice and the runner-claimed end day; a newer check-in resets it |
+| `muscle_proposals` | `proposal_id`, `user_id`, `status`, `created_at`, `updated_at`, `decided_at`, `payload` | the coach's muscle suggestions (`report`/`hold`/`release`/`resolve`) with the runner's quotes as evidence; `proposed` until confirmed or dismissed, expire after 7 days, newest 40 kept; index on `(user_id, status, created_at)` |
 
 Session payload:
 
@@ -994,7 +996,8 @@ The lint gate is `tools/lint.mjs`: no `console` in `src` except `index.ts`, no `
 - [`GARMIN-TRAINING-PROGRAMS.md`](GARMIN-TRAINING-PROGRAMS.md) ??what the Garmin Personal API exposes about training
   programs, what it does not, and what a full-plan import would require.
 - [`MUSCLE-TAB.md`](MUSCLE-TAB.md) ??the Muscle tab: research basis (scales, DOMS course, red flags), the check-in
-  flow, the interpretation rules, drill suggestions, coach integration and safety copy.
+  flow, the interpretation rules, drill suggestions, coach integration (including the confirmed coach suggestions)
+  and safety copy.
 - [`MUSCLE-ANATOMY-3D-RESEARCH.md`](MUSCLE-ANATOMY-3D-RESEARCH.md) ??how to get a nicer muscle/skeleton 3D figure:
   source options with licenses, the proven BodyParts3D ??Blender ??GLB ??three.js pipeline, the per-muscle part
   mapping, and the integration plan for the existing viewer.

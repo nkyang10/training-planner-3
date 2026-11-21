@@ -23,9 +23,11 @@ import {
   sorenessFill,
   summarizeCheckIn,
   type MuscleCheckIn,
+  type MuscleSide,
   type MuscleTagLevel,
   type MuscleWork,
 } from "./muscles";
+import type { MuscleProposal } from "./muscle-proposals";
 import { renderMuscleLegend } from "./muscle-map";
 import { renderMuscleViewerPanel, type MuscleViewerRegion } from "./muscle-viewer";
 import { MUSCLE_STATUS_WINDOW_DAYS, worstStatusLevel, type MuscleStatus } from "./muscle-status";
@@ -56,7 +58,13 @@ export interface MusclePageInput {
   saved: boolean;
   /** True right after a one-tap status control (hold, release, resolve) landed. */
   statusSaved: boolean;
+  /** True right after the runner confirmed a coach suggestion. */
+  proposalSaved: boolean;
+  /** True right after the runner dismissed a coach suggestion. */
+  proposalDismissed: boolean;
   errorCode: string | null;
+  /** Coach suggestions still waiting for the runner's one tap. */
+  pendingProposals: readonly MuscleProposal[];
   /** The check-in the readings show: the viewed day's, else the latest. */
   dayCheckIn: MuscleCheckIn | null;
   history: readonly MuscleCheckIn[];
@@ -123,6 +131,12 @@ function errorTextFor(code: string | null, tx: Translator = defaultTranslator): 
       return tx.t("muscle.errNote");
     case "too-many":
       return tx.t("muscle.errTooMany");
+    case "proposal-missing":
+      return tx.t("muscle.errProposalMissing");
+    case "proposal-expired":
+      return tx.t("muscle.errProposalExpired");
+    case "proposal-status":
+      return tx.t("muscle.errProposalStatus");
     default:
       return tx.t("muscle.errDefault");
   }
@@ -286,6 +300,96 @@ function statusSection(statuses: readonly MuscleStatus[], tx: Translator = defau
     </div>
     <ul class="muscle-status-list">${statuses.map((status) => statusRowHtml(status, tx)).join("")}</ul>
     <div class="review-actions">${allBetter}${askCoach}</div>
+  </section>`;
+}
+
+/**
+ * One coach suggestion in the runner's words, ready for the page or the coach dock. The line is built here so the
+ * server and the client render the same sentence; the evidence stays a list of the runner's own quotes.
+ */
+export interface MuscleProposalView {
+  proposalId: string;
+  action: MuscleProposal["action"];
+  muscleId: string;
+  name: string;
+  line: string;
+  evidence: string[];
+  note: string | null;
+  day: string;
+  status: MuscleProposal["status"];
+}
+
+function sideLabel(side: MuscleSide, tx: Translator = defaultTranslator): string {
+  if (side === "left") return tx.t("muscle.sideLeft");
+  if (side === "right") return tx.t("muscle.sideRight");
+  return tx.t("muscle.sideBoth");
+}
+
+export function muscleProposalView(proposal: MuscleProposal, tx: Translator = defaultTranslator): MuscleProposalView {
+  const name = txMuscleName(proposal.muscleId, tx);
+  let line: string;
+  if (proposal.action === "report") {
+    const level = proposal.soreness ?? 0;
+    const parts = [
+      tx.t("muscle.proposalReport", {
+        name,
+        level: String(level),
+        label: txSorenessLabel(level, tx).toLowerCase(),
+      }),
+    ];
+    const conditions = proposal.conditions.map((condition) => tx.t(`muscle.condition.${condition}.label` as MessageKey));
+    if (conditions.length > 0) parts.push(conditions.join(" · "));
+    if (proposal.side !== "both") parts.push(sideLabel(proposal.side, tx));
+    line = parts.join(" · ");
+  } else if (proposal.action === "hold") {
+    line = tx.t("muscle.proposalHold", { name });
+  } else if (proposal.action === "release") {
+    line = tx.t("muscle.proposalRelease", { name });
+  } else {
+    line = tx.t("muscle.proposalResolve", { name });
+  }
+  return {
+    proposalId: proposal.proposalId,
+    action: proposal.action,
+    muscleId: proposal.muscleId,
+    name,
+    line,
+    evidence: [...proposal.evidence],
+    note: proposal.note,
+    day: proposal.day,
+    status: proposal.status,
+  };
+}
+
+/** One pending suggestion: what the coach noticed, the runner's own quote, and the Confirm / Dismiss pair. */
+function proposalCardHtml(proposal: MuscleProposal, tx: Translator = defaultTranslator): string {
+  const view = muscleProposalView(proposal, tx);
+  const quotes = view.evidence.map((quote) => `“${quote}”`).join(" · ");
+  const evidence = `<p class="muted small">${escapeHtml(tx.t("muscle.proposalEvidence", { quotes }))}</p>`;
+  const note = view.note === null
+    ? ""
+    : `<p class="muted small">${escapeHtml(tx.t("muscle.proposalNote", { note: view.note }))}</p>`;
+  const base = `/muscle/proposals/${encodeURIComponent(view.proposalId)}`;
+  return `<li class="muscle-proposal" data-proposal-id="${escapeHtml(view.proposalId)}">
+    <div class="muscle-proposal-head"><span class="chip muscle-proposal-chip">${escapeHtml(tx.t("muscle.proposalChip"))}</span><strong>${escapeHtml(view.line)}</strong></div>
+    ${evidence}${note}
+    <form method="post" action="${base}/confirm" class="proposal-actions">
+      <button class="btn" type="submit">${escapeHtml(tx.t("muscle.proposalConfirm"))}</button>
+      <button class="btn ghost" type="submit" formaction="${base}/dismiss">${escapeHtml(tx.t("muscle.proposalDismiss"))}</button>
+    </form>
+  </li>`;
+}
+
+/**
+ * The coach-suggestion card: the model may notice a change in the runner's words, but nothing about the body is
+ * written until the runner taps Confirm. The card is server-rendered, so it works without script and survives a
+ * refresh; the coach dock renders the same view for the turn that created it.
+ */
+function proposalsSection(proposals: readonly MuscleProposal[], tx: Translator = defaultTranslator): string {
+  if (proposals.length === 0) return "";
+  return `<section class="card muscle-proposal-card" id="muscle-suggestions">
+    <div class="splits-head"><h2>${escapeHtml(tx.t("muscle.proposalHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.proposalIntro"))}</p></div>
+    <ul class="muscle-proposal-list">${proposals.map((proposal) => proposalCardHtml(proposal, tx)).join("")}</ul>
   </section>`;
 }
 
@@ -872,6 +976,12 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
   const statusSavedBanner = input.statusSaved
     ? `<p class="banner ok" role="status">${tx.t("muscle.statusSavedBanner")}</p>`
     : "";
+  const proposalSavedBanner = input.proposalSaved
+    ? `<p class="banner ok" role="status">${tx.t("muscle.proposalSavedBanner")}</p>`
+    : "";
+  const proposalDismissedBanner = input.proposalDismissed
+    ? `<p class="banner" role="status">${tx.t("muscle.proposalDismissedBanner")}</p>`
+    : "";
   const errorBanner = input.errorCode === null ? "" : `<p class="banner error" role="alert">${escapeHtml(errorTextFor(input.errorCode, tx) ?? tx.t("muscle.errDefault"))}</p>`;
   const count = input.statuses.length;
   const worst = worstStatusLevel(input.statuses);
@@ -901,7 +1011,10 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
     ${readinessLine}</header>
     ${savedBanner}
     ${statusSavedBanner}
+    ${proposalSavedBanner}
+    ${proposalDismissedBanner}
     ${errorBanner}
+    ${proposalsSection(input.pendingProposals, tx)}
     <div class="muscle-layout">
       <div class="muscle-status-slot">${statusSection(input.statuses, tx)}</div>
       <div class="muscle-form-slot">${formSection(input, tx)}</div>

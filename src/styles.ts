@@ -873,6 +873,20 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .attention-badge { display: inline-block; vertical-align: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
 .muscle-attention-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
 .muscle-status-card { margin-bottom: 16px; }
+/* The coach-suggestion card: the model's notice about a muscle, waiting for the runner's one tap. It reads as a
+   soft prompt on the page and as a chat bubble in the dock, and both surfaces post to the same decision endpoint. */
+.muscle-proposal-card { margin-bottom: 16px; border-color: #f0d9a8; background: #fffaf1; }
+.muscle-proposal-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.muscle-proposal { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.muscle-proposal p { margin: 0; }
+.muscle-proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.muscle-proposal-chip { border-color: #e7c98e; background: #fdf3df; color: #7a5a1f; text-transform: none; letter-spacing: 0; }
+.proposal-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.proposal-actions .btn { padding: 6px 10px; font-size: 12px; }
+.bubble.muscle-suggestion { max-width: 92%; border-color: #f0d9a8; background: #fffaf1; }
+.bubble.muscle-suggestion p { margin: 4px 0 0; }
+.bubble.muscle-suggestion.ok { border-color: #b7d7b0; background: #f4faf1; }
+.muscle-suggestion-pending { font-style: italic; }
 /* Muscle page: the status/readings rail sits beside the check-in figure from 1024px, so the first interactive
    surface is visible at load instead of below a tall status card. Below that, DOM order (status → form → readings)
    is preserved. */

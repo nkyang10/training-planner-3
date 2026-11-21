@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { ChangeSet, CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
+import type { ChangeSet, CoachStateKey, CoachStateRecord, MuscleProposal, SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -2782,6 +2782,12 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     expect(html).toContain("app.css?v=");
+    // Muscle suggestions ride back with the turn and stay as durable cards after a refresh.
+    expect(html).toContain("addMuscleProposalCards");
+    expect(html).toContain("muscleProposals");
+    expect(html).toContain("/muscle/proposals/");
+    expect(html).toContain("muscleSuggestionPending");
+    expect(html).toContain("muscleConfirmed");
     // Privacy-safe UI events: components mark the interaction; a host listens for the CustomEvent.
     expect(html).toContain("milebook:track");
     expect(html).toContain('data-track="coach-open"');
@@ -2803,6 +2809,9 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("overflow-wrap: anywhere");
     expect(css).toContain(".activity-columns");
     expect(css).toContain(".muscle-layout");
+    expect(css).toContain(".muscle-proposal-card");
+    expect(css).toContain(".muscle-proposal");
+    expect(css).toContain(".bubble.muscle-suggestion");
     expect(css).toContain("body.coach-open .activity-columns");
     expect(css).toContain("body.coach-open .muscle-layout");
     expect(css).toContain(".history-activity");
@@ -4196,16 +4205,46 @@ describe("honest demo slice", () => {
     const { base, auth, cookie, handle, user } = await start({
       seed: (store, runner) => seedActivity(store, runner.userId, "garmin:export", "2026-11-04", "Export run", 6),
     });
+    const proposal: MuscleProposal = {
+      proposalId: "muscle-proposal:export",
+      userId: user.userId,
+      action: "report",
+      muscleId: "calves",
+      soreness: 5,
+      conditions: [],
+      side: "both",
+      warmUp: null,
+      note: null,
+      evidence: ["calves are 5/10"],
+      confidence: 0.7,
+      day: TODAY,
+      status: "confirmed",
+      createdAt: `${TODAY}T08:00:00.000Z`,
+      updatedAt: `${TODAY}T08:00:00.000Z`,
+      decidedAt: `${TODAY}T08:00:00.000Z`,
+    };
+    handle.store.appendMuscleProposal(proposal);
     const jsonResponse = await fetch(`${base}/export.json`, { headers: { cookie } });
     expect(jsonResponse.status).toBe(200);
     expect(jsonResponse.headers.get("content-disposition")).toContain("attachment");
     const text = await jsonResponse.text();
     expect(text).not.toContain("passwordHash");
     expect(text).not.toContain("apiKey");
-    const bundle = JSON.parse(text) as { profile: { username: string }; sessions: unknown[]; activities: Array<{ title: string }> };
+    const bundle = JSON.parse(text) as {
+      profile: { username: string };
+      sessions: unknown[];
+      activities: Array<{ title: string }>;
+      muscleProposals: Array<{ proposalId: string; muscleId: string; status: string }>;
+    };
     expect(bundle.profile.username).toBe(USERNAME);
     expect(bundle.sessions).toHaveLength(1);
     expect(bundle.activities[0]?.title).toBe("Export run");
+    expect(bundle.muscleProposals).toHaveLength(1);
+    expect(bundle.muscleProposals[0]).toMatchObject({
+      proposalId: "muscle-proposal:export",
+      muscleId: "calves",
+      status: "confirmed",
+    });
 
     const icsResponse = await fetch(`${base}/export.ics`, { headers: { cookie } });
     expect(icsResponse.status).toBe(200);
