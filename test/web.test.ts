@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { ChangeSet, CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
+import type { ChangeSet, CoachStateKey, CoachStateRecord, SessionKind, Store, TrainingSession } from "../src/types";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -4143,7 +4143,7 @@ describe("honest demo slice", () => {
     ]));
   });
 
-  it("shows the recent change set and undoes it through the audited path", async () => {
+  it("renders a batch as a human sentence and undoes it through the audited path", async () => {
     const { base, cookie, handle, user } = await start();
     const before = {
       sessionId: "session:move",
@@ -4170,26 +4170,197 @@ describe("honest demo slice", () => {
 
     const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(calendar).toContain("Recent changes");
-    expect(calendar).toContain("Moved Easy 5 km to Sunday");
-    expect(calendar).toContain("Undo this change");
-    // Each change set also opens a comment-only discussion about what it did and why.
-    expect(calendar).toContain("Discuss this change");
-    expect(calendar).toContain("Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)");
+    // The headline is a human sentence; the stored machine summary never reaches the page.
+    expect(calendar).toContain("1 session updated · Sun, 8 Nov");
+    expect(calendar).not.toContain("Moved Easy 5 km to Sunday");
+    expect(calendar).not.toContain('move "Easy 5 km"');
+    // The entry names the day, the action and the real move.
+    expect(calendar).toContain('<span class="change-act">Moved</span>');
+    expect(calendar).toContain("Easy 5 km");
+    expect(calendar).toContain("from 6 Nov");
+    expect(calendar).toContain('<span class="change-meta muted small">Changed today');
+    // The destructive action carries its blast radius and describes the batch it belongs to.
+    expect(calendar).toContain("Undo 1 session");
+    expect(calendar).toContain('aria-label="Undo 1 session — 1 session updated · Sun, 8 Nov"');
+    expect(calendar).toContain('class="change-undo-form"');
+    // Ask why is a quiet, accessible action with a question built from the entry, not the raw summary.
+    expect(calendar).toContain("Ask why");
+    expect(calendar).toContain('aria-label="Ask why — 1 session updated · Sun, 8 Nov"');
+    expect(calendar).toContain("Why did you change");
+    expect(calendar).toContain("on Sun, 8 Nov");
     expect(calendar).toContain("discuss-change");
     expect(calendar).toContain("recent-changes");
-    // The card carries the change-set id so the dock can mark it undone in place without a reload.
     expect(calendar).toContain('data-change-set="change:move"');
     expect(calendar).toContain(`title="Chat with the coach about what this change did. Your calendar will not change."`);
 
     const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
     expect(undo.status).toBe(303);
-    expect(undo.headers.get("location")).toContain("undone=1");
+    const location = undo.headers.get("location") ?? "";
+    expect(location).toContain("undone=1");
+    // The no-script path lands on the card, where the runner can see the result.
+    expect(location).toContain("#recent-changes");
     expect(handle.store.getSession(user.userId, before.sessionId)?.day).toBe("2026-11-06");
     expect(handle.store.listChangeSets(user.userId, 10).some((set) => set.summary.startsWith("Undo:"))).toBe(true);
+    // The banner names how many sessions the undo touched.
+    const landingUrl = new URL(location, base);
+    const landing = await (await fetch(`${base}${landingUrl.pathname}${landingUrl.search}`, { headers: { cookie } })).text();
+    expect(landing).toContain("1 session undone");
 
     const again = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
     const againLocation = new URL(again.headers.get("location") ?? "/", base);
     expect(againLocation.searchParams.get("undoError")).toBe("that change was already undone");
+  });
+
+  it("renders a large batch as three entries plus a disclosure", async () => {
+    const { base, cookie, handle, user } = await start();
+    const plan = Array.from({ length: 14 }, (_, index) => {
+      const day = `2026-11-${String(17 + index).padStart(2, "0")}`;
+      const session: TrainingSession = {
+        sessionId: `session:plan-${index}`,
+        userId: user.userId,
+        day,
+        title: `Session ${index + 1}`,
+        kind: "easy",
+        distanceKm: 5,
+        durationMin: 35,
+        note: null,
+        createdAt: `${TODAY}T00:00:00.000Z`,
+      };
+      handle.store.upsertSession(session);
+      return session;
+    });
+    const changeSet: ChangeSet = {
+      changeSetId: "change:plan",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: plan.map((session) => `add "${session.title}" on ${session.day}`).join("; "),
+      entries: plan.map((session) => ({ action: "add" as const, sessionId: session.sessionId, before: null, after: session, fromDay: null, toDay: session.day, title: session.title, kind: session.kind })),
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("14 sessions added");
+    expect(calendar).toContain("17 Nov – 30 Nov");
+    expect(calendar).toContain("Show all 14");
+    expect(calendar).toContain('<details class="change-more">');
+    expect(calendar).toContain("Undo 14 sessions");
+    expect(calendar).not.toContain('add "');
+    const detailsAt = calendar.indexOf('<details class="change-more">');
+    expect(detailsAt).toBeGreaterThan(0);
+    const cardAt = calendar.indexOf('id="recent-changes"');
+    expect(cardAt).toBeGreaterThan(0);
+    const visible = calendar.slice(cardAt, detailsAt);
+    expect((visible.match(/class="change-entry"/g) ?? []).length).toBe(3);
+    expect(visible).toContain("Session 1");
+    expect(visible).not.toContain("Session 4");
+    const hidden = calendar.slice(detailsAt);
+    expect(hidden).toContain("Session 4");
+    expect(hidden).toContain("Session 14");
+  });
+
+  it("describes a same-day update with its real delta instead of a no-op move", async () => {
+    const { base, cookie, handle, user } = await start();
+    const before: TrainingSession = {
+      sessionId: "session:long",
+      userId: user.userId,
+      day: "2026-11-22",
+      title: "Long run",
+      kind: "long",
+      distanceKm: 15,
+      durationMin: 90,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const after: TrainingSession = { ...before, distanceKm: 18 };
+    handle.store.upsertSession(after);
+    const changeSet: ChangeSet = {
+      changeSetId: "change:delta",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: 'move "Long run" 2026-11-22 → 2026-11-22',
+      entries: [{ action: "update", sessionId: before.sessionId, before, after, fromDay: before.day, toDay: after.day, title: after.title, kind: after.kind }],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("1 session updated");
+    expect(calendar).toContain("15 km → 18 km");
+    expect(calendar).toContain('<span class="change-act">Updated</span>');
+    expect(calendar).not.toContain('<span class="change-act">Moved</span>');
+    expect(calendar).not.toContain("2026-11-22 → 2026-11-22");
+    expect(calendar).not.toContain('move "Long run"');
+  });
+
+  it("dates a batch in the runner's zone and marks an undone batch without dimming it", async () => {
+    const { base, cookie, handle, user } = await start();
+    const session: TrainingSession = {
+      sessionId: "session:local",
+      userId: user.userId,
+      day: "2026-11-05",
+      title: "Mobility",
+      kind: "cross",
+      distanceKm: null,
+      durationMin: 20,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    handle.store.upsertSession(session);
+    const changeSet: ChangeSet = {
+      changeSetId: "change:local",
+      userId: user.userId,
+      createdAt: "2026-11-04T20:00:00.000Z", // 05 Nov 04:00 in Asia/Hong_Kong
+      summary: 'add "Mobility" on 2026-11-05',
+      entries: [{ action: "add", sessionId: session.sessionId, before: null, after: session, fromDay: null, toDay: session.day, title: session.title, kind: session.kind }],
+      revertedAt: "2026-11-05T01:00:00.000Z",
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    // 20:00Z is already 05 Nov in Hong Kong: the meta must say today, not 04 Nov.
+    expect(calendar).toContain('<span class="change-meta muted small">Changed today');
+    expect(calendar).not.toContain("Changed 4 Nov");
+    expect(calendar).toContain("1 session added");
+    expect(calendar).toContain("Thu, 5 Nov");
+    expect(calendar).toContain("Undone");
+    expect(calendar).toContain("Ask why");
+    expect(calendar).not.toContain('class="change-undo-form"');
+    expect(calendar).toContain('class="change-item undone"');
+  });
+
+  it("renders a revert batch as an undo record with Put it back", async () => {
+    const { base, cookie, handle, user } = await start();
+    const first: TrainingSession = {
+      sessionId: "session:undo-1",
+      userId: user.userId,
+      day: "2026-11-21",
+      title: "Mobility 20",
+      kind: "cross",
+      distanceKm: null,
+      durationMin: 20,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const second: TrainingSession = { ...first, sessionId: "session:undo-2", day: "2026-11-24", title: "Mobility 15", durationMin: 15 };
+    const changeSet: ChangeSet = {
+      changeSetId: "change:undo",
+      userId: user.userId,
+      createdAt: `${TODAY}T10:00:00.000Z`,
+      summary: 'Undo: add "Mobility 20" on 2026-11-21; add "Mobility 15" on 2026-11-24',
+      entries: [
+        { action: "revert", sessionId: first.sessionId, before: first, after: null, fromDay: first.day, toDay: null, title: first.title, kind: first.kind },
+        { action: "revert", sessionId: second.sessionId, before: second, after: null, fromDay: second.day, toDay: null, title: second.title, kind: second.kind },
+      ],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Undone: 2 sessions added");
+    expect(calendar).toContain("21 Nov – 24 Nov");
+    expect(calendar).toContain("Put it back");
+    expect(calendar).toContain('data-change-putback="1"');
+    expect(calendar).toContain('<span class="change-act">Deleted</span>');
+    expect(calendar).toContain("Mobility 20");
+    expect(calendar).toContain("Why did you change 2 sessions");
+    expect(calendar).not.toContain('Undo: add "Mobility 20"');
   });
 
   it("exports only the runner's own data as JSON and ICS", async () => {

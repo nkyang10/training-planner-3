@@ -1,6 +1,7 @@
 # Milebook - the Recent changes card: a normal-runner review
 
-**Status:** review only. No product file changed, nothing deployed. **Date:** 2026-11-21.
+**Status:** review at the time (2026-11-21); F1-F5 (with F6-F9) shipped on 2026-11-22, F10 partial, F11 not shipped -
+see [20-recent-changes-implementation.md](20-recent-changes-implementation.md). **Date:** 2026-11-21.
 **Lens:** the normal runner - someone who did not ask for an audit log, does not know what a "batch" is, and opens
 this card to answer one question: *what did my coach change, and can I put it back?*
 **Relation:** reviews the card shipped with the calendar (07, 10, 13) after the entry pass (17) and the daily-page
@@ -177,8 +178,8 @@ and is English-only. See [evidence](../../design/recent-changes/README.md).
   cold, not another heuristic pass.
 - The coach panel's chat takeover and the mobile sheet are doc 13's scope; only its Changes tab is reviewed here.
 - The muscle, history and day pages are out of scope.
-- The prototype is a mock; the fix spec is a proposal. Nothing was implemented, so there is no new test count and no
-  deploy.
+- The prototype was a mock and the fix spec a proposal. Doc 20 records what shipped (F1-F5 plus F6-F9), the new test
+  count (564/564), the captures and the AX check; F10's shared renderer and F11's discovery line remain.
 - F10's shared renderer is the largest refactor and the least certain: the dock card is built client-side and the page
   card server-side, so "one renderer" may mean one server renderer plus a hydration path, or one client renderer for
   both. Decide before scheduling.
