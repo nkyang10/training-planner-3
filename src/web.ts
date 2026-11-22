@@ -2664,16 +2664,22 @@ function renderChatBubble(tx: Translator): string {
           if (decision === 'confirm') {
             card.replaceChildren();
             card.classList.add('ok');
-            card.textContent = tr('muscleConfirmed', 'Muscle record updated') + ' · ';
+            // The success line names the muscle, the way a friend would say it back - not a system's
+            // "record updated".
+            const name = typeof proposal.name === 'string' ? proposal.name.trim() : '';
+            const noted = name.length > 0
+              ? tr('muscleConfirmedName', 'Noted — {name} is on your record now').replace('{name}', name)
+              : tr('muscleConfirmed', 'Noted — saved to your muscle record');
+            card.textContent = noted + ' · ';
             const view = document.createElement('a');
             view.href = '/muscle';
-            view.textContent = tr('muscleViewRecord', 'View on the Muscle tab');
+            view.textContent = tr('muscleViewRecord', 'See it on the Muscle tab');
             card.appendChild(view);
             refreshMuscleAttention();
           } else {
             card.replaceChildren();
             card.classList.add('muted');
-            card.textContent = tr('muscleDismissed', 'Suggestion dismissed') + ' · ';
+            card.textContent = tr('muscleDismissed', 'Dropped — nothing changed') + ' · ';
             const undo = document.createElement('button');
             undo.type = 'button';
             undo.className = 'chip muscle-suggestion-undo';

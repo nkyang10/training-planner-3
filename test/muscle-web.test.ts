@@ -983,7 +983,7 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     });
     expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("confirmed");
     const html = await (await fetch(`${base}/muscle?saved=proposal`, { headers: { cookie } })).text();
-    expect(html).toContain("Suggestion confirmed — your muscle record is updated");
+    expect(html).toContain("Noted and saved — your muscle record is updated");
     expect(html).not.toContain('id="muscle-suggestions"');
     expect(html).toContain("Calves");
     expect(html).toContain("6/10");
@@ -1005,7 +1005,7 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
         headers: { cookie },
       })
     ).text();
-    expect(html).toContain("Suggestion dismissed. Nothing about your muscles changed");
+    expect(html).toContain("Dropped the suggestion — nothing about your muscles changed");
     expect(html).toContain(
       `action="/muscle/proposals/${encodeURIComponent(proposal.proposalId)}/restore"`,
     );
@@ -1087,8 +1087,8 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     });
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
     // Neither row becomes a card; both are named so nothing silently vanishes.
-    expect(html).toContain("One coach suggestion expired — check in again if it still applies");
-    expect(html).toContain("One coach suggestion no longer applies — that soreness has faded");
+    expect(html).toContain("One suggestion expired while it waited — check in again if it still applies");
+    expect(html).toContain("One suggestion no longer applies — that soreness faded on its own");
     expect(html).not.toContain(`data-proposal-id="${expired.proposalId}"`);
     expect(html).not.toContain(`data-proposal-id="${orphan.proposalId}"`);
     // A direct confirm of either still fails honestly, with the plain-language copy.

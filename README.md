@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 618 passing" src="https://img.shields.io/badge/tests-618%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 619 passing" src="https://img.shields.io/badge/tests-619%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (618 tests in 22 files). |
+| `pnpm test` | Run the Vitest suite (619 tests in 22 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -185,7 +185,10 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
 - **Peer voice with a cap (2026-11-20):** the reply contract is spoken, not written — 2-4 short sentences, no
   headings, no lists, no markdown, at most one question — enforced by a 480-character validation cap with one
   repair attempt plus a deterministic markdown strip, so the plain-text bubble never shows structure noise. The
-  suggestion chips carry the menu; the reply carries the advice. Plan and record:
+  suggestion chips carry the menu; the reply carries the advice. **The voice is pinned against feature creep
+  (2026-11-22):** every new surface adds a rule that a suggestion turn is still "a friend passing a note" — never
+  announcing plumbing, never reading a card's fields back — and the record surfaces stay record-precise on purpose:
+  the card carries the data, the coach's sentence carries the care. Plan and record:
   [the coach-interaction plan](docs/analysis/15-coach-interaction-llm-plan.md) and
   [the implementation record](docs/analysis/16-coach-interaction-implementation-record.md).
 - **Cached prefill, obeyed (2026-11-20):** the prompt is now a byte-stable system head (rules + state catalog),
@@ -290,7 +293,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 618 Vitest tests across 22 files. |
+| `test/` | 619 Vitest tests across 22 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -332,7 +335,7 @@ restart cannot silently drop the coach's model credentials. Logs are `data/mileb
 
 | Gate | State |
 |---|---|
-| Tests | **618 / 618** in 22 files |
+| Tests | **619 / 619** in 22 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
@@ -346,7 +349,8 @@ cards on the Muscle tab and in the dock — followed the same day by the UX pass
 reading, the age and the day, the Adjust prefill, Dismiss Undo, the launcher/Chat pending badges, one owner per
 record (the dock defers on the Muscle tab), dead-end and expired rows filtered and counted, a validated same-day run
 link, the cap raised to six with honest remainder copy, per-muscle superseding, keyboard focus on the decision, and
-`muscle-suggestion-*` events on the privacy-safe track hook. `pnpm check` **618/618**, stylesheet **v32**. Not
+`muscle-suggestion-*` events on the privacy-safe track hook, and the friend-voice guard for suggestion turns. `pnpm
+check` **619/619**, stylesheet **v32**. Not
 deployed to the live :8093 process, which still serves the 2026-11-20 build (`app.css?v=30`).
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,

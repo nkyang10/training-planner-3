@@ -1043,6 +1043,21 @@ describe("muscle-condition suggestions", () => {
     expect(prompt).toContain("do not propose a report, a resolve or a lower level");
   });
 
+  it("keeps the friend voice when a suggestion rides along (tone guard)", () => {
+    const prompt = buildCoachSystemPrompt();
+    // The consultant-friend persona survives the growing rule mass: a suggestion turn is still a friend
+    // passing a note, never a form reporting its own plumbing.
+    expect(prompt).toContain("A suggestion rides along; it never changes your voice");
+    expect(prompt).toContain("the way a friend passes a note");
+    expect(prompt).toContain("Never announce plumbing");
+    // The jargon the first pass shipped is gone; the day rule and the cap rule speak plainly.
+    expect(prompt).not.toContain("the local today of the newest context block");
+    expect(prompt).not.toContain("the one-tap place");
+    expect(prompt).toContain("the day the newest context block calls today");
+    expect(prompt).toContain("the Muscle tab can take the rest in one tap");
+    expect(prompt).toContain("never let it sound like a system message");
+  });
+
   it("renders the pending suggestions in the newest context snapshot only when there are some", () => {
     const base = {
       today: TODAY,

@@ -302,6 +302,12 @@ the runner's decision, exactly like a sensitive coaching state.
   `pain_injury` state.
 - **Safety line.** A suggestion is not a diagnosis, and a confirmed report is still the runner's report. The app never
   suggests a lower level, a resolve or a "nothing wrong" reading to explain a symptom away.
+- **The friend stays.** None of this machinery touches the coach's voice: the persona and peer-voice rules are
+  unchanged, and a dedicated rule pins suggestion turns to the friend register — "a friend passing a note", never
+  announcing plumbing ("record updated", "entity saved"), never reading the card's fields back, and never longer or
+  colder for the extra structure. The status lines around the card were re-warmed to match ("Noted — {name} is on
+  your record now", "Dropped — nothing changed"); the card headline itself stays record-precise on purpose — it is
+  the preview of the record the runner confirms, the same way the calendar pill shows data.
 - **Measured, not guessed.** The privacy-safe `milebook:track` hook carries `muscle-suggestion-shown` /
   `-confirmed` / `-dismissed` / `-adjust` / `-failed` with enum-only values (surface, action, reason); the evidence
   basis and hypotheses are in [the UX review](analysis/19-muscle-suggestion-ux-review.md) and the decisions and
@@ -310,7 +316,7 @@ the runner's decision, exactly like a sensitive coaching state.
   rendering), the `muscle_proposals` table in `src/store.ts`, the `muscleProposals` channel in `src/coach.ts` and
   `src/gateway.ts` (supersede, run validation), the decision endpoints, badges and dock card in `src/web.ts`, and
   the card plus localized view in `src/web-muscle.ts`. Tests: `test/muscle-proposals.test.ts` plus the coach,
-  gateway, store, muscle-web, web and export suites; the full gate is green (618/618).
+  gateway, store, muscle-web, web and export suites; the full gate is green (619/619).
 
 ## 9. Research basis
 

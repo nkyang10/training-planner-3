@@ -33,6 +33,7 @@ Each row states the finding(s) it closes and what "done" means.
 | I | F12, Q5, Q6 | Cap 3 → 6; supersede per muscle; prompt rules name the cap and the run rule | Four sore muscles produce four cards; a newer suggestion for the same muscle replaces the older pending one |
 | J | Measurement plan | `milebook:track` events: `muscle-suggestion-shown` / `-confirmed` / `-dismissed` / `-failed` / `-adjust`, values are enums only (surface, action, reason) | No health text leaves the page; the hook stays the measurement seam |
 | K | F15 | The pending card **moves into the status rail** (inside the muscle-layout's status slot, above the status card), so the two-column geometry and the figure's fold are untouched by a decision card | The card never sits above the page head; capture at 320/390/1024 remains open evidence and is recorded as such |
+| L | owner's friend-coach concern | **Voice guard.** The persona and reply rules stay untouched; a dedicated rule pins the friend voice on suggestion turns ("a friend passing a note", never announcing plumbing, never reading the card's fields back); the day and cap rules are de-jargoned; the status lines around the card speak warm ("Noted — {name} is on your record now", "Dropped — nothing changed") in en and zh | The card stays record-precise on purpose (it is the record preview the runner confirms); the coach's own sentence stays a friend's; the tone-guard test pins all of it |
 
 Not implemented on purpose: Q1 stays confirm-first (no code change); the pixel captures of F15 need a browser session
 and are recorded as open evidence, mitigated by the rail placement.
@@ -61,13 +62,20 @@ and are recorded as open evidence, mitigated by the rail placement.
 
 Recorded after the implementation pass, with the gate numbers from that run:
 
-- Shipped: workstreams A-K as specced; Q1-Q6 decisions as above. The simulated conversation from 19 was re-run as
+- Shipped: workstreams A-L as specced; Q1-Q6 decisions as above. The simulated conversation from 19 was re-run as
   the acceptance script and confirms each behaviour: the card now reads "Calves · 6/10 · Tight / stiff · Right" with a
   **Watch** chip and "Suggested Thu, 5 Nov 2026 · about today"; a hold names its level ("Hamstrings (back thighs) ·
   hold at 4/10"); an all-better card carries "Now: 6/10 · fading since Thu, 5 Nov 2026"; the zh-HK card matches the
   audited copy ("小腿 · 6/10 · 緊繃／僵硬 · 右側 · 需留意"); the dead-end hold is no longer offered on the page; the
   banner offers Undo after a dismissal; the red-flag turn still produces no muscle card.
-- Gate: `pnpm check` **618/618** in 22 files (lint and typecheck clean), on branch
+- L, added after the owner asked "will the coach's wording become machine again?": the persona and peer-voice rules
+  (`src/coach.ts` "consultant and training friend", "Write like you speak") were never touched, and workstream L
+  pins the voice against the new rule mass - a suggestion turn is "a friend passing a note", the day and cap rules
+  lost their jargon, and the status lines around the card were re-warmed ("Noted — {name} is on your record now",
+  "Dropped — nothing changed", "That one's already settled — catching up…") in both locales. The card headline stays
+  record-precise on purpose: it is the record preview the runner confirms, the same way the calendar pill shows data;
+  the coach's own sentence is where the friend lives, and the tone-guard test keeps it there.
+- Gate: `pnpm check` **619/619** in 22 files (lint and typecheck clean), on branch
   `dsh-coach-ability-muscle`.
 - Not shipped: the browser captures of F15 (no browser in this environment); the rail placement is the mitigation and
   the capture stays on the layout-review todo.
