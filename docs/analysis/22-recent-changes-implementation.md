@@ -1,9 +1,9 @@
 # Recent changes: implementation record (2026-11-22)
 
-**Status.** F1-F5 of [the review](19-recent-changes-review.md) shipped. F6-F9 shipped in the same slice because the
+**Status.** F1-F5 of [the review](21-recent-changes-review.md) shipped. F6-F9 shipped in the same slice because the
 card rewrite touched the same lines; F10 is partial (one vocabulary, two renderers); F11 (the discovery line) was not
 shipped. No schema change: the change set already stored `before`/`after`, and the audited revert path is untouched.
-The follow-up all-changes page ([21](21-all-changes-page.md)) reuses this card under a schedule heading; the calendar
+The follow-up all-changes page ([23](23-all-changes-page.md)) reuses this card under a schedule heading; the calendar
 card's footnote now links to it with **See all changes**, and the dock's footer link is **Open all changes**.
 
 ## 1. What the runner sees
@@ -174,6 +174,6 @@ not height.
   `shipped-long-batch.png`, `shipped-undo-in-place.png`, `shipped-dock-changes.png`, `shipped-dock-long.png`.
 - Machine evidence: `shipped.json` (card/row/action geometry, dock text, post-undo state) and `ax.json` (AX names);
   harness `tmp/recent-changes/shipped.mjs` and `ax-check.mjs` (gitignored).
-- Review: [19-recent-changes-review.md](19-recent-changes-review.md); design folder:
+- Review: [21-recent-changes-review.md](21-recent-changes-review.md); design folder:
   [docs/design/recent-changes/](../../design/recent-changes/README.md).
-- Follow-up: [21-all-changes-page.md](21-all-changes-page.md) - the standalone page that reuses this card for schedule.
+- Follow-up: [23-all-changes-page.md](23-all-changes-page.md) - the standalone page that reuses this card for schedule.

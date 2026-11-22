@@ -44,7 +44,7 @@ are scratch (`tmp/recent-changes/scratch.sqlite`), never the live one.
 The proposed images are a **design prototype**, not product code: the card was rebuilt in the live page from
 `/chat/history` plus an injected style block. The mock has no undo behaviour, is English-only, and cannot show the
 `before`/`after` deltas because that endpoint does not carry them. See
-[19-recent-changes-review.md](../../analysis/19-recent-changes-review.md) for the findings, the fix spec and the
+[21-recent-changes-review.md](../../analysis/21-recent-changes-review.md) for the findings, the fix spec and the
 verification.
 
 ## Shipped (2026-11-22)
@@ -53,7 +53,7 @@ F1-F5 of the review shipped, with F6-F9 in the same slice. The page card is stil
 client-built but now uses the same words, en-GB dates and counted labels. The raw coach summary is no longer rendered.
 The card's footnote now ends with **See all changes** to `/changes`, and the dock's footer link is **Open all changes**;
 the shipped captures below predate those links. See [the all-changes page](../changes-page/README.md) and
-[21-all-changes-page.md](../../analysis/21-all-changes-page.md).
+[23-all-changes-page.md](../../analysis/23-all-changes-page.md).
 
 | Image | What it shows |
 |---|---|
@@ -84,7 +84,7 @@ Desktop is 3.7% taller because three short entry rows replace two long lines; th
 phone 21.7% shorter, and the 14-item row is half its former height. The shipped card is 17 px shorter than the 914 px
 mock at 1280 and 198 px shorter at 320; at 390 it is 80 px taller than the mock. What remains: F10 is partial (two
 renderers; `/chat/history` lacks `before`/`after`, so the dock shows no deltas) and F11 (the discovery line) is not
-shipped. The full record is [20-recent-changes-implementation.md](../../analysis/20-recent-changes-implementation.md).
+shipped. The full record is [22-recent-changes-implementation.md](../../analysis/22-recent-changes-implementation.md).
 
 **Harness** (gitignored `tmp/recent-changes/`): `seed.ts` builds the scratch DB, `serve.ts` runs the product code on
 :18091 with a fixed clock, `shoot.mjs` captures and probes the before states, `evidence.mjs` builds the annotated

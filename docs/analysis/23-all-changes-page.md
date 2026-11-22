@@ -141,7 +141,7 @@ zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the
 
 - [docs/design/changes-page/](../../design/changes-page/README.md) — the nine captures, the account menu, the two
   filters, the zh-HK page and `changes-page.json` (filters, section/document heights, overflow, nav and account items).
-- [20-recent-changes-implementation.md](20-recent-changes-implementation.md) — the schedule card this page reuses.
-- [19-recent-changes-review.md](19-recent-changes-review.md) — the review that produced the card.
+- [22-recent-changes-implementation.md](22-recent-changes-implementation.md) — the schedule card this page reuses.
+- [21-recent-changes-review.md](21-recent-changes-review.md) — the review that produced the card.
 - Harness (gitignored): `tmp/recent-changes/changes-page.mjs`; the seed now adds the activity, check-in and held-status
   rows.

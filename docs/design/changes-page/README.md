@@ -42,7 +42,7 @@ it is not paginated and it does not claim to be the complete edit history. Activ
 `createdAt` (the log or sync time); muscle rows show the latest check-in plus the hold/resolve controls. A true edit log
 for runs and muscles would need a new audit table, which is out of scope for this slice. The schedule card keeps its
 audited undo; the activity and muscle rows link to their pages instead. The full record is
-[21-all-changes-page.md](../../analysis/21-all-changes-page.md).
+[23-all-changes-page.md](../../analysis/23-all-changes-page.md).
 
 **Harness** (gitignored `tmp/recent-changes/`): `changes-page.mjs` logs in, captures the page at 1280/390/320 in en +
 zh-HK, the account menu, the two filters and writes `changes-page.json`; the scratch `seed.ts` now also adds the

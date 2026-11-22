@@ -1,7 +1,7 @@
 # Milebook - the Recent changes card: a normal-runner review
 
 **Status:** review at the time (2026-11-21); F1-F5 (with F6-F9) shipped on 2026-11-22, F10 partial, F11 not shipped -
-see [20-recent-changes-implementation.md](20-recent-changes-implementation.md). **Date:** 2026-11-21.
+see [22-recent-changes-implementation.md](22-recent-changes-implementation.md). **Date:** 2026-11-21.
 **Lens:** the normal runner - someone who did not ask for an audit log, does not know what a "batch" is, and opens
 this card to answer one question: *what did my coach change, and can I put it back?*
 **Relation:** reviews the card shipped with the calendar (07, 10, 13) after the entry pass (17) and the daily-page
