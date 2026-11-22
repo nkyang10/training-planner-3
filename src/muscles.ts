@@ -932,25 +932,8 @@ function tagPromptLine(tag: MuscleTag): string {
 }
 
 /**
- * The muscle facts block for the coach prompt: the latest check-in in one line per muscle plus a 14-day count.
- * Empty string when the runner has never checked in, so the block simply does not render.
+ * The per-muscle context for a review-muscles turn: the coach knowledge plus the runner's tags for it.
  */
-export function renderMuscleFactsForPrompt(latest: MuscleCheckIn | null, recentCount: number): string {
-  if (latest === null) return "";
-  const lines = latest.muscles.map(tagPromptLine);
-  const about = latest.activityId === null ? "" : " (about the linked run)";
-  const note = latest.note === null ? "" : `, note: "${latest.note}"`;
-  return [
-    `Muscle check-in (latest ${latest.day}${about}, soreness is a runner-reported 0-10 anchored scale):`,
-    ...lines.map((line) => `- ${line}`),
-    note.length === 0 ? "" : `- ${note}`,
-    `- ${recentCount} check-in${recentCount === 1 ? "" : "s"} in the last 14 days`,
-  ]
-    .filter((line) => line.length > 0)
-    .join("\n");
-}
-
-/** The per-muscle context for a review-muscles turn: the coach knowledge plus the runner's tags for it. */
 export function referencedMuscleContext(muscleId: string, checkIns: readonly MuscleCheckIn[]): string {
   const muscle = getMuscle(muscleId);
   if (muscle === undefined) return "";

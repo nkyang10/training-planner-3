@@ -1,6 +1,9 @@
 /**
  * A small lint gate for Milebook: no console output in src (except index.ts), no TODO, no secrets, no `any` in src.
  * Dependency-free so it runs before install completes.
+ *
+ * The `any` rule is checked per line and skips comment lines, so prose in a doc comment ("before any store read") is
+ * allowed while a real type position (`: any`, `<any>`, `as any`, `any[]`) still fails.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -21,6 +24,12 @@ function walk(directory) {
 walk(join(root, "src"));
 walk(join(root, "test"));
 
+/** A line that is purely a comment carries prose, not types. */
+function isCommentLine(line) {
+  const trimmed = line.trim();
+  return trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+}
+
 for (const file of files) {
   const text = readFileSync(file, "utf8");
   const name = relative(root, file);
@@ -28,9 +37,13 @@ for (const file of files) {
     problems.push(`${name}: console output in src`);
   }
   if (/\bTODO\b|\bFIXME\b/.test(text)) problems.push(`${name}: unresolved TODO/FIXME`);
-  if (/\bany\b/.test(text)) problems.push(`${name}: 'any' is not allowed`);
   if (/GCDC_[A-Za-z0-9+/=.-]{20,}/.test(text)) problems.push(`${name}: looks like a Garmin key`);
   if (/sk-[A-Za-z0-9]{20,}/.test(text)) problems.push(`${name}: looks like an API key`);
+
+  text.split(/\r?\n/).forEach((line, index) => {
+    if (isCommentLine(line)) return;
+    if (/\bany\b/.test(line)) problems.push(`${name}:${index + 1}: 'any' is not allowed`);
+  });
 }
 
 if (problems.length > 0) {

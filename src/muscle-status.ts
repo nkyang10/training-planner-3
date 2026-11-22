@@ -196,9 +196,7 @@ export function worstStatusLevel(statuses: readonly MuscleStatus[]): MuscleTagLe
 }
 
 /** How many muscles are in a special (non-perfect) status — the number the attention badge shows. */
-export function attentionCount(statuses: readonly MuscleStatus[]): number {
-  return statuses.length;
-}
+/** The muscles whose current reading needs attention; the page and the badge both read the list length. */
 
 // ---------------------------------------------------------------------------
 // Display lines shared by the UI and the coach prompt

@@ -184,7 +184,7 @@ describe("the muscle tab page", () => {
     const three = await fetch(`${base}/static/three.module.js`, { headers: { cookie } });
     expect(three.status).toBe(200);
     expect(three.headers.get("content-type")).toContain("text/javascript");
-    expect(three.headers.get("cache-control")).toBe("no-store");
+    expect(three.headers.get("cache-control")).toBe("no-cache");
     const threeText = await three.text();
     expect(threeText).toContain("SPDX-License-Identifier: MIT");
     expect(threeText).toContain("Three.js Authors");

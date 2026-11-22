@@ -438,6 +438,14 @@ class SqliteStore implements Store {
 
   constructor(location: string) {
     this.db = new DatabaseSync(location);
+    /**
+     * Write-ahead logging keeps a reader from blocking the writer and makes each commit a single sequential write,
+     * which is what the single-process server needs; `synchronous = NORMAL` is the documented WAL pairing and keeps
+     * a commit durable against process crashes (the OS page cache still holds the last commits across a power cut).
+     * `busy_timeout` covers the brief window where an external backup tool holds the write lock.
+     */
+    if (location !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
+    this.db.exec("PRAGMA synchronous = NORMAL");
     this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec(SCHEMA);
     migrateActivitiesTable(this.db);

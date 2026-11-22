@@ -64,7 +64,7 @@ import { addDays, localDay, safeTimeZone } from "./time";
 
 export interface GatewayOptions {
   store: Store;
-  /** The single PoC runner; multi-user routing comes later. */
+  /** Identity used only when a request carries no `x-milebook-user` header (health checks, direct admin calls). */
   userId: string;
   modelBaseUrl: string;
   modelApiKey: string;
@@ -76,6 +76,12 @@ export interface GatewayOptions {
   fetchImpl?: typeof fetch;
   /** Initial proposal plus at most this many repair calls. Default 2 (one repair). */
   maxAttempts?: number;
+  /**
+   * Shared secret the web surface presents on every write call. When set, a request without it is rejected
+   * before the store is touched, so another local process (or a web page via CORS) cannot act as a runner.
+   * Unset in unit tests that drive the gateway directly.
+   */
+  internalToken?: string;
 }
 
 export interface Gateway {
@@ -177,8 +183,8 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(payload),
-    "access-control-allow-origin": "*",
     "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
   });
   response.end(payload);
 }
@@ -916,21 +922,24 @@ export function createGateway(options: GatewayOptions): Gateway {
   const now = options.now ?? (() => new Date().toISOString());
   const modelId = options.modelId ?? "milebook-coach";
   const maxAttempts = Math.max(1, options.maxAttempts ?? 2);
+  const internalToken = options.internalToken;
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method ?? "GET";
       if (method === "OPTIONS") {
-        response.writeHead(204, {
-          "access-control-allow-origin": "*",
-          "access-control-allow-headers": "authorization, content-type, x-milebook-user",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-        });
+        // The gateway is an internal service: the browser never calls it cross-origin (the bubble goes through the
+        // web surface), so no CORS grant is sent and no preflight target is advertised.
+        response.writeHead(204, { "cache-control": "no-store" });
         response.end();
         return;
       }
       if (url.pathname === "/health" && method === "GET") {
         sendJson(response, 200, { status: "ok", model: options.modelName });
+        return;
+      }
+      if (internalToken !== undefined && request.headers["x-milebook-internal-token"] !== internalToken) {
+        sendJson(response, 401, { error: { code: "unauthorized", detail: "missing or invalid internal token" } });
         return;
       }
       if (url.pathname === "/v1/models" && method === "GET") {
@@ -1410,7 +1419,7 @@ export function createGateway(options: GatewayOptions): Gateway {
           "content-type": "text/event-stream; charset=utf-8",
           "cache-control": "no-store",
           connection: "keep-alive",
-          "access-control-allow-origin": "*",
+          "x-content-type-options": "nosniff",
         });
         response.write(streamChunk(id, modelId, created, reply, null));
         response.write(streamChunk(id, modelId, created, "", "stop"));

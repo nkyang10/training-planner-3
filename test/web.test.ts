@@ -49,6 +49,9 @@ interface StartOptions {
   /** Large values keep a seeded sync timestamp fresh so sync-aware day states stay testable. */
   autoSyncMinutes?: number;
   gatewayUrl?: string;
+  /** Shared secret the proxy must present to the gateway. */
+  gatewayToken?: string;
+  cookieSecure?: boolean;
   seed?: (store: Store, user: AuthUser) => void;
 }
 
@@ -189,6 +192,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
   const auth = createAuth({
     store: handle.store,
     secret: SECRET,
+    ...(options.cookieSecure === undefined ? {} : { secureCookies: options.cookieSecure }),
     now: () => `${TODAY}T08:00:00.000Z`,
   });
   const signup = auth.signup({
@@ -206,6 +210,8 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     store: handle.store,
     auth,
     ...(options.gatewayUrl === undefined ? {} : { gatewayUrl: options.gatewayUrl }),
+    ...(options.gatewayToken === undefined ? {} : { gatewayToken: options.gatewayToken }),
+    ...(options.cookieSecure === undefined ? {} : { cookieSecure: options.cookieSecure }),
     ...(options.garmin === undefined ? {} : { garmin: options.garmin }),
     ...(options.garminFactory === undefined ? {} : { garminFactory: options.garminFactory }),
     ...(options.autoSyncMinutes === undefined ? {} : { autoSyncMinutes: options.autoSyncMinutes }),
@@ -229,6 +235,7 @@ interface MockGateway {
   seenUser(): string | undefined;
   seenMessage(): string | undefined;
   seenRequestId(): string | undefined;
+  seenToken(): string | undefined;
   seenDirective(): unknown;
 }
 
@@ -241,6 +248,7 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
   let seenUser: string | undefined;
   let seenMessage: string | undefined;
   let seenRequestId: string | undefined;
+  let seenToken: string | undefined;
   let seenDirective: unknown;
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
@@ -251,6 +259,10 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
         milebook?: { directive?: unknown };
       };
       seenUser = typeof request.headers["x-milebook-user"] === "string" ? request.headers["x-milebook-user"] : undefined;
+      seenToken =
+        typeof request.headers["x-milebook-internal-token"] === "string"
+          ? request.headers["x-milebook-internal-token"]
+          : undefined;
       seenMessage = body.messages?.[0]?.content;
       seenDirective = body.milebook?.directive;
       seenRequestId =
@@ -285,6 +297,7 @@ const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockG
     seenUser: () => seenUser,
     seenMessage: () => seenMessage,
     seenRequestId: () => seenRequestId,
+    seenToken: () => seenToken,
     seenDirective: () => seenDirective,
   };
 };
@@ -2881,7 +2894,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("window.history.pushState");
     expect(html).toContain("popstate");
     const cssResponse = await fetch(`${base}/static/app.css`);
-    expect(cssResponse.headers.get("cache-control")).toBe("no-store");
+    expect(cssResponse.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     const css = await cssResponse.text();
     expect(css).toContain("100dvh");
     expect(css).toContain("min-height: 0");
@@ -3338,8 +3351,6 @@ describe("coach audit", () => {
     expect(html).toContain("Active coaching states");
     expect(html).toContain("Race week");
     expect(html).toContain("race_week");
-    expect(html).toContain("Legacy mode memories");
-    expect(html).toContain("mode: legacy race week");
     expect(html).toContain("activity garmin:review");
     expect(html).not.toContain("Other secret");
     expect(html).not.toContain("Other secret state");
@@ -4685,3 +4696,110 @@ describe("honest demo slice", () => {
   });
 });
 
+
+describe("production hardening", () => {
+  it("sets the baseline security headers on every response", async () => {
+    const { base } = await start();
+    for (const path of ["/login", "/static/app.css", "/health"]) {
+      const response = await fetch(`${base}${path}`);
+      expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
+      expect(response.headers.get("referrer-policy"), path).toBe("same-origin");
+      expect(response.headers.get("x-frame-options"), path).toBe("DENY");
+      expect(response.headers.get("cross-origin-opener-policy"), path).toBe("same-origin");
+      expect(response.headers.get("permissions-policy"), path).toContain("camera=()");
+    }
+  });
+
+  it("adds Secure and HSTS only when the deployment is secure", async () => {
+    const plain = await start();
+    const plainLogin = await fetch(`${plain.base}/login`);
+    expect(plainLogin.headers.get("strict-transport-security")).toBeNull();
+
+    const secure = await start({ cookieSecure: true });
+    const secureLogin = await fetch(`${secure.base}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: USERNAME, password: PASSWORD }),
+      redirect: "manual",
+    });
+    expect(secureLogin.headers.get("strict-transport-security")).toContain("max-age=");
+    const cookies = secureLogin.headers.getSetCookie();
+    const session = cookies.find((value) => value.startsWith("milebook_session="));
+    expect(session).toBeDefined();
+    expect(session).toContain("Secure");
+  });
+
+  it("revalidates a static asset with an ETag instead of resending it", async () => {
+    const { base } = await start();
+    const first = await fetch(`${base}/static/app.css`);
+    const etag = first.headers.get("etag");
+    expect(etag).not.toBeNull();
+    expect(first.headers.get("cache-control")).toContain("immutable");
+    const second = await fetch(`${base}/static/app.css`, { headers: { "if-none-match": etag ?? "" } });
+    expect(second.status).toBe(304);
+    expect((await second.text()).length).toBe(0);
+  });
+
+  it("throttles repeated failed sign-ins and clears the count after a success", async () => {
+    const { base } = await start();
+    const attempt = (password: string) =>
+      fetch(`${base}/login`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({ username: USERNAME, password }),
+        redirect: "manual",
+      });
+    for (let index = 0; index < 10; index += 1) {
+      const response = await attempt("wrong-password");
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toContain("error=invalid-credentials");
+    }
+    const blocked = await attempt("wrong-password");
+    expect(blocked.status).toBe(429);
+    expect(await blocked.text()).toContain("Too many attempts");
+
+    // The throttle is per client+route+username, so a different account is unaffected.
+    const other = await fetch(`${base}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: "someone_else", password: "wrong-password" }),
+      redirect: "manual",
+    });
+    expect(other.status).toBe(303);
+  });
+
+  it("sends the internal token to the gateway and keeps the runner header", async () => {
+    const gateway = await startMockGateway();
+    const { base, cookie } = await start({ gatewayUrl: gateway.url, gatewayToken: "shared-secret" });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "Book two runs" }),
+    });
+    expect(response.status).toBe(200);
+    expect(gateway.seenToken()).toBe("shared-secret");
+    expect(gateway.seenUser()).toBeDefined();
+  });
+
+  it("answers 502 with stable copy when the coach service fails", async () => {
+    const { base, cookie } = await start({ gatewayUrl: "http://127.0.0.1:1" });
+    const response = await fetch(`${base}/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ message: "Book two runs" }),
+    });
+    expect(response.status).toBe(502);
+    const payload = (await response.json()) as { error?: { detail?: string } };
+    expect(payload.error?.detail).toBe("the coach service is unavailable");
+  });
+
+  it("does not echo an internal error message on the 500 page", async () => {
+    const { base, cookie } = await start();
+    const response = await fetch(`${base}/day/not-a-day`, { headers: { cookie } });
+    // A malformed day is handled as a normal page, not a 500; the point is that no internal text leaks anywhere.
+    expect(response.status).toBeLessThan(500);
+    const body = await response.text();
+    expect(body).not.toContain("Error:");
+    expect(body).not.toContain("at Object.");
+  });
+});

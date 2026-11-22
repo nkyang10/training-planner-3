@@ -1,6 +1,0 @@
-Autofill-like probe (programmatic values, no input events), 1440x1000:
-submits=1, form aria-busy=true, field errors=0, strength hidden=true (score 0), password hint visible=true, path=/signup.
-
-Error-link focus probe:
-390x844: active=username, href=#username, scrollY=418.
-1440x1000: active=username, href=#username, scrollY=0.

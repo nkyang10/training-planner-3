@@ -1,99 +1,95 @@
-# Deploy the live Milebook calendar + gateway on Windows.
+# Deploy the Milebook calendar + gateway on the Windows host.
 #
-# Stops the process that currently owns the web/gateway ports, starts `pnpm dev` with the live environment, and waits
-# for both HTTP surfaces. The auth secret, model API key and SQLite file are read from the repository's data directory;
-# the script refuses to stop a process that does not look like this app. On the first deploy after the POC3 -> Milebook
-# rename, legacy poc3-* data files are moved to their milebook-* names once the old process has released them.
+# Contract:
+#   1. Refuse to start unless the auth secret, the model endpoint and the database exist.
+#   2. Take a consistent online backup of the database (tools/backup-db.mjs) before touching the running process.
+#   3. Stop only a process that is provably this app (command line or recorded pid ancestry).
+#   4. Start the app from the current checkout and record the commit, the pid and the stylesheet version.
+#   5. Verify /health, /login and the stylesheet against the version the source actually declares.
+#
+# Secrets are read from data/milebook-auth.secret and MILEBOOK_MODEL_API_KEY (or data/milebook-model.secret).
+# Every MILEBOOK_* setting may also come from the environment; the parameters below only override it.
 param(
-    [int]$WebPort = 8093,
-    [int]$GatewayPort = 8092,
-    [string]$Database = 'sqlite:data/milebook-auth.sqlite',
+    [int]$WebPort = 0,
+    [int]$GatewayPort = 0,
+    [string]$Database = '',
     [string]$SecretFile = 'data/milebook-auth.secret',
     [string]$ModelKeyFile = 'data/milebook-model.secret',
-    [string]$ModelBaseUrl = 'http://192.168.1.202:8102/v1',
-    [string]$ModelName = 'dgx/general',
+    [string]$ModelBaseUrl = '',
+    [string]$ModelName = '',
     [int]$MaxAttempts = 2,
-    [int]$TimeoutSeconds = 60
+    [int]$TimeoutSeconds = 60,
+    [int]$BackupKeep = 14,
+    [switch]$CookieSecure,
+    [switch]$SkipBackup
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-# Legacy renames, applied only when the destination is absent: legacy source => new destination.
-$renames = @{}
-
-$secretPath = Join-Path $root $SecretFile
-$secretLegacy = Join-Path $root 'data/poc3-auth.secret'
-if (-not (Test-Path $secretPath)) {
-    if (-not (Test-Path $secretLegacy)) {
-        throw "Auth secret not found: $secretPath (legacy $secretLegacy)"
-    }
-    $renames[$secretLegacy] = $secretPath
-}
-$secretSource = if (Test-Path $secretPath) { $secretPath } else { $secretLegacy }
-$secret = (Get-Content -Raw $secretSource).Trim()
-if ($secret.Length -lt 16) {
-    throw "Auth secret looks too short: $secretSource"
+function Read-Secret([string]$path, [string]$label) {
+    if (-not (Test-Path $path)) { throw "$label not found: $path" }
+    $value = (Get-Content -Raw $path).Trim()
+    if ($value.Length -eq 0) { throw "$label is empty: $path" }
+    return $value
 }
 
-$modelKey = ([string]$env:MILEBOOK_MODEL_API_KEY).Trim()
-if ($modelKey.Length -eq 0) {
-    $modelKeyPath = Join-Path $root $ModelKeyFile
-    $modelKeyLegacy = Join-Path $root 'data/poc3-model.secret'
-    if (-not (Test-Path $modelKeyPath)) {
-        if (-not (Test-Path $modelKeyLegacy)) {
-            throw "Model API key not found: set MILEBOOK_MODEL_API_KEY or create $ModelKeyFile (the coach gateway needs it)."
-        }
-        $renames[$modelKeyLegacy] = $modelKeyPath
-        $modelKey = (Get-Content -Raw $modelKeyLegacy).Trim()
-    } else {
-        $modelKey = (Get-Content -Raw $modelKeyPath).Trim()
-    }
-}
-if ($modelKey.Length -lt 8) {
-    throw "Model API key looks too short: $ModelKeyFile"
-}
-
-$dbPath = $Database -replace '^sqlite:', ''
+# --- Settings: environment first, parameters second, documented defaults last -----------------------------------
+$webPortValue = if ($WebPort -gt 0) { $WebPort } elseif ($env:MILEBOOK_WEB_PORT) { [int]$env:MILEBOOK_WEB_PORT } else { 8093 }
+$gatewayPortValue = if ($GatewayPort -gt 0) { $GatewayPort } elseif ($env:MILEBOOK_GATEWAY_PORT) { [int]$env:MILEBOOK_GATEWAY_PORT } else { 8092 }
+$databaseSpec = if ($Database) { $Database } elseif ($env:MILEBOOK_DB) { $env:MILEBOOK_DB } else { 'sqlite:data/milebook.sqlite' }
+if (-not $databaseSpec.StartsWith('sqlite:')) { throw "Only a sqlite: database is supported, got $databaseSpec" }
+$dbPath = $databaseSpec.Substring('sqlite:'.Length)
 $dbFile = Join-Path $root $dbPath
 if (-not (Test-Path $dbFile)) {
-    $dbLegacy = Join-Path $root 'data/poc3-auth.sqlite'
-    if (-not (Test-Path $dbLegacy)) {
-        throw "Database not found: $dbPath"
-    }
-    $renames[$dbLegacy] = $dbFile
+    # The app creates a missing database at boot; a first deploy must not be blocked by that. Warn loudly instead, so
+    # a typo in MILEBOOK_DB is still visible in the deploy output.
+    Write-Host "WARNING: database not found at $dbPath; the app will create it at boot. Check MILEBOOK_DB if that is unexpected." -ForegroundColor Yellow
 }
 
-$ports = @($WebPort, $GatewayPort)
+$maxAttemptsValue = if ($PSBoundParameters.ContainsKey('MaxAttempts')) { $MaxAttempts } elseif ($env:MILEBOOK_MAX_ATTEMPTS) { [int]$env:MILEBOOK_MAX_ATTEMPTS } else { 2 }
+
+$secret = if ($env:MILEBOOK_AUTH_SECRET) { $env:MILEBOOK_AUTH_SECRET.Trim() } else { Read-Secret (Join-Path $root $SecretFile) 'Auth secret' }
+if ($secret.Length -lt 32) { throw "Auth secret must be at least 32 characters (the app signs session cookies with it)" }
+
+$modelKey = if ($env:MILEBOOK_MODEL_API_KEY) { $env:MILEBOOK_MODEL_API_KEY.Trim() } else { Read-Secret (Join-Path $root $ModelKeyFile) 'Model API key' }
+
+$modelUrlValue = if ($ModelBaseUrl) { $ModelBaseUrl } elseif ($env:MILEBOOK_MODEL_BASE_URL) { $env:MILEBOOK_MODEL_BASE_URL } else { '' }
+if (-not $modelUrlValue) { throw 'Model endpoint missing: set MILEBOOK_MODEL_BASE_URL (the coach gateway needs it).' }
+$modelNameValue = if ($ModelName) { $ModelName } elseif ($env:MILEBOOK_MODEL_NAME) { $env:MILEBOOK_MODEL_NAME } else { '' }
+if (-not $modelNameValue) { throw 'Model name missing: set MILEBOOK_MODEL_NAME.' }
+
+$cookieSecureValue = if ($CookieSecure -or $env:MILEBOOK_COOKIE_SECURE -eq 'true') { 'true' } else { 'false' }
+
+# The stylesheet version is read from the source, never duplicated here: a deploy gate that hardcodes it fails the
+# moment the app bumps the constant (that bug shipped once already).
+$webSource = Get-Content -Raw (Join-Path $root 'src/web.ts')
+$versionMatch = [regex]::Match($webSource, 'APP_CSS_VERSION\s*=\s*(\d+)')
+if (-not $versionMatch.Success) { throw 'Could not read APP_CSS_VERSION from src/web.ts' }
+$cssVersion = $versionMatch.Groups[1].Value
+
 $outLog = Join-Path $root 'data/milebook-live.out.log'
 $errLog = Join-Path $root 'data/milebook-live.err.log'
 $deployLog = Join-Path $root 'data/milebook-deploy.log'
 $pidFile = Join-Path $root 'data/milebook-live.pid'
 
 function Get-ListeningProcessIds {
-    $connections = Get-NetTCPConnection -State Listen -LocalPort $ports -ErrorAction SilentlyContinue
+    $connections = Get-NetTCPConnection -State Listen -LocalPort @($webPortValue, $gatewayPortValue) -ErrorAction SilentlyContinue
     if ($null -eq $connections) { return @() }
     return @($connections | Select-Object -ExpandProperty OwningProcess -Unique)
 }
 
-# A live process counts as ours when its command line names this app, or — when the command line cannot be read
-# (detached launchers such as Task Scheduler query Win32_Process from a context that returns it empty) — when
-# the pid recorded at the last deploy sits in its ancestry. The legacy poc3-live.pid is also consulted, so the
-# first fully-rebranded deploy can still recognize a process recorded under the old name. Anything else is refused.
+# A process counts as ours when its command line names this app, or when the pid recorded at the last deploy sits in
+# its ancestry (a detached launcher such as Task Scheduler can return an empty command line).
 function Test-IsThisApp {
     param([int]$ProcessId)
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
     if ($null -eq $process) { return $false }
-    $commandLine = [string]$process.CommandLine
-    if ($commandLine -match 'src[\\/]index\.ts') { return $true }
+    if ([string]$process.CommandLine -match 'src[\\/]index\.ts') { return $true }
+    if (-not (Test-Path $pidFile)) { return $false }
     $recorded = 0
-    foreach ($pidCandidate in @($pidFile, (Join-Path $root 'data/poc3-live.pid'))) {
-        if (-not (Test-Path $pidCandidate)) { continue }
-        $raw = (Get-Content -Raw $pidCandidate -ErrorAction SilentlyContinue)
-        if ($raw) { [int]::TryParse($raw.Trim(), [ref]$recorded) | Out-Null }
-        if ($recorded -gt 0) { break }
-    }
+    [int]::TryParse(((Get-Content -Raw $pidFile -ErrorAction SilentlyContinue) -as [string]).Trim(), [ref]$recorded) | Out-Null
     if ($recorded -le 0) { return $false }
     $cursor = $process
     for ($depth = 0; $depth -lt 12 -and $null -ne $cursor; $depth++) {
@@ -105,51 +101,54 @@ function Test-IsThisApp {
     return $false
 }
 
-$oldIds = @(Get-ListeningProcessIds)
-foreach ($processId in $oldIds) {
+# --- 1. Backup before the restart ------------------------------------------------------------------------------
+if (-not $SkipBackup) {
+    $backupDir = Join-Path $root 'data/backups'
+    & node (Join-Path $PSScriptRoot 'backup-db.mjs') $dbFile $backupDir $BackupKeep
+    if ($LASTEXITCODE -ne 0) { throw "Database backup failed (exit $LASTEXITCODE); not deploying." }
+}
+
+# --- 2. Stop the old process -----------------------------------------------------------------------------------
+# The port check catches the instance the deploy itself started. A hand-started instance on another port would share
+# the same database and break the single-writer rule, so every process whose command line names this app is stopped
+# too, not just the ones holding the deploy ports.
+$appProcesses = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { [string]$_.CommandLine -match 'src[\\/]index\.ts' } |
+    Select-Object -ExpandProperty ProcessId -Unique)
+$stopped = @{}
+foreach ($processId in @($appProcesses) + @(Get-ListeningProcessIds)) {
+    if ($stopped.ContainsKey($processId)) { continue }
+    $stopped[$processId] = $true
     if (-not (Test-IsThisApp $processId)) {
         $process = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction SilentlyContinue
-        $commandLine = [string]$process.CommandLine
-        throw "Port $WebPort/$GatewayPort is held by an unrelated process $processId ($commandLine); refusing to stop it."
+        throw "Port $webPortValue/$gatewayPortValue is held by an unrelated process $processId ($([string]$process.CommandLine)); refusing to stop it."
     }
-    Write-Host "Stopping old Milebook process $processId..."
+    Write-Host "Stopping Milebook process $processId..."
     & taskkill.exe /PID $processId /T /F | Out-Null
 }
-
 $deadline = (Get-Date).AddSeconds(20)
-while ((Get-ListeningProcessIds).Count -gt 0 -and (Get-Date) -lt $deadline) {
-    Start-Sleep -Milliseconds 250
-}
-if ((Get-ListeningProcessIds).Count -gt 0) {
-    throw "Ports $WebPort/$GatewayPort are still held after stopping the old process."
-}
+while ((Get-ListeningProcessIds).Count -gt 0 -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+if ((Get-ListeningProcessIds).Count -gt 0) { throw "Ports $webPortValue/$gatewayPortValue are still held after stopping the old process." }
 
-# The old process has released the SQLite file: move the legacy data files into their milebook names.
-foreach ($source in @($renames.Keys)) {
-    $target = $renames[$source]
-    if ((Test-Path $source) -and -not (Test-Path $target)) {
-        Move-Item -LiteralPath $source -Destination $target
-        Write-Host "Renamed legacy $source -> $target"
-    }
-}
-if (-not (Test-Path $secretPath)) { throw "Auth secret not found: $secretPath (after legacy rename)" }
-if (-not (Test-Path $dbFile)) { throw "Database not found: $dbPath (after legacy rename)" }
-
+# --- 3. Start ---------------------------------------------------------------------------------------------------
+$commit = (& git rev-parse --short HEAD 2>$null)
+if (-not $commit) { $commit = 'unknown' }
 Remove-Item $outLog, $errLog -ErrorAction SilentlyContinue
 
 $env:MILEBOOK_AUTH_SECRET = $secret
-$env:MILEBOOK_DB = $Database
-$env:MILEBOOK_GATEWAY_PORT = [string]$GatewayPort
-$env:MILEBOOK_GATEWAY_URL = "http://127.0.0.1:$GatewayPort"
-$env:MILEBOOK_WEB_PORT = [string]$WebPort
-$env:MILEBOOK_MODEL_BASE_URL = $ModelBaseUrl
+$env:MILEBOOK_DB = $databaseSpec
+$env:MILEBOOK_GATEWAY_PORT = [string]$gatewayPortValue
+$env:MILEBOOK_GATEWAY_URL = "http://127.0.0.1:$gatewayPortValue"
+$env:MILEBOOK_WEB_PORT = [string]$webPortValue
+$env:MILEBOOK_MODEL_BASE_URL = $modelUrlValue
 $env:MILEBOOK_MODEL_API_KEY = $modelKey
-$env:MILEBOOK_MODEL_NAME = $ModelName
-$env:MILEBOOK_MAX_ATTEMPTS = [string]$MaxAttempts
+$env:MILEBOOK_MODEL_NAME = $modelNameValue
+$env:MILEBOOK_MAX_ATTEMPTS = [string]$maxAttemptsValue
+$env:MILEBOOK_COOKIE_SECURE = $cookieSecureValue
 
 $startedAt = Get-Date
-$process = Start-Process -FilePath 'cmd.exe' `
-    -ArgumentList '/d', '/s', '/c', 'pnpm.cmd dev' `
+$process = Start-Process -FilePath 'node.exe' `
+    -ArgumentList '--import', 'tsx', 'src/index.ts' `
     -WorkingDirectory $root `
     -RedirectStandardOutput $outLog `
     -RedirectStandardError $errLog `
@@ -157,65 +156,49 @@ $process = Start-Process -FilePath 'cmd.exe' `
     -PassThru
 
 $process.Id | Set-Content -Path $pidFile -Encoding ASCII
-Add-Content -Path $deployLog -Value ("{0} deploy web={1} gateway={2} db={3} pid={4} modelKey=set" -f `
-    $startedAt.ToString('o'), $WebPort, $GatewayPort, $Database, $process.Id)
+Add-Content -Path $deployLog -Value ("{0} deploy commit={1} web={2} gateway={3} db={4} css=v{5} secure={6} pid={7}" -f `
+    $startedAt.ToString('o'), $commit, $webPortValue, $gatewayPortValue, $databaseSpec, $cssVersion, $cookieSecureValue, $process.Id)
 
 function Wait-HttpOk([string]$url, [int]$timeoutSeconds) {
     $end = (Get-Date).AddSeconds($timeoutSeconds)
     while ((Get-Date) -lt $end) {
         try {
             $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
-            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) {
-                return $response
-            }
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400) { return $response }
         } catch {
-            # The server is still starting; retry until the deadline.
+            # Still starting; retry until the deadline.
         }
         Start-Sleep -Milliseconds 300
     }
     throw "Timed out waiting for $url"
 }
 
+# --- 4. Verify --------------------------------------------------------------------------------------------------
 try {
-    $gateway = Wait-HttpOk "http://127.0.0.1:$GatewayPort/health" $TimeoutSeconds
-    $login = Wait-HttpOk "http://127.0.0.1:$WebPort/login" $TimeoutSeconds
-    $css = Wait-HttpOk "http://127.0.0.1:$WebPort/static/app.css" $TimeoutSeconds
+    $health = Wait-HttpOk "http://127.0.0.1:$gatewayPortValue/health" $TimeoutSeconds
+    $webHealth = Wait-HttpOk "http://127.0.0.1:$webPortValue/health" $TimeoutSeconds
+    $login = Wait-HttpOk "http://127.0.0.1:$webPortValue/login" $TimeoutSeconds
+    $css = Wait-HttpOk "http://127.0.0.1:$webPortValue/static/app.css" $TimeoutSeconds
 
-    $cssText = [string]$css.Content
-    if ($cssText -notmatch '\.cal-pill\.record' -or $cssText -notmatch '\.cal-meta' -or $cssText -notmatch '\.cal-pair-run' -or $cssText -notmatch '\.peek-program') {
-        throw 'The deployed stylesheet does not contain the calendar item row styles or the integrated program section.'
+    # The web health reports whether it can reach the coach gateway; a green gateway and a red web→gateway path is a
+    # deploy that answers pages while every coach turn fails.
+    $webHealthBody = [string]$webHealth.Content
+    if ($webHealthBody -notmatch '"gateway"\s*:\s*"ok"') {
+        throw "The web surface cannot reach the gateway: $webHealthBody"
     }
-    if ($cssText -notmatch '\.state-card' -or $cssText -notmatch '\.state-form' -or $cssText -notmatch '\.state-refresh') {
-        throw 'The deployed stylesheet does not contain the coaching-state styles.'
-    }
-    if ($cssText -notmatch '\.account-menu' -or $cssText -notmatch '\.account-item') {
-        throw 'The deployed stylesheet does not contain the account-menu styles.'
-    }
-    if ($cssText -notmatch '\.muscle-plugin-tabs' -or $cssText -notmatch '\.muscle-viewer\.compact' -or $cssText -notmatch '\.muscle-editor') {
-        throw 'The deployed stylesheet does not contain the muscle plugin styles.'
-    }
-    if ($cssText -notmatch '\.coach-dock' -or $cssText -notmatch '\.coach-tabs' -or $cssText -notmatch 'body\.coach-open') {
-        throw 'The deployed stylesheet does not contain the coach dock and tab styles.'
-    }
-    if ($cssText -notmatch '\.seg-tabs' -or $cssText -notmatch '\.seg-panel' -or $cssText -notmatch '\.activity-columns' -or $cssText -notmatch '\.muscle-layout' -or $cssText -notmatch '\.history-load-chip' -or $cssText -notmatch 'body\.coach-open \.activity-columns') {
-        throw 'The deployed stylesheet does not contain the pass-2/P1 page regroup styles.'
-    }
-    if ($cssText -notmatch '\.cal-key' -or $cssText -notmatch '\.entry-context' -or $cssText -notmatch '\.calendar-head' -or $cssText -notmatch '\.log-disclosure' -or $cssText -notmatch '\.history-period-summary') {
-        throw 'The deployed stylesheet does not contain the entry-page and daily-page styles.'
-    }
+
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=32') {
-        throw 'The deployed login page does not reference app.css?v=32.'
+    if ($loginText -notmatch "app\.css\?v=$cssVersion") {
+        throw "The deployed login page does not reference app.css?v=$cssVersion (source declares $cssVersion)."
     }
-    if ($loginText -notmatch 'Milebook') {
-        throw 'The deployed login page does not carry the Milebook brand.'
-    }
+    if ($loginText -notmatch 'Milebook') { throw 'The deployed login page does not carry the Milebook brand.' }
+    $cssText = [string]$css.Content
+    if ($cssText.Length -lt 10000) { throw 'The deployed stylesheet is suspiciously small.' }
 
-    $gatewayText = [string]$gateway.Content
-    Write-Host "Deploy OK: gateway $($gateway.StatusCode) ($gatewayText), calendar $($login.StatusCode), pid $($process.Id)."
-    Write-Host "  http://127.0.0.1:$WebPort/login"
-    Write-Host "  http://127.0.0.1:$GatewayPort/health"
-    Write-Host "  logs: data/milebook-live.out.log, data/milebook-live.err.log"
+    Write-Host "Deploy OK: commit $commit, gateway $($health.StatusCode) ($([string]$health.Content)), calendar $($login.StatusCode), css v$cssVersion, pid $($process.Id)."
+    Write-Host "  http://127.0.0.1:$webPortValue/login"
+    Write-Host "  http://127.0.0.1:$gatewayPortValue/health"
+    Write-Host '  logs: data/milebook-live.out.log, data/milebook-live.err.log'
     exit 0
 } catch {
     Write-Host "Deploy FAILED: $($_.Exception.Message)" -ForegroundColor Red
@@ -223,5 +206,6 @@ try {
     if (Test-Path $errLog) { Get-Content $errLog -Tail 40 }
     Write-Host '--- data/milebook-live.out.log ---'
     if (Test-Path $outLog) { Get-Content $outLog -Tail 40 }
+    Write-Host 'The database backup from this deploy is in data/backups; the previous process is already stopped.'
     exit 1
 }

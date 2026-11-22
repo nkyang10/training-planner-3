@@ -1,23 +1,34 @@
 {
   "name": "milebook",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "description": "Milebook — a calendar-first AI coach: the private calendar is the product, the coach bubble books and edits it.",
-  "engines": {
-    "node": ">=24"
+  "description": "Milebook — a calendar-first AI coach for runners: the private calendar is the product, the coach bubble books and edits it.",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://example.invalid/milebook.git"
   },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
+    "start": "node --import tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node tools/lint.mjs",
-    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "docs:check": "node tools/docs-check.mjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm docs:check && pnpm test",
+    "backup": "node tools/backup-db.mjs data/milebook.sqlite data/backups 14",
     "deploy:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1"
+  },
+  "dependencies": {
+    "tsx": "4.23.15"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
   }

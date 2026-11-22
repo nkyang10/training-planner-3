@@ -3,7 +3,7 @@
  * coach (gateway) is the only session writer. The day page can log a reported run by hand, and the runner can export the
  * plan, log and change history. See ADR-0001 for the session-write rule.
  */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 
@@ -12,6 +12,7 @@ import { HORIZON_DAYS } from "./coach";
 import { applyRevert } from "./history";
 import { buildCalendarIcs, buildExportBundle } from "./export";
 import { buildManualActivity } from "./manual-activity";
+import { createRateLimiter } from "./rate-limit";
 import { createGarminClient, type GarminClient } from "./garmin";
 import { describeGarminError } from "./garmin-errors";
 import { createGarminSync, type GarminSyncOutcome } from "./garmin-sync";
@@ -116,7 +117,11 @@ export interface WebOptions {
   auth: Auth;
   /** The coach gateway; the embedded bubble talks through this server so the browser stays same-origin. */
   gatewayUrl?: string;
+  /** Shared secret presented to the gateway on every proxied coach turn (see GatewayOptions.internalToken). */
+  gatewayToken?: string;
   modelId?: string;
+  /** Append `Secure` to session cookies; enable whenever the deployment terminates TLS. */
+  cookieSecure?: boolean;
   /** Create a client from a runner's saved key; defaults to the real Garmin Personal API client. */
   garminFactory?: (apiKey: string) => GarminClient;
   /** Legacy/embedding fallback used only when no runner key is saved. */
@@ -197,6 +202,53 @@ function redirect(
   response.end();
 }
 
+/** A stable strong ETag for an in-memory asset, computed once at startup. */
+function etagFor(body: string | Buffer): string {
+  return `"${createHash("sha256").update(body).digest("base64url").slice(0, 27)}"`;
+}
+
+/**
+ * Serve an in-memory asset with a validator. The 11 MB anatomy model and the three.js builds are read once at
+ * startup; without an ETag every page view re-downloads them, so a revalidating request now costs a 304 instead.
+ */
+function sendAsset(
+  request: IncomingMessage,
+  response: ServerResponse,
+  body: string | Buffer,
+  contentType: string,
+  cacheControl: string,
+  etag: string,
+): void {
+  if (request.headers["if-none-match"] === etag) {
+    response.writeHead(304, { etag, "cache-control": cacheControl });
+    response.end();
+    return;
+  }
+  response.writeHead(200, {
+    "content-type": contentType,
+    "content-length": Buffer.byteLength(body),
+    "cache-control": cacheControl,
+    etag,
+  });
+  response.end(body);
+}
+
+/** Asset validators, computed once at startup so a revalidating request costs a 304 and no body. */
+const STATIC_ETAGS = {
+  css: etagFor(CSS),
+  three: etagFor(THREE_MODULE),
+  orbit: etagFor(ORBIT_CONTROLS_MODULE),
+  gltf: etagFor(GLTF_LOADER_MODULE),
+  utils: etagFor(BUFFER_GEOMETRY_UTILS_MODULE),
+  authHero: etagFor(AUTH_HERO_WEBP),
+  authObject: etagFor(AUTH_OBJECT_WEBP),
+  grain: etagFor(AUTH_GRAIN_WEBP),
+  calendarEmpty: etagFor(CALENDAR_EMPTY_WEBP),
+  calendarWash: etagFor(CALENDAR_WASH_WEBP),
+  coachToken: etagFor(COACH_TOKEN_WEBP),
+  anatomy: etagFor(ANATOMY_MUSCLES_GLB),
+} as const;
+
 async function readJsonBody(request: IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -235,12 +287,19 @@ function parseCookies(request: IncomingMessage): Record<string, string> {
   return cookies;
 }
 
-function sessionCookie(id: string): string {
-  return `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
+function sessionCookie(id: string, secure: boolean): string {
+  const secureAttribute = secure ? "; Secure" : "";
+  return `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Lax; Path=/${secureAttribute}; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`;
 }
 
-function clearSessionCookie(): string {
-  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`;
+function clearSessionCookie(secure: boolean): string {
+  const secureAttribute = secure ? "; Secure" : "";
+  return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/${secureAttribute}; Max-Age=0`;
+}
+
+/** A coarse client identity for throttling: the socket peer, never a spoofable header. */
+function clientKey(request: IncomingMessage): string {
+  return request.socket.remoteAddress ?? "unknown";
 }
 
 function maskKey(apiKey: string): string {
@@ -4859,6 +4918,31 @@ function renderProfile(user: AuthUser, saved: boolean, error: string | undefined
 export function createWeb(options: WebOptions): WebApp {
   const now = options.now ?? (() => new Date().toISOString());
   const sessionSync = options.sessionSync ?? true;
+  const cookieSecure = options.cookieSecure === true;
+  const gatewayToken = options.gatewayToken;
+  /** Failed-credential throttle: a key is blocked after 10 failures in 15 minutes; a success clears it. */
+  const authLimiter = createRateLimiter({ limit: 10, windowMs: 15 * 60_000 });
+  /** Model-spend throttle: at most 40 coach turns per runner per 5 minutes. */
+  const chatLimiter = createRateLimiter({ limit: 40, windowMs: 5 * 60_000 });
+  /**
+   * The gateway's liveness as the web surface sees it, cached for 5 s so a health poll does not turn into a request
+   * storm against the coach process.
+   */
+  let gatewayProbe: { at: number; value: "ok" | "down" } = { at: 0, value: "down" };
+  const gatewayHealth = async (): Promise<"ok" | "down"> => {
+    const at = Date.now();
+    if (at - gatewayProbe.at < 5_000) return gatewayProbe.value;
+    let value: "ok" | "down" = "down";
+    try {
+      const url = `${(options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "")}/health`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(800) });
+      value = response.ok ? "ok" : "down";
+    } catch {
+      value = "down";
+    }
+    gatewayProbe = { at, value };
+    return value;
+  };
   const garminClients = new Map<string, GarminClient>();
   const makeGarminClient = options.garminFactory ?? ((apiKey: string) => createGarminClient({ apiKey }));
   const clientFor = (userId: string): GarminClient | undefined => {
@@ -4961,7 +5045,7 @@ export function createWeb(options: WebOptions): WebApp {
     const id = randomUUID();
     sessions.set(id, { userId, expiresAt: at + SESSION_TTL_MS, lastSeen: at });
     if (syncOnStart && sessionSync) syncService.syncInBackground(userId, today);
-    return sessionCookie(id);
+    return sessionCookie(id, cookieSecure);
   };
   const resolveSession = (
     request: IncomingMessage,
@@ -4986,11 +5070,21 @@ export function createWeb(options: WebOptions): WebApp {
       const url = new URL(request.url ?? "/", "http://localhost");
       const method = request.method ?? "GET";
 
+      // Baseline hardening for every response. The app is same-origin only and is never framed; a CSP is the next
+      // step (it needs nonces for the inline client scripts, see docs/PRODUCTION-READINESS.md).
+      response.setHeader("x-content-type-options", "nosniff");
+      response.setHeader("referrer-policy", "same-origin");
+      response.setHeader("x-frame-options", "DENY");
+      response.setHeader("cross-origin-opener-policy", "same-origin");
+      response.setHeader("permissions-policy", "camera=(), microphone=(), geolocation=()");
+      if (cookieSecure) {
+        response.setHeader("strict-transport-security", "max-age=15552000; includeSubDomains");
+      }
+
       // Per-request translator: cookie wins, then Accept-Language, then default. Everything rendered
       // below (chrome, satellites, errors, flash) flows through this pageLayout, so one switch covers all pages.
       const requestCookies = parseCookies(request);
-      // A locale chosen before the POC3 -> Milebook rename still counts: the legacy poc3_lang cookie is honoured.
-      const localeCookieValue = requestCookies[LOCALE_COOKIE] ?? requestCookies["poc3_lang"];
+      const localeCookieValue = requestCookies[LOCALE_COOKIE];
       const tx = createTranslator(resolveLocale(localeCookieValue, request.headers["accept-language"]));
       const pageLayout = (
         title: string,
@@ -5019,68 +5113,58 @@ export function createWeb(options: WebOptions): WebApp {
       }
 
       if (url.pathname === "/static/app.css") {
-        response.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "no-store" });
-        response.end(CSS);
+        sendAsset(request, response, CSS, "text/css; charset=utf-8", "public, max-age=31536000, immutable", STATIC_ETAGS.css);
         return;
       }
       if (url.pathname === "/static/three.module.js") {
-        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
-        response.end(THREE_MODULE);
+        sendAsset(request, response, THREE_MODULE, "text/javascript; charset=utf-8", "no-cache", STATIC_ETAGS.three);
         return;
       }
       if (url.pathname === "/static/orbit-controls.js") {
-        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
-        response.end(ORBIT_CONTROLS_MODULE);
+        sendAsset(request, response, ORBIT_CONTROLS_MODULE, "text/javascript; charset=utf-8", "no-cache", STATIC_ETAGS.orbit);
         return;
       }
       if (url.pathname === "/static/gltf-loader.js") {
-        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
-        response.end(GLTF_LOADER_MODULE);
+        sendAsset(request, response, GLTF_LOADER_MODULE, "text/javascript; charset=utf-8", "no-cache", STATIC_ETAGS.gltf);
         return;
       }
       if (url.pathname === "/static/utils/BufferGeometryUtils.js") {
-        response.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
-        response.end(BUFFER_GEOMETRY_UTILS_MODULE);
+        sendAsset(request, response, BUFFER_GEOMETRY_UTILS_MODULE, "text/javascript; charset=utf-8", "no-cache", STATIC_ETAGS.utils);
         return;
       }
       if (url.pathname === "/static/auth-hero.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(AUTH_HERO_WEBP);
+        sendAsset(request, response, AUTH_HERO_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.authHero);
         return;
       }
       if (url.pathname === "/static/calendar-object.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(AUTH_OBJECT_WEBP);
+        sendAsset(request, response, AUTH_OBJECT_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.authObject);
         return;
       }
       if (url.pathname === "/static/paper-grain.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(AUTH_GRAIN_WEBP);
+        sendAsset(request, response, AUTH_GRAIN_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.grain);
         return;
       }
       if (url.pathname === "/static/calendar-empty.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(CALENDAR_EMPTY_WEBP);
+        sendAsset(request, response, CALENDAR_EMPTY_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.calendarEmpty);
         return;
       }
       if (url.pathname === "/static/calendar-wash.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(CALENDAR_WASH_WEBP);
+        sendAsset(request, response, CALENDAR_WASH_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.calendarWash);
         return;
       }
       if (url.pathname === "/static/coach-token.webp") {
-        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
-        response.end(COACH_TOKEN_WEBP);
+        sendAsset(request, response, COACH_TOKEN_WEBP, "image/webp", "public, max-age=86400", STATIC_ETAGS.coachToken);
         return;
       }
       if (url.pathname === "/static/anatomy-muscles.glb") {
-        response.writeHead(200, { "content-type": "model/gltf-binary", "cache-control": "no-store" });
-        response.end(ANATOMY_MUSCLES_GLB);
+        sendAsset(request, response, ANATOMY_MUSCLES_GLB, "model/gltf-binary", "public, max-age=3600", STATIC_ETAGS.anatomy);
         return;
       }
       if (url.pathname === "/health") {
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify({ status: "ok" }));
+        // A green web health must not hide a dead coach: the deploy and the uptime monitor read `gateway` too.
+        const gateway = await gatewayHealth();
+        response.writeHead(gateway === "ok" ? 200 : 503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ status: gateway === "ok" ? "ok" : "degraded", gateway }));
         return;
       }
       if (url.pathname === "/favicon.ico") {
@@ -5108,15 +5192,23 @@ export function createWeb(options: WebOptions): WebApp {
         }
         if (method === "POST") {
           const form = await readForm(request);
+          const username = (form.get("username") ?? "").trim().toLowerCase();
+          const attemptKey = `${clientKey(request)}|login|${username}`;
+          if (authLimiter.blocked(attemptKey)) {
+            sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
+            return;
+          }
           try {
             const result = options.auth.login({
               username: form.get("username") ?? "",
               password: form.get("password") ?? "",
             });
+            authLimiter.reset(attemptKey);
             const loginToday = localDay(now(), safeTimeZone(result.user.timezone));
             const session = startSession(result.user.userId, loginToday, true);
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
+            authLimiter.fail(attemptKey);
             const code = error instanceof AuthError ? error.code : "generic";
             redirect(response, "/login?error=" + encodeURIComponent(code));
           }
@@ -5137,6 +5229,12 @@ export function createWeb(options: WebOptions): WebApp {
         }
         if (method === "POST") {
           const form = await readForm(request);
+          const signupName = (form.get("username") ?? "").trim().toLowerCase();
+          const attemptKey = `${clientKey(request)}|signup|${signupName}`;
+          if (authLimiter.blocked(attemptKey)) {
+            sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
+            return;
+          }
           try {
             const result = options.auth.signup({
               username: form.get("username") ?? "",
@@ -5145,10 +5243,12 @@ export function createWeb(options: WebOptions): WebApp {
               timezone: (form.get("timezone") ?? "").trim() || "Asia/Hong_Kong",
               goal: form.get("goal"),
             });
+            authLimiter.reset(attemptKey);
             const signupToday = localDay(now(), safeTimeZone(result.user.timezone));
             const session = startSession(result.user.userId, signupToday, true);
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
+            authLimiter.fail(attemptKey);
             const code = error instanceof AuthError ? error.code : "generic";
             redirect(response, "/signup?error=" + encodeURIComponent(code));
           }
@@ -5162,7 +5262,7 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "GET") {
           const sessionId = parseCookies(request)[SESSION_COOKIE];
           if (sessionId !== undefined) sessions.delete(sessionId);
-          redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie()] });
+          redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
         sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
@@ -5236,13 +5336,10 @@ export function createWeb(options: WebOptions): WebApp {
           const nowIso = now();
           const directives = options.store.listCoachDirectives(user.userId, 50);
           const states = options.store.getActiveCoachStates(user.userId, nowIso);
-          const legacyModes = options.store
-            .listMemories(user.userId, 100)
-            .filter((memory) => memory.text.trim().toLowerCase().startsWith("mode:"));
           const stateEvents = options.store.listCoachStateEvents(user.userId, 20);
           const preferences = options.store.getCoachPreferences(user.userId);
           const snapshots = options.store.listPromptSnapshots(user.userId, 3);
-          sendHtml(response, 200, renderCoachAudit(user, directives, states, legacyModes, stateEvents, { layout: pageLayout }, tx, preferences, snapshots));
+          sendHtml(response, 200, renderCoachAudit(user, directives, states, stateEvents, { layout: pageLayout }, tx, preferences, snapshots));
           return;
         }
         sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
@@ -5721,6 +5818,13 @@ export function createWeb(options: WebOptions): WebApp {
       }
 
       if (url.pathname === "/chat" && method === "POST") {
+        const spendKey = `chat|${requestUser.userId}`;
+        if (chatLimiter.blocked(spendKey)) {
+          response.writeHead(429, { "content-type": "application/json; charset=utf-8" });
+          response.end(JSON.stringify({ error: { detail: "too many coach messages, try again in a few minutes" } }));
+          return;
+        }
+        chatLimiter.fail(spendKey);
         let body: unknown;
         try {
           body = await readJsonBody(request);
@@ -5760,12 +5864,19 @@ export function createWeb(options: WebOptions): WebApp {
         });
         const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
         const requestId = request.headers["x-milebook-request-id"];
+        // A coach turn may take two model attempts; the gateway aborts its own upstream call at 120 s. The proxy
+        // budget stays slightly above that so a slow-but-valid turn is not cut off, and a hung gateway cannot pin a
+        // browser request indefinitely.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 130_000);
         try {
           const upstream = await fetch(`${gatewayUrl}/v1/chat/completions`, {
             method: "POST",
+            signal: controller.signal,
             headers: {
               "content-type": "application/json",
               "x-milebook-user": user.userId,
+              ...(gatewayToken === undefined ? {} : { "x-milebook-internal-token": gatewayToken }),
               ...(typeof requestId === "string" ? { "x-milebook-request-id": requestId } : {}),
             },
             body: JSON.stringify({
@@ -5924,8 +6035,16 @@ export function createWeb(options: WebOptions): WebApp {
               : null,
           }));
         } catch (error) {
-          response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
-          response.end(JSON.stringify({ error: { detail: error instanceof Error ? error.message : String(error) } }));
+          const aborted = error instanceof Error && error.name === "AbortError";
+          if (aborted) {
+            response.writeHead(504, { "content-type": "application/json; charset=utf-8" });
+            response.end(JSON.stringify({ error: { detail: "the coach did not answer in time" } }));
+          } else {
+            response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+            response.end(JSON.stringify({ error: { detail: "the coach service is unavailable" } }));
+          }
+        } finally {
+          clearTimeout(timer);
         }
         return;
       }
@@ -6273,7 +6392,6 @@ export function createWeb(options: WebOptions): WebApp {
         }
 
         const latestForReview = auto.newest ?? newestActivity ?? null;
-        const reviewSessions = latestForReview === null ? [] : options.store.listSessions(user.userId, latestForReview.day, latestForReview.day);
         // The sync card and the manual-log card share one renderer, so both paths produce the identical one-tap review.
         const reviewCard = latestForReview === null ? "" : runReviewCard(latestForReview, tx.t("review.eyebrowSynced"), tx);
         const manualReviewCard = manualReviewCardFor(options.store, user.userId, url.searchParams, tx);
@@ -6797,8 +6915,9 @@ export function createWeb(options: WebOptions): WebApp {
 
       sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
     })().catch((error: unknown) => {
-      // Fallback path runs outside the async handler, so there is no per-request translator here; use the default.
-      if (!response.headersSent) sendHtml(response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(error instanceof Error ? error.message : String(error))}</p>`, requestUser, "none", unreadFor(requestUser)));
+      // The failure is logged for the operator; the runner gets a stable page, never an internal message.
+      console.error("milebook web: request failed", error);
+      if (!response.headersSent) sendHtml(response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(defaultTranslator.t("error.serverErrorBody"))}</p>`, requestUser, "none", unreadFor(requestUser)));
       else response.end();
     });
   });

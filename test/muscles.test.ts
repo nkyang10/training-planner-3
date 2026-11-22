@@ -14,7 +14,6 @@ import {
   readinessForCheckIn,
   readMuscleTag,
   referencedMuscleContext,
-  renderMuscleFactsForPrompt,
   sorenessFill,
   sorenessLabel,
   summarizeCheckIn,
@@ -266,25 +265,11 @@ describe("muscles worked", () => {
 });
 
 describe("coach prompt facts", () => {
-  it("renders the latest check-in and the history count, and nothing without one", () => {
-    expect(renderMuscleFactsForPrompt(null, 0)).toBe("");
-    const facts = renderMuscleFactsForPrompt(
-      checkIn([tag({ muscleId: "calves", soreness: 6, conditions: ["tight"], side: "left", warmUp: "eases" })], "2026-11-12"),
-      3,
-    );
-    expect(facts).toContain("Muscle check-in (latest 2026-11-12");
-    expect(facts).toContain("Calves 6/10 tight, left");
-    expect(facts).toContain("eases with warm-up");
-    expect(facts).toContain("3 check-ins in the last 14 days");
-  });
-
   it("carries the note and the per-muscle knowledge context", () => {
     const checkIns = [checkIn([tag({ muscleId: "hamstrings", soreness: 7 })])];
     const first = checkIns[0];
     if (first === undefined) throw new Error("missing seeded check-in");
     first.note = "grabbed during strides";
-    const facts = renderMuscleFactsForPrompt(first, 1);
-    expect(facts).toContain("grabbed during strides");
     const context = referencedMuscleContext("hamstrings", checkIns);
     expect(context).toContain("Referenced muscle: Hamstrings (back thighs) — group legs");
     expect(context).toContain("Function:");

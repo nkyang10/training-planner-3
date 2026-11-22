@@ -4,7 +4,6 @@ import type { MuscleCheckIn, MuscleConditionKey, MuscleSide, MuscleWarmUp } from
 import {
   MUSCLE_STATUS_WINDOW_DAYS,
   addStatusDays,
-  attentionCount,
   computeMuscleStatuses,
   daysStatusBetween,
   decayedSoreness,
@@ -105,7 +104,6 @@ describe("the soreness decay curve", () => {
 describe("computing the current statuses", () => {
   it("is empty when the runner has never reported — perfect by default", () => {
     expect(statusesFor([])).toEqual([]);
-    expect(attentionCount(statusesFor([]))).toBe(0);
   });
 
   it("starts a dated period from a fresh report", () => {
@@ -122,7 +120,6 @@ describe("computing the current statuses", () => {
       level: "heavy",
       expectedClearDay: addStatusDays(TODAY, MUSCLE_STATUS_WINDOW_DAYS),
     });
-    expect(attentionCount(statuses)).toBe(1);
   });
 
   it("fades the level with time and recomputes the reading at today's level", () => {
@@ -225,7 +222,7 @@ describe("computing the current statuses", () => {
       }),
     ];
     const statuses = statusesFor(checkIns);
-    expect(attentionCount(statuses)).toBe(2);
+    expect(statuses).toHaveLength(2);
     expect(worstStatusLevel(statuses)).toBe("urgent");
   });
 });

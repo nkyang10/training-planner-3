@@ -75,6 +75,8 @@ export interface CookieUser {
 export interface AuthOptions {
   store: Store;
   secret: string;
+  /** Append `Secure` to session cookies; enable whenever the deployment terminates TLS. */
+  secureCookies?: boolean;
   now?: () => string | Date;
 }
 
@@ -233,6 +235,7 @@ export function createAuth(options: AuthOptions): Auth {
   if (typeof secret !== "string" || secret.length === 0) {
     throw new Error("auth secret is required");
   }
+  const secureAttribute = options.secureCookies === true ? "; Secure" : "";
   const now = options.now ?? (() => new Date());
   const currentDate = (): Date => toDate(now());
   const currentSeconds = (): number => Math.floor(currentDate().getTime() / 1000);
@@ -242,7 +245,7 @@ export function createAuth(options: AuthOptions): Auth {
     const payload: CookiePayload = { userId, exp };
     const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signature = createHmac("sha256", secret).update(encoded).digest("base64url");
-    return `${AUTH_COOKIE_NAME}=${encoded}.${signature}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}`;
+    return `${AUTH_COOKIE_NAME}=${encoded}.${signature}; Path=/; HttpOnly; SameSite=Lax${secureAttribute}; Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}`;
   };
 
   const setCookie = (user: CookieUser): string => {
@@ -253,7 +256,7 @@ export function createAuth(options: AuthOptions): Auth {
   };
 
   const clearCookie = (): string =>
-    `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+    `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secureAttribute}; Max-Age=0`;
 
   const signup = (input: SignupInput): AuthResult => {
     const username = normalizeUsername(input.username);

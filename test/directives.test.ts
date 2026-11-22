@@ -69,6 +69,11 @@ describe("coach intents", () => {
       ok: true,
       intent: { kind: "discuss-change", changeSetId: "change:9", source: "recent-changes" },
     });
+    // The coach dock's "Ask why" button is a real caller; its source must stay in the allow-list.
+    expect(parseCoachIntent({ kind: "discuss-change", changeSetId: "change:9", source: "coach-dock" })).toEqual({
+      ok: true,
+      intent: { kind: "discuss-change", changeSetId: "change:9", source: "coach-dock" },
+    });
     expect(
       parseCoachIntent({
         kind: "discuss-state",
