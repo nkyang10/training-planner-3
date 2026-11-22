@@ -18,7 +18,7 @@ trust boundary, no data erasure, a deployment that was not one (and whose gate f
 web hardening. The product logic itself was in good shape: consistent per-user scoping, strong escaping, a
 server-validated coach contract, 626 tests.
 
-## 1. Fixed in this branch
+## 1. Fixed in this release
 
 | ID | Severity | Finding (evidence) | Fix |
 |---|---|---|---|
@@ -45,6 +45,7 @@ server-validated coach contract, 626 tests.
 | PR-43 | **Medium** | A first deploy was impossible: the script threw when the database file did not exist, although the app creates it at boot | The deploy warns and lets the app create the file; a typo in `MILEBOOK_DB` is still visible in the output (`(tools/deploy.ps1)`) |
 | PR-44 | **Medium** | `/health` proved only that the listener was up: a dead coach gateway looked healthy, so a green deploy could coexist with every coach turn failing | The web `/health` now probes the gateway (5 s cache) and answers `503 degraded` when it is unreachable; the deploy asserts `"gateway":"ok"` (`(src/web.ts · createWeb)`) |
 | PR-45 | **Low** | The deploy always exported `MILEBOOK_MAX_ATTEMPTS=2`, overriding a `.env` value | It honours the environment unless the parameter is passed explicitly (`(tools/deploy.ps1)`) |
+| PR-30 | **Medium** | The anatomy GLB build scripts and the curated mapping lived only in the gitignored `tmp/bp3d`, so the 11 MB asset could not be rebuilt or audited | Committed to `tools/anatomy/`: six scripts, `region-map.json`, `muscleview-manifest.json` and a README with the rebuild steps, the licence boundary and the known asset limits; both generators reproduce the committed JSON byte-for-byte (`(tools/anatomy/README.md)`) |
 
 ## 2. Open blockers — must close before real users
 
@@ -61,7 +62,6 @@ server-validated coach contract, 626 tests.
 | PR-27 | **Medium** | `src/web.ts` is ~6.9k lines holding view builders, ~3.2k lines of inline client JS, and a 44-branch route dispatcher | Every change risks the whole surface; no linting, typing or unit testing of client code | Split into `web/routes/*`, `web/views/*`, `web/client/*.ts` with an esbuild step; add a route table | L |
 | PR-28 | **Medium** | A coach turn claimed as `in_progress` before a crash stays that way, so a retry with the same request id gets `409` forever | A restart mid-turn can wedge one idempotency key | On boot (or on replay), treat an `in_progress` turn older than N minutes as failed and allow the retry | S |
 | PR-29 | **Medium** | BodyParts3D attribution (CC BY 4.0) is not visible to end users | Shipping the Muscles tab without attribution breaches the licence | Add an in-app credits surface (footer link or About page) carrying the required string; link `THIRD-PARTY-NOTICES.md` | S |
-| PR-30 | **Medium** | The anatomy GLB build scripts are not in the repo (gitignored `tmp/bp3d`) | The 11 MB asset cannot be rebuilt or verified | Commit the Blender conversion script under `tools/`, or record the GLB checksum and treat it as a fixed artifact | M |
 
 ## 3. Fast-follow — should close soon after release
 
