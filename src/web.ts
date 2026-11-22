@@ -45,7 +45,7 @@ import {
   type MuscleSide,
   type MuscleWarmUp,
 } from "./muscles";
-import { computeMuscleStatuses } from "./muscle-status";
+import { computeMuscleStatuses, type MuscleStatusControl } from "./muscle-status";
 import {
   muscleCalendarChip,
   musclesWorkedCard,
@@ -234,7 +234,9 @@ function safeNext(value: string | null): string {
       value === "/history" ||
       value.startsWith("/history?") ||
       value === "/muscle" ||
-      value.startsWith("/muscle?"))
+      value.startsWith("/muscle?") ||
+      value === "/changes" ||
+      value.startsWith("/changes?"))
   ) {
     return value;
   }
@@ -548,14 +550,18 @@ function changeDayDiff(day: string, today: string): number {
   return Math.max(0, Math.round((to - from) / 86_400_000));
 }
 
-/** The change time in the runner's zone, with relative freshness for the last week. */
-function changeMeta(changeSet: ChangeSet, today: string, timezone: string, tx: Translator): string {
-  const day = localDay(changeSet.createdAt, timezone);
+/** A timestamp in the runner's zone, with relative freshness for the last week. */
+function timeMeta(createdAt: string, today: string, timezone: string, tx: Translator): string {
+  const day = localDay(createdAt, timezone);
   const diff = changeDayDiff(day, today);
   if (diff === 0) return tx.t("changes.changedToday");
   if (diff === 1) return tx.t("changes.changedYesterday");
   if (diff <= 7) return tx.t("changes.changedDaysAgo", { date: tx.date.shortDate(day), count: diff });
   return tx.t("changes.changedOn", { date: tx.date.shortDate(day) });
+}
+
+function changeMeta(changeSet: ChangeSet, today: string, timezone: string, tx: Translator): string {
+  return timeMeta(changeSet.createdAt, today, timezone, tx);
 }
 
 /** One entry as the runner reads it: what happened, to which session, and what actually moved. */
@@ -614,14 +620,21 @@ function discussMessageFor(changeSet: ChangeSet, tx: Translator): string {
  * The runner-facing change history. Each batch is a human sentence, a short list of what moved, and an Undo whose
  * label carries the blast radius. The raw coach summary stays in the store and the prompt; it is not UI copy.
  */
+interface RecentChangesCardOptions {
+  readonly headingKey?: MessageKey;
+  /** Where the calendar card's "See all changes" footnote link points; omit on the all-changes page itself. */
+  readonly allHref?: string;
+}
+
 function recentChangesCard(
   changeSets: readonly ChangeSet[],
   next: string,
   tx: Translator,
   today: string,
   timezone: string,
+  options: RecentChangesCardOptions = {},
 ): string {
-  const heading = `<h2>${escapeHtml(tx.t("changes.title"))}</h2>`;
+  const heading = `<h2>${escapeHtml(tx.t(options.headingKey ?? "changes.title"))}</h2>`;
   if (changeSets.length === 0) {
     return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.empty"))}</p></section>`;
   }
@@ -653,7 +666,133 @@ function recentChangesCard(
       : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo-form" data-change-count="${count}"${isRevert ? ` data-change-putback="1"` : ""}><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit" aria-label="${escapeHtml(`${undoLabel} — ${headline.text}`)}">${escapeHtml(undoLabel)}</button></form>`;
     return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(headline.text)}</strong>${meta}</div>${list}${more}<div class="change-actions">${undoForm}${askWhy}</div></li>`;
   }).join("");
-  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}</p><ul class="change-list">${rows}</ul></section>`;
+  const seeAll = options.allHref === undefined
+    ? ""
+    : ` <a class="change-see-all" href="${escapeHtml(options.allHref)}">${escapeHtml(tx.t("changes.seeAll"))}</a>`;
+  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}${seeAll}</p><ul class="change-list">${rows}</ul></section>`;
+}
+
+/** The standalone all-changes page: schedule batches, runs and muscle events in one place. */
+type ChangesFilter = "all" | "schedule" | "activity" | "muscle";
+
+const CHANGES_FILTERS: readonly ChangesFilter[] = ["all", "schedule", "activity", "muscle"];
+
+function changesFilterHref(filter: ChangesFilter): string {
+  return filter === "all" ? "/changes" : `/changes?type=${filter}`;
+}
+
+interface ChangesCounts {
+  readonly all: number;
+  readonly schedule: number;
+  readonly activity: number;
+  readonly muscle: number;
+}
+
+function changesFilterBar(filter: ChangesFilter, counts: ChangesCounts, tx: Translator): string {
+  const labels: Record<ChangesFilter, MessageKey> = {
+    all: "changes.filterAll",
+    schedule: "changes.filterSchedule",
+    activity: "changes.filterActivity",
+    muscle: "changes.filterMuscle",
+  };
+  const links = CHANGES_FILTERS.map((key) => {
+    const active = key === filter;
+    return `<a class="filter-pill${active ? " active" : ""}" href="${changesFilterHref(key)}"${active ? ' aria-current="page"' : ""}>${escapeHtml(tx.t(labels[key]))} <span class="filter-count">${counts[key]}</span></a>`;
+  }).join("");
+  return `<nav class="filter-bar" aria-label="${escapeHtml(tx.t("changes.filterAria"))}">${links}</nav>`;
+}
+
+function eventHead(action: string, meta: string): string {
+  return `<div class="event-head"><strong>${escapeHtml(action)}</strong><span class="event-meta muted small">${escapeHtml(meta)}</span></div>`;
+}
+
+function activityEventRow(activity: Activity, today: string, timezone: string, tx: Translator): string {
+  const action = activity.source === "garmin" ? tx.t("changes.activitySynced") : tx.t("changes.activityLogged");
+  const meta = timeMeta(activity.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(activity.day);
+  const metrics = activityMetrics(activity);
+  const source = activitySourceLabel(activity, tx);
+  const title = activity.title.trim().length > 0 ? activity.title : day;
+  const href = `/activity/${encodeURIComponent(activity.activityId)}`;
+  const detail = `<a class="event-day" href="/day/${escapeHtml(activity.day)}">${escapeHtml(day)}</a> · <a class="event-link" href="${href}">${escapeHtml(title)}</a>${metrics.length === 0 ? "" : ` · ${escapeHtml(metrics)}`} <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(source)}</span>`;
+  const more = `<a class="chip" href="${href}" aria-label="${escapeHtml(`${tx.t("activity.detail")} — ${title} · ${day}`)}">${escapeHtml(tx.t("activity.detail"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${detail}</p><div class="event-actions">${more}</div></li>`;
+}
+
+function muscleCheckInRow(checkIn: MuscleCheckIn, today: string, timezone: string, tx: Translator): string {
+  const meta = timeMeta(checkIn.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(checkIn.day);
+  const worst = [...checkIn.muscles].sort((left, right) => right.soreness - left.soreness)[0];
+  const parts = [tx.t("changes.muscleForDay", { day }), tx.t("changes.muscleCount", { count: checkIn.muscles.length })];
+  if (worst !== undefined) {
+    const name = tx.t(`muscle.short.${worst.muscleId}` as MessageKey);
+    parts.push(tx.t("changes.muscleWorst", { name, level: worst.soreness }));
+    const conditions = worst.conditions.map((key) => tx.t(`muscle.condition.${key}.label` as MessageKey)).join(" · ");
+    if (conditions.length > 0) parts.push(`(${conditions})`);
+  }
+  const links = [`<a class="chip" href="/muscle?day=${encodeURIComponent(checkIn.day)}" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${day}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`];
+  if (checkIn.activityId !== null) {
+    links.push(`<a class="chip" href="/activity/${encodeURIComponent(checkIn.activityId)}" aria-label="${escapeHtml(`${tx.t("changes.fromRun")} — ${day}`)}">${escapeHtml(tx.t("changes.fromRun"))}</a>`);
+  }
+  return `<li class="event-item">${eventHead(tx.t("changes.muscleCheckedIn"), meta)}<p class="event-detail">${escapeHtml(parts.join(" · "))}</p><div class="event-actions">${links.join("")}</div></li>`;
+}
+
+function muscleControlRow(control: MuscleStatusControl, today: string, timezone: string, tx: Translator): string {
+  const name = tx.t(`muscle.short.${control.muscleId}` as MessageKey);
+  const resolved = control.resolvedDay !== null;
+  const action = tx.t(resolved ? "changes.muscleStatusResolved" : control.hold ? "changes.muscleStatusHeld" : "changes.muscleStatusReleased");
+  const detail = resolved
+    ? tx.t("changes.muscleStatusResolvedDetail", { name, day: tx.date.weekdayDate(control.resolvedDay ?? control.updatedAt.slice(0, 10)) })
+    : tx.t(control.hold ? "changes.muscleStatusHeldDetail" : "changes.muscleStatusReleasedDetail", { name });
+  const meta = timeMeta(control.updatedAt, today, timezone, tx);
+  const link = `<a class="chip" href="/muscle?focus=${encodeURIComponent(control.muscleId)}#check-in" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${name}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${escapeHtml(detail)}</p><div class="event-actions">${link}</div></li>`;
+}
+
+interface ChangesPageInput {
+  readonly scheduleCard: string;
+  readonly scheduleCount: number;
+  readonly activities: readonly Activity[];
+  readonly checkIns: readonly MuscleCheckIn[];
+  readonly controls: readonly MuscleStatusControl[];
+  readonly filter: ChangesFilter;
+  readonly tx: Translator;
+  readonly today: string;
+  readonly timezone: string;
+}
+
+function renderChangesPage(input: ChangesPageInput): string {
+  const { scheduleCard, scheduleCount, activities, checkIns, controls, filter, tx, today, timezone } = input;
+  const counts: ChangesCounts = {
+    all: scheduleCount + activities.length + checkIns.length + controls.length,
+    schedule: scheduleCount,
+    activity: activities.length,
+    muscle: checkIns.length + controls.length,
+  };
+  const head = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("changes.allEyebrow"))}</p><h1>${escapeHtml(tx.t("changes.allTitle"))}</h1><p class="muted">${escapeHtml(tx.t("changes.allIntro"))}</p></header>`;
+  const filters = changesFilterBar(filter, counts, tx);
+  const summaryText = filter === "all"
+    ? tx.t("changes.allSummary", { count: counts.all })
+    : tx.t("changes.filterSummary", { shown: counts[filter], total: counts.all });
+  const summary = `<p class="changes-summary muted small">${escapeHtml(summaryText)}</p>`;
+  if (counts.all === 0) {
+    return `${head}${filters}${summary}<section class="card changes-empty-card"><p class="muted">${escapeHtml(tx.t("changes.allEmpty"))}</p></section>`;
+  }
+  const sections: string[] = [];
+  if (filter === "all" || filter === "schedule") sections.push(scheduleCard);
+  if (filter === "all" || filter === "activity") {
+    const rows = activities.map((activity) => activityEventRow(activity, today, timezone, tx)).join("");
+    sections.push(`<section class="card" id="activity-changes"><h2>${escapeHtml(tx.t("changes.activityTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.activityEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  if (filter === "all" || filter === "muscle") {
+    const events = [
+      ...checkIns.map((checkIn) => ({ at: checkIn.createdAt, row: muscleCheckInRow(checkIn, today, timezone, tx) })),
+      ...controls.map((control) => ({ at: control.updatedAt, row: muscleControlRow(control, today, timezone, tx) })),
+    ].sort((left, right) => right.at.localeCompare(left.at));
+    const rows = events.map((event) => event.row).join("");
+    sections.push(`<section class="card" id="muscle-changes"><h2>${escapeHtml(tx.t("changes.muscleTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.muscleEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  return `${head}${filters}${summary}${sections.join("")}<p class="muted small changes-footnote">${escapeHtml(tx.t("changes.allFootnote"))}</p>`;
 }
 
 type HistoryView = "week" | "month" | "year";
@@ -1693,6 +1832,7 @@ function renderAccountMenu(user: AuthUser, tx: Translator): string {
       <p class="account-id"><strong>${escapeHtml(user.displayName)}</strong><span>@${escapeHtml(user.username)}</span></p>
       <a class="account-item" href="/profile">${escapeHtml(tx.t("account.profile"))}</a>
       <a class="account-item" href="/coach-states">${escapeHtml(tx.t("account.coachStates"))}</a>
+      <a class="account-item" href="/changes">${escapeHtml(tx.t("account.changes"))}</a>
       ${renderSyncItem(tx)}
       <a class="account-item" href="/calendar?garmin=setup">${escapeHtml(tx.t("account.garminKey"))}</a>
       <a class="account-item" href="/export.json">${escapeHtml(tx.t("account.export"))}</a>
@@ -2040,6 +2180,7 @@ function navLabel(user: AuthUser | undefined, activeView: ViewName, tx: Translat
   if (activeView === "calendar") return tx.t("nav.plan");
   if (activeView === "history") return tx.t("nav.log");
   if (activeView === "muscle") return tx.t("nav.muscles");
+  if (activeView === "changes") return tx.t("changes.allTitle");
   return "";
 }
 
@@ -2069,7 +2210,9 @@ function renderViewSwitch(activeView: ViewName, tx: Translator): string {
   const plan = escapeHtml(tx.t("nav.plan"));
   const log = escapeHtml(tx.t("nav.log"));
   const muscle = escapeHtml(tx.t("nav.muscles"));
-  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
+  // The changes page is a fourth projection but has no tab of its own: keep the three tabs reachable, select none.
+  const thumb = activeView === "changes" ? "" : `<span class="view-thumb" aria-hidden="true"></span>`;
+  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}">${thumb}<a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
 }
 
 /**
@@ -2159,7 +2302,7 @@ function renderChatBubble(tx: Translator): string {
     </div>
     <div class="coach-tab-panel" id="coach-tabpanel-changes" role="tabpanel" aria-labelledby="coach-tab-changes" data-coach-panel="changes" hidden>
       <div class="coach-tab-body" id="coach-changes-list"></div>
-      <div class="coach-tab-foot"><a class="chip" href="/calendar#recent-changes">${E(tx.t("coach.changesCalendar"))}</a></div>
+      <div class="coach-tab-foot"><a class="chip" href="/changes">${E(tx.t("coach.changesAll"))}</a></div>
     </div>
   </section>
   <script>
@@ -4569,6 +4712,28 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      /**
+       * The standalone all-changes page: the schedule journal, logged/synced runs and muscle events in one place.
+       * It is a projection, not a new audit table: every row already exists in the store with its own timestamp.
+       */
+      if (url.pathname === "/changes") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "changes"));
+          return;
+        }
+        const typeParam = url.searchParams.get("type");
+        const filter: ChangesFilter = typeParam === "schedule" || typeParam === "activity" || typeParam === "muscle" ? typeParam : "all";
+        const timezone = safeTimeZone(user.timezone);
+        const changeSets = options.store.listChangeSets(user.userId, 20);
+        const activities = options.store.listActivities(user.userId, 30).slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        const checkIns = options.store.listMuscleCheckIns(user.userId, 20);
+        const controls = options.store.listMuscleStatusControls(user.userId).slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        const scheduleCard = recentChangesCard(changeSets, "/changes", tx, today, timezone, { headingKey: "changes.scheduleTitle" });
+        const body = renderChangesPage({ scheduleCard, scheduleCount: changeSets.length, activities, checkIns, controls, filter, tx, today, timezone });
+        sendHtml(response, 200, pageLayout(tx.t("changes.allTitle"), body, user, "changes", flash));
+        return;
+      }
+
       if (url.pathname === "/chat" && method === "POST") {
         let body: unknown;
         try {
@@ -5229,7 +5394,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
-          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx, today, user.timezone)}
+          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx, today, user.timezone, { allHref: "/changes" })}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;

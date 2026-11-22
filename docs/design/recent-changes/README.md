@@ -51,6 +51,9 @@ verification.
 
 F1-F5 of the review shipped, with F6-F9 in the same slice. The page card is still server-rendered; the dock card is
 client-built but now uses the same words, en-GB dates and counted labels. The raw coach summary is no longer rendered.
+The card's footnote now ends with **See all changes** to `/changes`, and the dock's footer link is **Open all changes**;
+the shipped captures below predate those links. See [the all-changes page](../changes-page/README.md) and
+[21-all-changes-page.md](../../analysis/21-all-changes-page.md).
 
 | Image | What it shows |
 |---|---|

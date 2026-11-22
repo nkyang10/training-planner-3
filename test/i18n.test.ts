@@ -89,6 +89,12 @@ describe("createTranslator", () => {
     expect(defaultTranslator.t("changes.undoCount", { count: 2, unit: "sessions" })).toBe("Undo 2 sessions");
     expect(translatorFor("zh-HK").t("changes.undoCount", { count: 2, unit: "項訓練" })).toBe("復原 2 項訓練");
     expect(defaultTranslator.t("changes.headline.added", { count: 1, unit: "session" })).toBe("1 session added");
+    // The standalone all-changes page and its account-menu entry exist in both locales.
+    expect(defaultTranslator.t("changes.allTitle")).toBe("All changes");
+    expect(translatorFor("zh-HK").t("changes.allTitle")).toBe("所有變更");
+    expect(defaultTranslator.t("changes.filterSummary", { shown: 3, total: 10 })).toBe("Showing 3 of 10 changes");
+    expect(translatorFor("zh-HK").t("changes.filterSummary", { shown: 3, total: 10 })).toBe("顯示 10 項中的 3 項變更");
+    expect(defaultTranslator.t("account.changes")).toBe("All changes");
     expect(enKeys).toEqual([]);
   });
 });
