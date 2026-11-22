@@ -47,10 +47,19 @@ import {
 } from "./muscles";
 import { computeMuscleStatuses, type MuscleStatusControl } from "./muscle-status";
 import {
+  confirmMuscleProposal,
+  dismissMuscleProposal,
+  listPendingMuscleProposals,
+  partitionPendingMuscleProposals,
+  restoreMuscleProposal,
+} from "./muscle-proposals";
+import {
   muscleCalendarChip,
+  muscleProposalView,
   musclesWorkedCard,
   renderMusclePage,
   type MuscleActivityOption,
+  type MuscleProposalView,
   type MuscleTrainingRow,
 } from "./web-muscle";
 import { CSS } from "./styles";
@@ -151,7 +160,7 @@ const AUTH_OBJECT_WEBP = readFileSync(new URL("./vendor/signin/calendar-object.w
 const AUTH_GRAIN_WEBP = readFileSync(new URL("./vendor/signin/paper-grain.webp", import.meta.url));
 
 /** Bump when the auth or shared stylesheet changes; tests only assert the cache-busting prefix. */
-const APP_CSS_VERSION = 31;
+const APP_CSS_VERSION = 32;
 
 const SESSION_COOKIE = "milebooksid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -2295,7 +2304,7 @@ function layout(
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=${APP_CSS_VERSION}"></head>
-  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
+  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-active-view="${activeView}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
 /** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
@@ -2305,7 +2314,7 @@ function renderChatBubble(tx: Translator): string {
   <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel" data-track="coach-open" data-track-value="launcher">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
   <section id="coach-panel" hidden role="region" aria-label="${E(tx.t("coach.title"))}">
     <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}" data-track="coach-close" data-track-value="close">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}" data-track="coach-close" data-track-value="minimize">−</button></div></header>
-    <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
+    <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}<span class="coach-tab-count" data-coach-count="chat" hidden></span></button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
     <div class="coach-tab-panel" id="coach-tabpanel-chat" role="tabpanel" aria-labelledby="coach-tab-chat" data-coach-panel="chat">
       <div id="coach-log" role="log" aria-live="polite"></div>
       <div id="coach-suggestions" aria-label="${E(tx.t("coach.suggestionsAria"))}"></div>
@@ -2455,6 +2464,62 @@ function renderChatBubble(tx: Translator): string {
       badge.hidden = value === 0;
       badge.title = typeof label === 'string' ? label : '';
     };
+    /**
+     * Pending muscle suggestions are decisions, not decoration: the launcher badge shows them while the panel is
+     * closed, and the Chat tab counts them while it is open (F4). Both disappear at zero, and the launcher keeps
+     * its spoken label in step with the count.
+     */
+    const updateMusclePendingCount = (count) => {
+      const value = Math.max(0, Math.floor(Number(count) || 0));
+      setCount('chat', value, tr('musclePendingOne', 'coach muscle suggestion waiting'));
+      for (const badge of bubble.querySelectorAll('.coach-pending-badge')) badge.remove();
+      // The server-rendered launcher label is the localized truth; keep it and only append the pending count.
+      const baseAria = bubble.dataset.baseAria || bubble.getAttribute('aria-label') || 'Talk to the coach';
+      bubble.dataset.baseAria = baseAria;
+      if (value === 0) {
+        bubble.setAttribute('aria-label', baseAria);
+        return;
+      }
+      const badge = document.createElement('span');
+      badge.className = 'view-badge coach-pending-badge';
+      badge.textContent = value > 9 ? '9+' : String(value);
+      badge.setAttribute('aria-hidden', 'true');
+      bubble.appendChild(badge);
+      const suffix = value === 1
+        ? tr('musclePendingOne', 'coach muscle suggestion waiting')
+        : tr('musclePendingOther', 'coach muscle suggestions waiting');
+      bubble.setAttribute('aria-label', baseAria + ' — ' + value + ' ' + suffix);
+    };
+    /** A confirm changes the attention count the app-bar badge reads; refresh it in place instead of waiting for a reload (F6). */
+    const refreshMuscleAttention = () => {
+      const tab = document.querySelector('.view-tab[href="/muscle"]');
+      if (tab === null) return;
+      const ui = window.__I18N__ || {};
+      fetch('/muscle/attention.json', { headers: { accept: 'application/json' } })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (data === null || typeof data !== 'object') return;
+          const count = Math.max(0, Math.floor(Number(data.count) || 0));
+          for (const badge of tab.querySelectorAll('.view-badge')) badge.remove();
+          if (count === 0) {
+            tab.setAttribute('aria-label', ui.muscleTabBase || 'Muscles');
+            return;
+          }
+          const badge = document.createElement('span');
+          badge.className = 'view-badge';
+          badge.textContent = count > 9 ? '9+' : String(count);
+          badge.setAttribute('aria-hidden', 'true');
+          tab.appendChild(badge);
+          const base = ui.muscleTabBase || 'Muscles';
+          const suffix = count === 1
+            ? (ui.muscleStatusOne || 'muscle in a special status')
+            : (ui.muscleStatusOther || 'muscles in a special status');
+          tab.setAttribute('aria-label', base + ' — ' + count + ' ' + suffix);
+        })
+        .catch(() => {
+          // Without the count the tab is still a working link.
+        });
+    };
     const show = (focusComposer) => {
       document.body.classList.add('coach-open');
       panel.hidden = false;
@@ -2520,11 +2585,17 @@ function renderChatBubble(tx: Translator): string {
           if (Array.isArray(data.states)) {
             addStateCards(data.states.filter((state) => state && state.status === 'observing'));
           }
+          // Pending muscle suggestions are durable rows too: the runner can still confirm or dismiss them after a
+          // refresh, not only on the turn that produced them.
+          addMuscleProposalCards(data.muscleProposals);
         }
         // The context tabs read the same durable rows: states are what the coach currently believes, changes are
         // what it actually wrote. Refreshing them after a turn keeps the three groups in step without a page load.
         if (Array.isArray(data.states)) renderStatesTab(data.states);
         if (Array.isArray(data.changes)) renderChangesTab(data.changes);
+        // The pending-suggestion count is a decision queue: the launcher badge and the Chat tab count both track
+        // it here so a waiting decision is visible before the log is ever opened.
+        updateMusclePendingCount(Array.isArray(data.muscleProposals) ? data.muscleProposals.length : 0);
         historyLoaded = true;
       } catch {
         // A failed history read leaves the bubble empty; the next turn still works.
@@ -2804,6 +2875,200 @@ function renderChatBubble(tx: Translator): string {
         }
         log.appendChild(buildStateCard(state, true));
         scrollToLatest();
+      }
+    };
+    /**
+     * One pending coach muscle suggestion. It is the coach's notice, not a write: Confirm posts exactly the record
+     * the Muscle tab's own form would have written, Dismiss drops it (with an Undo, because a mis-tap should cost
+     * one tap, not a re-entry), and Adjust opens the form on the coach's reading so a misparse is corrected in
+     * place. The card is a labelled group announced once by the log's live region, never a nested status.
+     */
+    const buildMuscleProposalCard = (proposal) => {
+      const card = document.createElement('div');
+      card.className = 'bubble muscle-suggestion';
+      card.dataset.proposalId = proposal.proposalId;
+      card.setAttribute('role', 'group');
+      const headId = 'sug-' + String(proposal.proposalId).replace(/[^a-z0-9-]/gi, '');
+      card.setAttribute('aria-labelledby', headId);
+      const head = document.createElement('strong');
+      head.id = headId;
+      head.textContent = tr('muscleSuggestion', 'Muscle suggestion');
+      card.appendChild(head);
+      const lineRow = document.createElement('p');
+      lineRow.className = 'muscle-suggestion-line';
+      lineRow.textContent = typeof proposal.line === 'string' ? proposal.line : '';
+      if (typeof proposal.readingLabel === 'string' && proposal.readingLabel.length > 0) {
+        const chip = document.createElement('span');
+        chip.className = 'chip muscle-level level-' + String(proposal.reading || 'ok');
+        chip.textContent = proposal.readingLabel;
+        lineRow.append(' ', chip);
+      }
+      card.appendChild(lineRow);
+      if (typeof proposal.suggestedLabel === 'string' && proposal.suggestedLabel.length > 0) {
+        const meta = document.createElement('p');
+        meta.className = 'muted small';
+        meta.textContent = proposal.suggestedLabel;
+        card.appendChild(meta);
+      }
+      if (Array.isArray(proposal.evidence) && proposal.evidence.length > 0) {
+        const evidence = document.createElement('p');
+        evidence.className = 'muted small';
+        const quotes = proposal.evidence.map((quote) => '“' + String(quote) + '”').join(' · ');
+        evidence.textContent = tr('muscleSuggestionEvidence', 'You said: {quotes}').replace('{quotes}', quotes);
+        card.appendChild(evidence);
+      }
+      if (typeof proposal.note === 'string' && proposal.note.length > 0) {
+        const note = document.createElement('p');
+        note.className = 'muted small';
+        note.textContent = tr('muscleSuggestionNote', 'Your note: {note}').replace('{note}', proposal.note);
+        card.appendChild(note);
+      }
+      if (typeof proposal.contextLabel === 'string' && proposal.contextLabel.length > 0) {
+        const context = document.createElement('p');
+        context.className = 'muted small';
+        context.textContent = proposal.contextLabel;
+        card.appendChild(context);
+      }
+      if (typeof proposal.runLabel === 'string' && proposal.runLabel.length > 0 && typeof proposal.runHref === 'string') {
+        const run = document.createElement('p');
+        run.className = 'muted small';
+        const link = document.createElement('a');
+        link.href = proposal.runHref;
+        link.textContent = proposal.runLabel;
+        run.appendChild(link);
+        card.appendChild(run);
+      }
+      const pending = document.createElement('p');
+      pending.className = 'muted small muscle-suggestion-pending';
+      pending.textContent = tr('muscleSuggestionPending', 'Suggested - nothing is saved until you confirm.');
+      card.appendChild(pending);
+      const actions = document.createElement('div');
+      actions.className = 'proposal-actions';
+      const decide = async (decision, button) => {
+        button.disabled = true;
+        try {
+          const result = await fetch('/muscle/proposals/' + encodeURIComponent(proposal.proposalId) + '/' + decision, {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          });
+          if (!result.ok) {
+            // The typed detail says which honest failure happened: an already-decided row re-syncs instead of
+            // showing the generic apology, so a stale copy never claims a second confirm.
+            const body = await result.json().catch(() => null);
+            const detail = body && typeof body.detail === 'string' ? body.detail : '';
+            if (detail === 'not-pending' || detail === 'not-found') {
+              card.replaceChildren();
+              card.classList.add('muted');
+              card.textContent = tr('muscleAlreadyDecided', 'That suggestion was already confirmed or dismissed - refreshing.');
+              setWaitFlag('Muscle');
+              void loadConversation(true);
+              return;
+            }
+            track('muscle-suggestion-failed', detail || 'unknown');
+            button.disabled = false;
+            pending.textContent = tr('muscleFailed', 'That suggestion could not be applied. Open the Muscle tab to check in.');
+            return;
+          }
+          track('muscle-suggestion-' + decision, typeof proposal.action === 'string' ? proposal.action : 'report');
+          if (decision === 'confirm') {
+            card.replaceChildren();
+            card.classList.add('ok');
+            // The success line names the muscle, the way a friend would say it back - not a system's
+            // "record updated".
+            const name = typeof proposal.name === 'string' ? proposal.name.trim() : '';
+            const noted = name.length > 0
+              ? tr('muscleConfirmedName', 'Noted — {name} is on your record now').replace('{name}', name)
+              : tr('muscleConfirmed', 'Noted — saved to your muscle record');
+            card.textContent = noted + ' · ';
+            const view = document.createElement('a');
+            view.href = '/muscle';
+            view.textContent = tr('muscleViewRecord', 'See it on the Muscle tab');
+            card.appendChild(view);
+            refreshMuscleAttention();
+          } else {
+            card.replaceChildren();
+            card.classList.add('muted');
+            card.textContent = tr('muscleDismissed', 'Dropped — nothing changed') + ' · ';
+            const undo = document.createElement('button');
+            undo.type = 'button';
+            undo.className = 'chip muscle-suggestion-undo';
+            undo.textContent = tr('muscleUndo', 'Undo');
+            undo.addEventListener('click', async () => {
+              undo.disabled = true;
+              try {
+                const undone = await fetch('/muscle/proposals/' + encodeURIComponent(proposal.proposalId) + '/restore', {
+                  method: 'POST',
+                  headers: { accept: 'application/json' },
+                });
+                if (!undone.ok) throw new Error('restore failed');
+                card.replaceWith(buildMuscleProposalCard(proposal));
+                scrollToLatest();
+              } catch {
+                undo.disabled = false;
+              }
+            });
+            card.appendChild(undo);
+          }
+          setWaitFlag('Muscle');
+          void loadConversation(true);
+        } catch {
+          track('muscle-suggestion-failed', 'network');
+          button.disabled = false;
+          pending.textContent = tr('muscleFailed', 'That suggestion could not be applied. Open the Muscle tab to check in.');
+        }
+      };
+      const confirm = document.createElement('button');
+      confirm.type = 'button';
+      confirm.className = 'btn';
+      confirm.textContent = tr('confirm', 'Confirm');
+      confirm.addEventListener('click', () => { void decide('confirm', confirm); });
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'btn ghost';
+      dismiss.textContent = tr('dismiss', 'Dismiss');
+      dismiss.addEventListener('click', () => { void decide('dismiss', dismiss); });
+      actions.append(confirm, dismiss);
+      const adjust = document.createElement('a');
+      adjust.className = 'chip proposal-adjust';
+      adjust.href = '/muscle?proposal=' + encodeURIComponent(proposal.proposalId) + '#check-in';
+      adjust.textContent = tr('muscleAdjust', 'Adjust in the form');
+      adjust.addEventListener('click', () => { track('muscle-suggestion-adjust', typeof proposal.action === 'string' ? proposal.action : 'report'); });
+      actions.appendChild(adjust);
+      card.appendChild(actions);
+      return card;
+    };
+    // Pending muscle suggestions are durable rows: after a refresh the runner can still decide them here. On the
+    // Muscle tab the page card owns the standing queue, so history cards defer to it with one link instead of a
+    // second Confirm for the same record (F3); a card the turn just created renders here even there, because the
+    // page card only exists after the next reload.
+    const onMusclePage = () => (document.body.dataset.activeView || '') === 'muscle';
+    const addMuscleProposalCards = (proposals, options) => {
+      if (!Array.isArray(proposals) || proposals.length === 0) return;
+      const fromTurn = !!(options && options.fromTurn === true);
+      if (!fromTurn && onMusclePage()) {
+        const note = document.createElement('p');
+        note.className = 'bubble system';
+        const link = document.createElement('a');
+        link.href = '#muscle-suggestions';
+        link.textContent = tr('muscleOnThisPage', 'Coach suggestions are waiting on this page');
+        note.appendChild(link);
+        log.appendChild(note);
+        scrollToLatest();
+        return;
+      }
+      track('muscle-suggestion-shown', fromTurn ? 'dock-turn' : 'dock-history');
+      let firstConfirm = null;
+      for (const proposal of proposals) {
+        if (!proposal || typeof proposal.proposalId !== 'string' || proposal.status !== 'proposed') continue;
+        const card = buildMuscleProposalCard(proposal);
+        if (firstConfirm === null) firstConfirm = card.querySelector('.proposal-actions .btn');
+        log.appendChild(card);
+      }
+      scrollToLatest();
+      if ((options && options.focus === true) && firstConfirm !== null) {
+        // The decision is the turn's real next step: keyboard and screen-reader users land on it instead of
+        // Shift-Tabbing backwards past the chips to find it.
+        firstConfirm.focus();
       }
     };
     // The States tab is the durable half of the conversation: active and proposed states stay put instead of
@@ -3162,6 +3427,7 @@ function renderChatBubble(tx: Translator): string {
           addGuardrail(tr('calendarUnchanged', 'Calendar unchanged'));
         }
         addStateCards(data.states);
+        addMuscleProposalCards(data.muscleProposals, { focus: true, fromTurn: true });
         if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
           const labels = data.blockedByStates.map((s) => (s && s.label ? String(s.label) : tr('blockedByDefault', 'a coaching state')));
           addGuardrail(tr('guardrailProtected', 'Calendar unchanged — {labels} is protecting the plan · want to talk through what would work instead?').replace('{labels}', labels.join(', ')));
@@ -5085,6 +5351,14 @@ export function createWeb(options: WebOptions): WebApp {
               elevationGainM: activity.elevationGainM ?? null,
             }),
           }));
+          // A ?proposal= Adjust link opens the form on the coach's reading: the muscle is selected with the
+          // proposal's own level, tags, side, warm-up, note and run, so correcting a misparse is one edit, not a
+          // dismiss plus a full re-entry (F2).
+          const proposalParam = url.searchParams.get("proposal");
+          const adjustProposal =
+            proposalParam === null ? undefined : options.store.getMuscleProposal(user.userId, proposalParam);
+          const prefillProposal =
+            adjustProposal !== undefined && adjustProposal.status === "proposed" ? adjustProposal : null;
           const prefillId = url.searchParams.get("activity");
           const prefillActivity =
             prefillId === null ? undefined : options.store.getActivity(user.userId, prefillId);
@@ -5093,7 +5367,7 @@ export function createWeb(options: WebOptions): WebApp {
           // muscles still prefill: the form defaults to today and says so, so the "Check in these muscles"
           // deep link never silently drops the run.
           const prefillOld = prefillActivity !== undefined && prefillActivity.day < twoWeeksAgo ? prefillActivity : undefined;
-          const formDay = prefillRecent !== undefined ? prefillRecent.day : today;
+          const formDay = prefillProposal !== null ? prefillProposal.day : prefillRecent !== undefined ? prefillRecent.day : today;
           const activityOptions: MuscleActivityOption[] = options.store
             .listActivities(user.userId, 60)
             .filter((activity) => activity.day === formDay)
@@ -5103,34 +5377,48 @@ export function createWeb(options: WebOptions): WebApp {
               label: `${activity.title}${activity.distanceKm === null ? "" : ` · ${activity.distanceKm} km`}`,
             }));
           // The linked run must stay selectable even when the newest-60 window missed it.
-          if (prefillRecent !== undefined && !activityOptions.some((option) => option.activityId === prefillRecent.activityId)) {
-            activityOptions.push({
-              activityId: prefillRecent.activityId,
-              day: prefillRecent.day,
-              label: `${prefillRecent.title}${prefillRecent.distanceKm === null ? "" : ` · ${prefillRecent.distanceKm} km`}`,
-            });
+          const keepSelectable = (activity: Activity): void => {
+            if (!activityOptions.some((option) => option.activityId === activity.activityId)) {
+              activityOptions.push({
+                activityId: activity.activityId,
+                day: activity.day,
+                label: `${activity.title}${activity.distanceKm === null ? "" : ` · ${activity.distanceKm} km`}`,
+              });
+            }
+          };
+          if (prefillRecent !== undefined) keepSelectable(prefillRecent);
+          if (prefillProposal !== null && prefillProposal.activityId !== null) {
+            const proposalRun = options.store.getActivity(user.userId, prefillProposal.activityId);
+            if (proposalRun !== undefined && proposalRun.day === formDay) keepSelectable(proposalRun);
           }
           // A ?focus= deep link opens the form on one muscle — the "Update" path from a status row.
           const focusParam = url.searchParams.get("focus");
           const focusMuscleId = focusParam !== null && isMuscleId(focusParam) ? focusParam : null;
           const prefillMuscleIds =
-            focusMuscleId !== null
-              ? [focusMuscleId]
-              : prefillRecent !== undefined
-                ? musclesForRun({
-                    title: prefillRecent.title,
-                    kind: runKind(prefillRecent),
-                    distanceKm: prefillRecent.distanceKm,
-                    elevationGainM: prefillRecent.elevationGainM ?? null,
-                  }).primary
-                : prefillOld === undefined
-                  ? []
-                  : musclesForRun({
-                      title: prefillOld.title,
-                      kind: runKind(prefillOld),
-                      distanceKm: prefillOld.distanceKm,
-                      elevationGainM: prefillOld.elevationGainM ?? null,
-                    }).primary;
+            prefillProposal !== null
+              ? [prefillProposal.muscleId]
+              : focusMuscleId !== null
+                ? [focusMuscleId]
+                : prefillRecent !== undefined
+                  ? musclesForRun({
+                      title: prefillRecent.title,
+                      kind: runKind(prefillRecent),
+                      distanceKm: prefillRecent.distanceKm,
+                      elevationGainM: prefillRecent.elevationGainM ?? null,
+                    }).primary
+                  : prefillOld === undefined
+                    ? []
+                    : musclesForRun({
+                        title: prefillOld.title,
+                        kind: runKind(prefillOld),
+                        distanceKm: prefillOld.distanceKm,
+                        elevationGainM: prefillOld.elevationGainM ?? null,
+                      }).primary;
+          // The honest partition: only offerable suggestions become cards; expired and dead-end rows are counted
+          // so the page says what happened instead of silently vanishing (F5/F14).
+          const pending = partitionPendingMuscleProposals(options.store, user.userId, today);
+          const dismissedProposalId =
+            url.searchParams.get("saved") === "dismissed" ? url.searchParams.get("proposal") : null;
           sendHtml(
             response,
             200,
@@ -5142,7 +5430,14 @@ export function createWeb(options: WebOptions): WebApp {
                 formDay,
                 saved: url.searchParams.get("saved") === "1",
                 statusSaved: url.searchParams.get("saved") === "status",
+                proposalSaved: url.searchParams.get("saved") === "proposal",
+                proposalDismissed: url.searchParams.get("saved") === "dismissed",
+                dismissedProposalId: dismissedProposalId === null ? null : dismissedProposalId,
                 errorCode: url.searchParams.get("error"),
+                pendingProposals: pending.offered,
+                pendingExpired: pending.expired,
+                pendingInactive: pending.inactive,
+                prefillProposal,
                 dayCheckIn,
                 history: checkIns,
                 statuses,
@@ -5150,7 +5445,12 @@ export function createWeb(options: WebOptions): WebApp {
                 oldRunId: prefillOld === undefined ? null : prefillOld.activityId,
                 trainingRows,
                 activityOptions,
-                prefillActivityId: prefillRecent === undefined ? null : prefillRecent.activityId,
+                prefillActivityId:
+                  prefillProposal !== null && prefillProposal.activityId !== null
+                    ? prefillProposal.activityId
+                    : prefillRecent === undefined
+                      ? null
+                      : prefillRecent.activityId,
                 prefillMuscleIds,
               },
               { layout: pageLayout },
@@ -5292,6 +5592,77 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      /**
+       * The one-tap decision on a coach suggestion. A confirm writes exactly what the Muscle tab's own form would
+       * have written — a check-in, a hold, a release or an all-better claim — and only then is the suggestion
+       * marked confirmed. The dock calls it with an Accept header and gets JSON; a no-script form gets a redirect
+       * back to the Muscle tab, where the record now lives.
+       */
+      const proposalAction = /^\/muscle\/proposals\/([^/]+)\/(confirm|dismiss|restore)$/.exec(url.pathname);
+      if (proposalAction !== null) {
+        if (method !== "POST") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          return;
+        }
+        let proposalId = "";
+        try {
+          proposalId = decodeURIComponent(proposalAction[1] ?? "");
+        } catch {
+          proposalId = "";
+        }
+        const decision = proposalAction[2];
+        const wantsJson = (request.headers["accept"] ?? "").includes("application/json");
+        let outcome: { ok: true } | { ok: false; detail: string };
+        if (proposalId.length === 0) {
+          outcome = { ok: false, detail: "not-found" };
+        } else if (decision === "confirm") {
+          const confirmed = options.store.transaction(() =>
+            confirmMuscleProposal({ store: options.store, userId: user.userId, proposalId, today, now: now() }),
+          );
+          outcome = confirmed.ok ? { ok: true } : { ok: false, detail: confirmed.detail };
+        } else if (decision === "restore") {
+          // Undo a dismissal while the suggestion is still inside its window: a mis-tap costs one tap (F7).
+          const restored = options.store.transaction(() =>
+            restoreMuscleProposal({ store: options.store, userId: user.userId, proposalId, today, now: now() }),
+          );
+          outcome = restored ? { ok: true } : { ok: false, detail: "not-found" };
+        } else {
+          const dismissed = options.store.transaction(() =>
+            dismissMuscleProposal({ store: options.store, userId: user.userId, proposalId, now: now() }),
+          );
+          outcome = dismissed ? { ok: true } : { ok: false, detail: "not-found" };
+        }
+        if (wantsJson) {
+          if (!outcome.ok) {
+            sendJson(response, outcome.detail === "not-found" ? 404 : 409, { ok: false, detail: outcome.detail });
+            return;
+          }
+          sendJson(response, 200, { ok: true, decision });
+          return;
+        }
+        if (!outcome.ok) {
+          const code =
+            outcome.detail === "expired"
+              ? "proposal-expired"
+              : outcome.detail === "no-active-status" || outcome.detail === "incomplete"
+                ? "proposal-status"
+                : "proposal-missing";
+          redirect(response, `/muscle?error=${code}`);
+          return;
+        }
+        // A dismissal redirects with its id so the banner can offer Undo; a restore lands back on the page where
+        // the card is pending again.
+        redirect(
+          response,
+          decision === "confirm"
+            ? "/muscle?saved=proposal"
+            : decision === "dismiss"
+              ? `/muscle?saved=dismissed&proposal=${encodeURIComponent(proposalId)}`
+              : "/muscle",
+        );
+        return;
+      }
+
       /** The attention feed the app-bar badge reads: the count of muscles in a special status, plus the rows. */
       if (url.pathname === "/muscle/attention.json" && method === "GET") {
         const checkIns = options.store.listMuscleCheckIns(user.userId, 40);
@@ -5413,6 +5784,7 @@ export function createWeb(options: WebOptions): WebApp {
               blockedWrites?: number;
               directiveId?: string | null;
               states?: unknown[];
+              muscleProposals?: unknown[];
               blockedByStates?: unknown[];
               prefill?: {
                 epoch?: string;
@@ -5486,6 +5858,38 @@ export function createWeb(options: WebOptions): WebApp {
               blockedByStates.push({ key: value, label: tx.t(`coachState.label.${value}` as const) });
             }
           }
+          // Muscle suggestions ride back with the turn so the dock can render one card per suggestion. The rows
+          // are read from the store, never trusted from the upstream payload.
+          const rawMuscleProposals = Array.isArray(payload.milebook?.muscleProposals)
+            ? payload.milebook.muscleProposals
+            : [];
+          const turnStatuses = computeMuscleStatuses({
+            checkIns: options.store.listMuscleCheckIns(user.userId, 40),
+            controls: options.store.listMuscleStatusControls(user.userId),
+            today,
+          });
+          const muscleProposals: MuscleProposalView[] = [];
+          for (const value of rawMuscleProposals) {
+            if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+            const proposalId = (value as Record<string, unknown>)["proposalId"];
+            if (typeof proposalId !== "string" || proposalId.length === 0) continue;
+            const stored = options.store.getMuscleProposal(user.userId, proposalId);
+            if (stored === undefined) continue;
+            muscleProposals.push(
+              muscleProposalView(
+                {
+                  proposal: stored,
+                  statuses: turnStatuses,
+                  today,
+                  run:
+                    stored.activityId === null
+                      ? undefined
+                      : options.store.getActivity(user.userId, stored.activityId) ?? undefined,
+                },
+                tx,
+              ),
+            );
+          }
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(JSON.stringify({
             reply,
@@ -5504,6 +5908,7 @@ export function createWeb(options: WebOptions): WebApp {
             blockedWrites: typeof payload.milebook?.blockedWrites === "number" ? payload.milebook.blockedWrites : 0,
             directiveId: typeof payload.milebook?.directiveId === "string" ? payload.milebook.directiveId : null,
             states,
+            muscleProposals,
             blockedByStates,
             prefill: typeof payload.milebook?.prefill === "object" && payload.milebook?.prefill !== null
               ? payload.milebook.prefill
@@ -5562,8 +5967,29 @@ export function createWeb(options: WebOptions): WebApp {
             toDay: entry.toDay,
           })),
         }));
+        // Pending coach muscle suggestions are durable rows, not DOM-only cards: after a refresh the runner must
+        // still be able to confirm or dismiss them here. The views carry the record's own vocabulary, the age, the
+        // current status context and the run link, so the dock never invents its own wording.
+        const muscleProposals = listPendingMuscleProposals(options.store, user.userId, today).map((proposal) =>
+          muscleProposalView(
+            {
+              proposal,
+              statuses: computeMuscleStatuses({
+                checkIns: options.store.listMuscleCheckIns(user.userId, 40),
+                controls: options.store.listMuscleStatusControls(user.userId),
+                today,
+              }),
+              today,
+              run:
+                proposal.activityId === null
+                  ? undefined
+                  : options.store.getActivity(user.userId, proposal.activityId) ?? undefined,
+            },
+            tx,
+          ),
+        );
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(JSON.stringify({ messages, states, changes }));
+        response.end(JSON.stringify({ messages, states, changes, muscleProposals }));
         return;
       }
 
@@ -6318,6 +6744,7 @@ export function createWeb(options: WebOptions): WebApp {
           changeSets: options.store.listChangeSets(user.userId, 500),
           muscleCheckIns: options.store.listMuscleCheckIns(user.userId, 500),
           muscleStatusControls: options.store.listMuscleStatusControls(user.userId),
+          muscleProposals: options.store.listMuscleProposals(user.userId, undefined, 200),
         });
         response.writeHead(200, {
           "content-type": "application/json; charset=utf-8",

@@ -1,9 +1,10 @@
 /** Shared Milebook records. Every record belongs to exactly one runner. */
 
 import type { MuscleCheckIn } from "./muscles";
+import type { MuscleProposal, MuscleProposalStatus } from "./muscle-proposals";
 import type { MuscleStatusControl } from "./muscle-status";
 
-export type { MuscleCheckIn, MuscleStatusControl };
+export type { MuscleCheckIn, MuscleProposal, MuscleProposalStatus, MuscleStatusControl };
 
 export type MessageRole = "user" | "assistant";
 
@@ -525,6 +526,14 @@ export interface Store {
   listMuscleStatusControls(userId: string): MuscleStatusControl[];
   /** Insert or replace one muscle's status control. */
   upsertMuscleStatusControl(control: MuscleStatusControl): void;
+  /** Append one coach muscle suggestion; pending rows are what the runner can still confirm or dismiss. */
+  appendMuscleProposal(proposal: MuscleProposal): void;
+  /** One suggestion by id, scoped to its owner. */
+  getMuscleProposal(userId: string, proposalId: string): MuscleProposal | undefined;
+  /** Newest first; when a status is given, only rows in that status. */
+  listMuscleProposals(userId: string, status?: MuscleProposalStatus, limit?: number): MuscleProposal[];
+  /** Replace one suggestion after a decision (confirmed or dismissed). */
+  updateMuscleProposal(proposal: MuscleProposal): void;
   /** Record one batch of calendar writes; a revert is recorded as its own change set. */
   appendChangeSet(changeSet: ChangeSet): void;
   /** Newest first. */

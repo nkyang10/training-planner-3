@@ -36,6 +36,12 @@ import { directiveHash, parseCoachDirective } from "./directives";
 import { isMuscleId, referencedMuscleContext } from "./muscles";
 import { computeMuscleStatuses, renderMuscleStatusFactsForPrompt } from "./muscle-status";
 import {
+  buildMuscleProposal,
+  listPendingMuscleProposals,
+  renderMuscleProposalsForPrompt,
+  type MuscleProposal,
+} from "./muscle-proposals";
+import {
   applyStateProposals,
   refreshCoachStates,
   stateGuardrailViolations,
@@ -131,6 +137,8 @@ export interface GatewayMeta {
   directiveId: string | null;
   /** Coaching states activated or resolved by this turn. */
   states: StateChange[];
+  /** Muscle-condition suggestions this turn recorded; each waits for the runner's one-tap confirm. */
+  muscleProposals: MuscleProposal[];
   /** Active state keys that blocked a proposed session on this turn. */
   blockedByStates: string[];
   /** What the model was prefilled with this turn and why it changed. */
@@ -415,6 +423,7 @@ function emptyMeta(): GatewayMeta {
     blockedWrites: 0,
     directiveId: null,
     states: [],
+    muscleProposals: [],
     blockedByStates: [],
     prefill: {
       epoch: "",
@@ -683,6 +692,7 @@ function applyParsedTurn(
   userId: string,
   turn: CoachTurn,
   at: string,
+  today: string,
   attempts: number,
   allowCalendarWrites = true,
   allowMemoryWrites = true,
@@ -692,6 +702,53 @@ function applyParsedTurn(
     meta.attempts = attempts;
     meta.suggestions = turn.suggestions;
     const effectiveTurn = allowMemoryWrites ? turn : { ...turn, memories: [] };
+
+    // Muscle-condition suggestions are recorded as pending rows, never as a check-in or a control: the runner's
+    // one-tap confirm is the only path from a suggestion to the body's record. A suggestion identical to one that is
+    // still waiting (same action, muscle, level, tags and run) is skipped, so a model that repeats itself does not
+    // stack duplicate cards; a changed level supersedes the older pending card for that muscle, because two live
+    // cards for one muscle invite two confirms of contradictory records.
+    const recordMuscleProposals = (): void => {
+      const pending = listPendingMuscleProposals(options.store, userId, today);
+      const keyOf = (proposal: {
+        action: string;
+        muscleId: string;
+        soreness: number | null;
+        conditions: readonly string[];
+        activityId: string | null;
+      }): string =>
+        `${proposal.action}|${proposal.muscleId}|${proposal.soreness ?? ""}|${[...proposal.conditions].sort().join("+")}|${proposal.activityId ?? ""}`;
+      const waiting = new Set(pending.map((proposal) => keyOf(proposal)));
+      const created: MuscleProposal[] = [];
+      for (const draft of turn.muscleProposals) {
+        // The run reference is resolved, never trusted: a foreign, missing or wrong-day id is stripped so a
+        // hallucinated activityId downgrades to an unlinked report instead of poisoning the suggestion.
+        const activityId =
+          draft.action === "report" && draft.activityId !== null
+            ? (() => {
+                const activity = options.store.getActivity(userId, draft.activityId);
+                return activity !== undefined && activity.day === today ? activity.activityId : null;
+              })()
+            : null;
+        const key = keyOf({ ...draft, activityId });
+        if (waiting.has(key)) continue;
+        waiting.add(key);
+        const proposal = buildMuscleProposal({
+          userId,
+          draft: { ...draft, activityId },
+          today,
+          now: at,
+        });
+        // Newest wins per muscle: the superseded rows are dismissed, not deleted, so the journal stays honest.
+        for (const older of pending) {
+          if (older.muscleId !== proposal.muscleId || older.status !== "proposed") continue;
+          options.store.updateMuscleProposal({ ...older, status: "dismissed", updatedAt: at, decidedAt: at });
+        }
+        options.store.appendMuscleProposal(proposal);
+        created.push(proposal);
+      }
+      meta.muscleProposals = created;
+    };
 
     // The silent preference channel (LL-5): applied transactionally, never rendered, never announced. A
     // comment-only directive with memory writes off skips it, like it skips memories.
@@ -745,6 +802,7 @@ function applyParsedTurn(
       meta.sessions = result.changes.length;
       meta.changeSetId = options.store.listChangeSets(userId, 1)[0]?.changeSetId ?? null;
       meta.states = applyStateProposals(options.store, userId, turn.stateProposals, at);
+      recordMuscleProposals();
       const reply = turn.reply;
       for (const text of effectiveTurn.memories) {
         options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
@@ -758,6 +816,7 @@ function applyParsedTurn(
     const reply = turn.reply;
     const failures: TurnFailure[] = [];
     meta.states = applyStateProposals(options.store, userId, turn.stateProposals, at);
+    recordMuscleProposals();
     for (const text of effectiveTurn.memories) {
       options.store.appendMemory({ memoryId: randomUUID(), userId, text, createdAt: at });
     }
@@ -992,6 +1051,10 @@ export function createGateway(options: GatewayOptions): Gateway {
         referencedMuscleId !== undefined && isMuscleId(referencedMuscleId)
           ? referencedMuscleContext(referencedMuscleId, muscleCheckIns)
           : "";
+      // The coach's own pending muscle suggestions ride in the snapshot so it never repeats one the runner has
+      // not answered, and never claims a suggestion is already saved.
+      const pendingMuscleProposals = listPendingMuscleProposals(options.store, userId, today);
+      const pendingMuscleFacts = renderMuscleProposalsForPrompt(pendingMuscleProposals);
 
       // The silent language preference (LL-5): learn it before the epoch is computed, so the snapshot's profile
       // block carries it on this very turn.
@@ -1018,6 +1081,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         latestActivityId: activities.length > 0 ? (activities[0]?.activityId ?? null) : null,
         activityCount: activities.length,
         latestMuscleCheckInId: latestMuscleCheckIn?.checkInId ?? null,
+        pendingMuscleProposalIds: pendingMuscleProposals.map((proposal) => proposal.proposalId).sort(),
         activeStateKeys: states
           .filter((state) => state.status === "active" || state.status === "observing")
           .map((state) => state.key)
@@ -1076,6 +1140,7 @@ export function createGateway(options: GatewayOptions): Gateway {
             recentChanges,
             states,
             ...(muscleFacts.length === 0 ? {} : { muscleFacts }),
+            ...(pendingMuscleFacts.length === 0 ? {} : { pendingMuscleProposals: pendingMuscleFacts }),
           }),
           createdAt: nowIso,
         });
@@ -1267,6 +1332,7 @@ export function createGateway(options: GatewayOptions): Gateway {
               userId,
               parsed.turn,
               now(),
+              today,
               attempt,
               directive?.allowCalendarWrites !== false,
               directive?.allowMemoryWrites !== false,

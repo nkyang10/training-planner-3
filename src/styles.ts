@@ -391,6 +391,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 }
 /* Ink label on the kept ember-to-solar gradient: 5.92-10.09:1, where white fell to 1.83:1 at the solar end. */
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--ink); background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
+/* The launcher doubles as the pending-decision badge host while the panel is closed (F4). */
+#coach-bubble .coach-pending-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; pointer-events: none; box-shadow: 0 1px 3px rgba(27, 18, 12, .25); }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
 .coach-dock { display: contents; }
 #month-picker { position: fixed; z-index: 55; display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
@@ -928,6 +930,29 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .attention-badge { display: inline-block; vertical-align: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
 .muscle-attention-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
 .muscle-status-card { margin-bottom: 16px; }
+/* The coach-suggestion card: the model's notice about a muscle, waiting for the runner's one tap. It reads as a
+   soft prompt on the page and as a chat bubble in the dock, and both surfaces post to the same decision endpoint. */
+.muscle-proposal-card { margin-bottom: 16px; border-color: #f0d9a8; background: #fffaf1; }
+.muscle-proposal-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.muscle-proposal { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.muscle-proposal p { margin: 0; }
+.muscle-proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.muscle-proposal-chip { border-color: #e7c98e; background: #fdf3df; color: #7a5a1f; text-transform: none; letter-spacing: 0; }
+.muscle-proposal-meta { margin-top: -2px; }
+/* The decision buttons are the point of the card: a full-size target on the page and a raised one in the dock,
+   never the 28px sliver the first pass shipped. */
+.proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.proposal-actions .btn { padding: 8px 14px; font-size: 13px; }
+.proposal-action-form { display: inline-flex; gap: 8px; margin: 0; }
+.proposal-adjust { text-decoration: none; background: #fff; white-space: nowrap; }
+#coach-panel .proposal-actions .btn { min-height: 36px; }
+.banner-undo { display: inline-flex; margin: 0 0 0 8px; }
+.bubble.muscle-suggestion { max-width: 92%; border-color: #f0d9a8; background: #fffaf1; }
+.bubble.muscle-suggestion p { margin: 4px 0 0; }
+.bubble.muscle-suggestion.ok { border-color: #b7d7b0; background: #f4faf1; }
+.muscle-suggestion-pending { font-style: italic; }
+.muscle-suggestion-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 700; }
+.muscle-suggestion-undo { cursor: pointer; background: #fff; }
 /* Muscle page: the status/readings rail sits beside the check-in figure from 1024px, so the first interactive
    surface is visible at load instead of below a tall status card. Below that, DOM order (status → form → readings)
    is preserved. */
