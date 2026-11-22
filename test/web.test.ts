@@ -2318,7 +2318,7 @@ describe("training log", () => {
     expect(html).toContain('data-coach-message="Plan my training for this month."');
     expect(html).toContain('class="today-strip has-mark"');
     expect(html).toContain('class="today-strip-mark"');
-    expect(html).toContain('src="/static/calendar-empty.webp"');
+    expect(html).toContain('src="/static/calendar-empty.webp?v=2"');
     expect(html).toContain('class="card calendar-card is-empty"');
     expect(html).toContain('src="/static/coach-token.webp"');
     expect(html).not.toContain('class="empty-card"');

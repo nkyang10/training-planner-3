@@ -390,8 +390,7 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
   .best-efforts .best-effort { border-radius: 10px; }
 }
 /* Ink label on the kept ember-to-solar gradient: 5.92-10.09:1, where white fell to 1.83:1 at the solar end. */
-#coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--ink); background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
-#coach-bubble .coach-token { width: 26px; height: 26px; object-fit: contain; flex: none; }
+#coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--ink); background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; }
 /* The launcher doubles as the pending-decision badge host while the panel is closed (F4). */
 #coach-bubble .coach-pending-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; pointer-events: none; box-shadow: 0 1px 3px rgba(27, 18, 12, .25); }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
@@ -470,6 +469,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .coach-head-actions { display: flex; align-items: center; gap: 6px; }
 /* A close affordance belongs to the floating sheet; the docked column uses the same "−" minimize it always had. */
 #coach-panel header #coach-close { display: none; }
+.coach-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.coach-avatar { width: 30px; height: 30px; object-fit: contain; flex: none; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1px var(--line), 0 2px 4px rgba(27, 18, 12, .14); }
 .coach-head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .coach-head-text strong { font-size: 14px; }
 .coach-head-text .coach-horizon { margin-left: 0; }
@@ -550,7 +551,6 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 @media (max-width: 720px) {
   #coach-panel { top: 6px; right: 6px; bottom: 6px; left: 6px; width: auto; border-radius: 18px; }
   #coach-bubble { right: 12px; bottom: 12px; padding: 12px 16px; }
-  #coach-bubble .coach-token { width: 22px; height: 22px; }
 }
 
 #calendar-fx { position: fixed; inset: 0; z-index: 30; pointer-events: none; opacity: 0; transition: opacity .2s; background: radial-gradient(circle at 50% 42%, rgba(255, 90, 31, .28), rgba(255, 176, 32, .12) 38%, transparent 65%); }
@@ -693,7 +693,7 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
   .state-head { align-items: flex-start; }
 }
 
-@media print { .top, .notif-wrap, .account-wrap, .modal, .month-nav, form, .btn, .today-strip-mark, .calendar-card.is-empty::before { display: none; } }
+@media print { .top, .notif-wrap, .account-wrap, .modal, .month-nav, form, .btn, .today-strip-mark, .today-strip.has-mark::before, .calendar-card.is-empty::before { display: none; } }
 
 .banner { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 13px; font-weight: 700; }
 .banner.ok { background: #eef7f1; border-color: #bfe0cc; color: var(--success); }
@@ -718,11 +718,14 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .entry-quiet-link { display: inline-flex; align-items: center; min-height: 24px; padding: 0 2px; border: 0; background: none; font: inherit; font-size: 12px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 .entry-quiet-link:hover { color: var(--ember-text); }
 .today-strip-empty { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
-/* An empty month gets one original plate, not a wall of blank cells. The plate is decorative:
-   the copy, the plan button and the log link remain the only actions. */
-.today-strip.has-mark { grid-template-columns: minmax(0, 1fr) 96px auto; grid-template-areas: "head head actions" "main mark actions" "context context context"; }
-.today-strip-mark { grid-area: mark; align-self: center; justify-self: end; width: 96px; height: 96px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: var(--paper); box-shadow: var(--shadow); }
-.today-strip-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* An empty month gets one original object, not a wall of blank cells. The object is a cut-out on the
+   strip's paper field: no frame, no thumbnail border. The copy, the plan button and the log link remain
+   the only actions. */
+.today-strip.has-mark { position: relative; overflow: hidden; grid-template-columns: minmax(0, 1fr) 120px auto; grid-template-areas: "head head actions" "main mark actions" "context context context"; }
+.today-strip.has-mark::before { content: ""; position: absolute; inset: 0; background: url("/static/calendar-wash.webp") center / cover; opacity: .10; pointer-events: none; }
+.today-strip.has-mark > * { position: relative; z-index: 1; }
+.today-strip-mark { grid-area: mark; align-self: center; justify-self: end; width: 120px; height: 90px; display: flex; align-items: center; justify-content: center; }
+.today-strip-mark img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 10px 14px rgba(27, 18, 12, .18)); }
 .calendar-card { position: relative; overflow: hidden; }
 .calendar-card.is-empty::before { content: ""; position: absolute; inset: 0; background: url("/static/calendar-wash.webp") center / cover; opacity: .16; pointer-events: none; }
 .calendar-card.is-empty > * { position: relative; z-index: 1; }
@@ -742,7 +745,7 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .cal-key .garmin-connect-link { margin-left: auto; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
 @media (max-width: 820px) {
   .today-strip.has-mark { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "mark" "actions" "context"; }
-  .today-strip-mark { justify-self: start; width: 72px; height: 72px; border-radius: 14px; }
+  .today-strip-mark { justify-self: start; width: 84px; height: 64px; }
 }
 @media (max-width: 640px) {
   .calendar-head { display: block; }
@@ -1844,12 +1847,13 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
   .auth-error:focus-visible, .auth-error-link:focus-visible, .auth-lang .lang-btn:focus-visible,
   .auth-switch-line a:focus-visible, .auth-help summary:focus-visible, .auth-help a:focus-visible,
   .auth-brand:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
-  .today-strip-mark { border-color: CanvasText; background: Canvas; }
+  .today-strip.has-mark::before { display: none; }
+  .today-strip-mark img { filter: none; }
   .calendar-card.is-empty::before { display: none; }
   .today-strip { border-left-color: CanvasText; background: Canvas; color: CanvasText; }
   .today-strip .btn { border: 2px solid ButtonText; background: ButtonFace; color: ButtonText; }
   .today-strip .entry-quiet-link { color: CanvasText; }
   #coach-bubble { border: 2px solid ButtonText; background: ButtonFace; color: ButtonText; box-shadow: none; }
-  #coach-bubble .coach-token { display: none; }
+  .coach-avatar { display: none; }
 }
 `;

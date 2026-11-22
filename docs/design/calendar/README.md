@@ -1,5 +1,8 @@
 # Calendar page art evidence
 
+> **Later refinement:** [../calendar-seamless/](../calendar-seamless/README.md) replaces the framed plate with a
+> transparent cut-out and moves the coach token to the panel header.
+
 This folder holds the rendered evidence for the calendar-page art/UIUX pass. The decision record is
 [`../../analysis/26-calendar-art-uiux.md`](../../analysis/26-calendar-art-uiux.md).
 

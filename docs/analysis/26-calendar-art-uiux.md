@@ -1,5 +1,9 @@
 # 26 - Calendar page art and UI/UX review
 
+> **Superseded for integration by [27-calendar-art-seamless.md](27-calendar-art-seamless.md).** This record documents
+> the framed 96 px plate POC; 27 replaces it with the transparent cut-out on the strip paper field and moves the coach
+> token into the panel header.
+
 **Scope:** the signed-in Plan/calendar page. This is the same four-cycle research -> design/brainstorm -> POC ->
 review loop used for the auth page, applied to a data-dense surface instead of a marketing surface.
 
