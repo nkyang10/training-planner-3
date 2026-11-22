@@ -19,6 +19,22 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.0.1] — 2026-11-23
+
+Release engineering only: the product behaviour is unchanged from 1.0.0.
+
+### Added
+
+- **Anatomy pipeline in the repository** — the six build scripts, the curated `region-map.json` and the
+  `muscleview-manifest.json` extraction manifest now live in `tools/anatomy/` with a README covering the rebuild
+  steps, the licence boundary and the known asset limits. Both generators reproduce the committed JSON
+  byte-for-byte, so the 11 MB muscle asset is auditable and rebuildable; the BodyParts3D download itself stays
+  external.
+
+### Fixed
+
+- `package.json` pointed at a placeholder repository URL.
+
 ## [1.0.0] — 2026-11-22
 
 The first production release. This is the point where the PoC-era documentation was replaced by a maintained wiki, the
