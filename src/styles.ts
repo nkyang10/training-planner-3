@@ -566,7 +566,7 @@ body.calendar-fx-active main { animation: page-shake .55s cubic-bezier(.36,.07,.
 @keyframes delete-pulse { 0% { box-shadow: 0 0 0 0 rgba(192,58,43,.7); } 60% { box-shadow: 0 0 0 14px rgba(192,58,43,0); } 100% { box-shadow: 0 0 0 0 rgba(192,58,43,0); } }
 @keyframes trash-pop { 0% { transform: translateX(-50%) scale(.8) rotate(0); } 35% { transform: translateX(-50%) scale(1.5) rotate(-12deg); } 100% { transform: translateX(-50%) scale(1.35) rotate(0); } }
 
-/* End-of-delete toast: names what was deleted and points at the Recent changes card. */
+/* End-of-delete toast: names what was deleted and points at the All changes page. */
 .fx-toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 36; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; max-width: min(560px, calc(100vw - 24px)); padding: 10px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); font-size: 13px; animation: toast-in .25s ease-out; }
 .fx-toast span { color: var(--ink-2); }
 .fx-toast a { color: var(--ember-text); font-weight: 800; text-decoration: none; }
@@ -780,8 +780,6 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .change-actions .btn { padding: 13px 16px; font-size: 13px; }
 .change-ask { border: 0; background: none; padding: 10px 4px; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ember-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 #recent-changes .btn:focus-visible, #recent-changes .change-ask:focus-visible, #recent-changes .change-more > summary:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
-.change-see-all { color: var(--ember-text); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
-.change-see-all:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 /* The standalone all-changes page: one filter row, then schedule batches and quieter activity/muscle rows. */
 .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
 .filter-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 700; text-decoration: none; }

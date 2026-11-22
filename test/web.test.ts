@@ -2953,10 +2953,10 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("bubble system warn");
     expect(html).toContain("is protecting the plan");
     expect(css).toContain(".bubble.system.warn");
-    // The delete animation ends by pointing at the Recent changes card, where the Undo form lives.
+    // The delete animation ends by pointing at the All changes page, where the Undo form lives.
     expect(html).toContain("showDeleteToast");
     expect(html).toContain("Deleted");
-    expect(html).toContain("Undo in Recent changes");
+    expect(html).toContain("Undo in All changes");
     expect(css).toContain(".fx-toast");
     // The bubble's state card can open the discussion about how the state shapes the week.
     expect(html).toContain("Discuss this state");
@@ -4262,8 +4262,8 @@ describe("honest demo slice", () => {
     };
     handle.store.appendChangeSet(changeSet);
 
-    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
-    expect(calendar).toContain("Recent changes");
+    const calendar = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Schedule changes");
     // The headline is a human sentence; the stored machine summary never reaches the page.
     expect(calendar).toContain("1 session updated · Sun, 8 Nov");
     expect(calendar).not.toContain("Moved Easy 5 km to Sunday");
@@ -4286,10 +4286,8 @@ describe("honest demo slice", () => {
     expect(calendar).toContain("recent-changes");
     expect(calendar).toContain('data-change-set="change:move"');
     expect(calendar).toContain(`title="Chat with the coach about what this change did. Your calendar will not change."`);
-    // The calendar card points at the standalone all-changes page.
-    expect(calendar).toContain('class="change-see-all" href="/changes"');
 
-    const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
+    const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/changes" });
     expect(undo.status).toBe(303);
     const location = undo.headers.get("location") ?? "";
     expect(location).toContain("undone=1");
@@ -4302,7 +4300,7 @@ describe("honest demo slice", () => {
     const landing = await (await fetch(`${base}${landingUrl.pathname}${landingUrl.search}`, { headers: { cookie } })).text();
     expect(landing).toContain("1 session undone");
 
-    const again = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
+    const again = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/changes" });
     const againLocation = new URL(again.headers.get("location") ?? "/", base);
     expect(againLocation.searchParams.get("undoError")).toBe("that change was already undone");
   });
@@ -4334,7 +4332,7 @@ describe("honest demo slice", () => {
       revertedAt: null,
     };
     handle.store.appendChangeSet(changeSet);
-    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    const calendar = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
     expect(calendar).toContain("14 sessions added");
     expect(calendar).toContain("17 Nov – 30 Nov");
     expect(calendar).toContain("Show all 14");
@@ -4378,7 +4376,7 @@ describe("honest demo slice", () => {
       revertedAt: null,
     };
     handle.store.appendChangeSet(changeSet);
-    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    const calendar = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
     expect(calendar).toContain("1 session updated");
     expect(calendar).toContain("15 km → 18 km");
     expect(calendar).toContain('<span class="change-act">Updated</span>');
@@ -4410,7 +4408,7 @@ describe("honest demo slice", () => {
       revertedAt: "2026-11-05T01:00:00.000Z",
     };
     handle.store.appendChangeSet(changeSet);
-    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    const calendar = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
     // 20:00Z is already 05 Nov in Hong Kong: the meta must say today, not 04 Nov.
     expect(calendar).toContain('<span class="change-meta muted small">Changed today');
     expect(calendar).not.toContain("Changed 4 Nov");
@@ -4448,7 +4446,7 @@ describe("honest demo slice", () => {
       revertedAt: null,
     };
     handle.store.appendChangeSet(changeSet);
-    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    const calendar = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
     expect(calendar).toContain("Undone: 2 sessions added");
     expect(calendar).toContain("21 Nov – 24 Nov");
     expect(calendar).toContain("Put it back");
@@ -4587,9 +4585,11 @@ describe("honest demo slice", () => {
     expect(page).not.toContain('id="recent-changes"');
     expect(page).not.toContain('id="activity-changes"');
     expect(page).not.toContain('id="muscle-changes"');
-    // The account menu is on every page, including the calendar.
+    // The account menu is on every page, including the calendar; the calendar no longer renders the card.
     const calendar = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
     expect(calendar).toContain('<a class="account-item" href="/changes">All changes</a>');
+    expect(calendar).not.toContain('id="recent-changes"');
+    expect(calendar).not.toContain('class="change-see-all"');
   });
 
   it("exports only the runner's own data as JSON and ICS", async () => {

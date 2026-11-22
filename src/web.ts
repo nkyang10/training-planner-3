@@ -648,8 +648,6 @@ function discussMessageFor(changeSet: ChangeSet, tx: Translator): string {
  */
 interface RecentChangesCardOptions {
   readonly headingKey?: MessageKey;
-  /** Where the calendar card's "See all changes" footnote link points; omit on the all-changes page itself. */
-  readonly allHref?: string;
 }
 
 function recentChangesCard(
@@ -692,10 +690,7 @@ function recentChangesCard(
       : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo-form" data-change-count="${count}"${isRevert ? ` data-change-putback="1"` : ""}><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit" aria-label="${escapeHtml(`${undoLabel} — ${headline.text}`)}">${escapeHtml(undoLabel)}</button></form>`;
     return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(headline.text)}</strong>${meta}</div>${list}${more}<div class="change-actions">${undoForm}${askWhy}</div></li>`;
   }).join("");
-  const seeAll = options.allHref === undefined
-    ? ""
-    : ` <a class="change-see-all" href="${escapeHtml(options.allHref)}">${escapeHtml(tx.t("changes.seeAll"))}</a>`;
-  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}${seeAll}</p><ul class="change-list">${rows}</ul></section>`;
+  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}</p><ul class="change-list">${rows}</ul></section>`;
 }
 
 /** The standalone all-changes page: schedule batches, runs and muscle events in one place. */
@@ -2642,7 +2637,7 @@ function renderChatBubble(tx: Translator): string {
       return cell ? cell.getBoundingClientRect() : null;
     };
     // The delete animation ends without pointing anywhere; this toast names what was deleted and links the runner to
-    // the Recent changes card, where the Undo form for that batch lives.
+    // the schedule card on the All changes page, where the Undo form for that batch lives.
     const showDeleteToast = (changes) => {
       const removed = changes.filter((change) => change && typeof change === 'object' && change.action === 'remove');
       if (removed.length === 0) return;
@@ -2655,16 +2650,8 @@ function renderChatBubble(tx: Translator): string {
       const text = document.createElement('span');
       text.textContent = tr('deletedPrefix', 'Deleted') + ' ' + names + ' · ';
       const link = document.createElement('a');
-      link.href = '/calendar#recent-changes';
-      link.textContent = tr('undoLink', 'Undo in Recent changes');
-      // The Recent changes card is server-rendered, so a same-page hash jump would show a stale card; reload instead.
-      link.addEventListener('click', (event) => {
-        if (location.pathname === '/calendar' || location.pathname === '/') {
-          event.preventDefault();
-          location.hash = 'recent-changes';
-          location.reload();
-        }
-      });
+      link.href = '/changes#recent-changes';
+      link.textContent = tr('undoLink', 'Undo in All changes');
       toast.append(text, link);
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 5200);
@@ -3213,7 +3200,7 @@ function renderChatBubble(tx: Translator): string {
             showToast(undoToast(count, putBack));
           } catch {
             if (undoButton !== null) undoButton.disabled = false;
-            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
+            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from All changes.'));
           }
         });
       }
@@ -3276,7 +3263,7 @@ function renderChatBubble(tx: Translator): string {
         const nextInput = document.createElement('input');
         nextInput.type = 'hidden';
         nextInput.name = 'next';
-        nextInput.value = location.pathname + location.search;
+        nextInput.value = '/changes';
         const undoButton = document.createElement('button');
         undoButton.type = 'submit';
         undoButton.className = 'btn ghost';
@@ -3288,7 +3275,7 @@ function renderChatBubble(tx: Translator): string {
         undoButton.setAttribute('aria-label', undoButton.textContent + ' — ' + title.textContent);
         undoForm.append(nextInput, undoButton);
         // Undo in place: the audited revert runs, the grid refreshes, and the chat stays where it is. The plain form
-        // still works without script and lands on Recent changes.
+        // still works without script and lands on the All changes page.
         undoForm.addEventListener('submit', async (event) => {
           event.preventDefault();
           undoButton.disabled = true;
@@ -3309,7 +3296,7 @@ function renderChatBubble(tx: Translator): string {
             showToast(undoToast(count, isRevert));
           } catch {
             undoButton.disabled = false;
-            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
+            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from All changes.'));
           }
         });
         actions.appendChild(undoForm);
@@ -6449,7 +6436,6 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
-          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx, today, user.timezone, { allHref: "/changes" })}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;

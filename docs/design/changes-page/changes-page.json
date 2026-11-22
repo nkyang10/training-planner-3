@@ -78,6 +78,24 @@
     "expanded": "true",
     "hidden": false
   },
+  "calendar": {
+    "title": "Plan · Milebook",
+    "docHeight": 1211,
+    "overflowX": false,
+    "recentChangesCards": 0,
+    "calendarCard": 1,
+    "todayStrip": 1,
+    "h1": "Your plan"
+  },
+  "dock": {
+    "panelHidden": false,
+    "selectedTab": "Changes0",
+    "changesPanelHidden": false,
+    "changesRows": 5,
+    "changesEmpty": null,
+    "footerHref": "/changes",
+    "footerText": "Open all changes"
+  },
   "activityFilter": {
     "locale": "en",
     "title": "All changes · Milebook",

@@ -3,8 +3,9 @@
 **Status.** F1-F5 of [the review](21-recent-changes-review.md) shipped. F6-F9 shipped in the same slice because the
 card rewrite touched the same lines; F10 is partial (one vocabulary, two renderers); F11 (the discovery line) was not
 shipped. No schema change: the change set already stored `before`/`after`, and the audited revert path is untouched.
-The follow-up all-changes page ([23](23-all-changes-page.md)) reuses this card under a schedule heading; the calendar
-card's footnote now links to it with **See all changes**, and the dock's footer link is **Open all changes**.
+The follow-up all-changes page ([23](23-all-changes-page.md)) reuses this card under a schedule heading. The calendar's
+Recent changes card and its **See all changes** link were later removed in favor of that page, so the card now renders
+only there; the dock's Changes tab remains a coach-side quick view and its footer link opens the page.
 
 ## 1. What the runner sees
 
@@ -154,8 +155,9 @@ not height.
   counted labels and Ask why, but not a renderer. `/chat/history` does not carry `before`/`after`, so the dock's entries
   show the action and title only, while the page card shows the deltas. Exposing the snapshots is the next step if the
   dock must show `15 → 18 km`.
-- **F11 was not shipped.** The card still starts below the fold: y 1051 at 1280, 1056 at 390, 1138 at 320. The quiet
-  discovery line under the today strip is still the recommended fix.
+- **F11 is moot for the calendar.** The card was later removed from the calendar in favor of the all-changes page; its
+  old y 1051 at 1280 / 1056 at 390 / 1138 at 320 positions no longer exist. The page's schedule card starts below the
+  page head and filters by design.
 - **In-place undo and the revert row.** The page card does not append the new revert row until the next load; the dock's
   Changes tab refreshes and shows it, and the no-JS path shows it immediately. This keeps the page card server-rendered.
 - **Launcher overlap at 320.** The counted Undo is clear, but the fixed launcher can still cover the right edge of
@@ -171,7 +173,8 @@ not height.
 ## 7. Evidence
 
 - Shipped captures: `docs/design/recent-changes/shipped-card-desktop.png`, `-desktop-open`, `-390`, `-320`, `-zh-HK`,
-  `shipped-long-batch.png`, `shipped-undo-in-place.png`, `shipped-dock-changes.png`, `shipped-dock-long.png`.
+  `shipped-long-batch.png`, `shipped-undo-in-place.png`, `shipped-dock-changes.png`, `shipped-dock-long.png`. The card
+  captures are historical: the calendar card was later removed in favor of the page.
 - Machine evidence: `shipped.json` (card/row/action geometry, dock text, post-undo state) and `ax.json` (AX names);
   harness `tmp/recent-changes/shipped.mjs` and `ax-check.mjs` (gitignored).
 - Review: [21-recent-changes-review.md](21-recent-changes-review.md); design folder:

@@ -1,9 +1,10 @@
 # All changes page evidence (2026-11-22)
 
-The standalone `/changes` page, reached from the account menu (and from the calendar card's `See all changes` and the
-dock's `Open all changes`). It is a read-only projection of three existing stores, not a new audit table: the schedule
-journal is audited, while a run or a muscle check-in is the latest record with its own timestamp. The page has three
-sections, server-rendered filters and no new navigation tab: the three projection tabs stay reachable with none selected.
+The standalone `/changes` page, reached from the account menu and the dock's `Open all changes`. The calendar's Recent
+changes card was removed in favor of this page. It is a read-only projection of three existing stores, not a new audit
+table: the schedule journal is audited, while a run or a muscle check-in is the latest record with its own timestamp.
+The page has three sections, server-rendered filters and no new navigation tab: the three projection tabs stay
+reachable with none selected.
 
 The runner is the seeded `Ada Runner` (Asia/Taipei, fixed clock 2026-11-21 20:00, en + zh-HK): five coach batches,
 three Garmin runs, one two-muscle check-in and one held status. All data is synthetic; the account and database are
@@ -20,6 +21,8 @@ scratch (`tmp/recent-changes/scratch.sqlite`), never the live one.
 | `changes-zh-HK-full.png` | The full zh-HK page, including the activity and muscle sections. |
 | `changes-390.png` | Phone 390x844 (2x): the page and schedule card; the four filters still fit on one row. |
 | `changes-320.png` | Small phone 320x700 (2x): the page, filters and schedule card; no horizontal overflow. |
+| `calendar-no-card-1280.png` | The calendar at 1280 after the Recent changes card was removed; the page is the changes surface. |
+| `dock-changes-1280.png` | The dock's Changes tab, still a coach-side quick view; its footer opens the page. |
 
 **Measured**
 
@@ -35,18 +38,22 @@ scratch (`tmp/recent-changes/scratch.sqlite`), never the live one.
 The filtered views are short: the Activity page is 900 px (the viewport) with a 380 px card and `Showing 3 of 10
 changes`; the Muscle page is 900 px with a 284 px card and `Showing 2 of 10 changes`. The account menu opened with
 `aria-expanded="true"` and `hidden` removed. The page's title is `All changes · Milebook` (`所有變更 · Milebook` in
-zh-HK). The three nav tabs carry no `aria-current`; the page's own filter link does.
+zh-HK). The three nav tabs carry no `aria-current`; the page's own filter link does. The calendar page is 1211 px
+without the card (it was 897 px taller); the dock's Changes tab shows the same five batches and its footer link is
+`/changes`.
 
 **Limits.** The page reads the latest 20 schedule batches, 30 runs and 20 muscle check-ins (plus every status control);
 it is not paginated and it does not claim to be the complete edit history. Activity rows show the latest record and its
 `createdAt` (the log or sync time); muscle rows show the latest check-in plus the hold/resolve controls. A true edit log
 for runs and muscles would need a new audit table, which is out of scope for this slice. The schedule card keeps its
-audited undo; the activity and muscle rows link to their pages instead. The full record is
+audited undo; the activity and muscle rows link to their pages instead. The dock's Changes tab remains a coach-side
+second display; the calendar card is gone, but the dock tab still shows changes. The full record is
 [23-all-changes-page.md](../../analysis/23-all-changes-page.md).
 
 **Harness** (gitignored `tmp/recent-changes/`): `changes-page.mjs` logs in, captures the page at 1280/390/320 in en +
-zh-HK, the account menu, the two filters and writes `changes-page.json`; the scratch `seed.ts` now also adds the
-activity, check-in and held-status rows. Headless Chrome 158 via CDP on :9223.
+zh-HK, the account menu, the two filters, the calendar without the card and the dock's Changes tab, and writes
+`changes-page.json`; the scratch `seed.ts` now also adds the activity, check-in and held-status rows. Headless Chrome
+158 via CDP on :9223.
 
 **Machine evidence:** `changes-page.json` (filters, section heights, document heights, overflow, account items, nav
 tabs, filtered summaries). UTF-8 JSON, straight from the harness.

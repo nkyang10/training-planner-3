@@ -51,8 +51,9 @@ verification.
 
 F1-F5 of the review shipped, with F6-F9 in the same slice. The page card is still server-rendered; the dock card is
 client-built but now uses the same words, en-GB dates and counted labels. The raw coach summary is no longer rendered.
-The card's footnote now ends with **See all changes** to `/changes`, and the dock's footer link is **Open all changes**;
-the shipped captures below predate those links. See [the all-changes page](../changes-page/README.md) and
+The calendar card and its **See all changes** link were later removed in favor of the all-changes page; the card now
+renders only there, and the dock's Changes tab remains a coach-side quick view with **Open all changes**. The shipped
+card captures below are historical. See [the all-changes page](../changes-page/README.md) and
 [23-all-changes-page.md](../../analysis/23-all-changes-page.md).
 
 | Image | What it shows |
@@ -83,8 +84,8 @@ the shipped captures below predate those links. See [the all-changes page](../ch
 Desktop is 3.7% taller because three short entry rows replace two long lines; the phone is 12.6% shorter and the small
 phone 21.7% shorter, and the 14-item row is half its former height. The shipped card is 17 px shorter than the 914 px
 mock at 1280 and 198 px shorter at 320; at 390 it is 80 px taller than the mock. What remains: F10 is partial (two
-renderers; `/chat/history` lacks `before`/`after`, so the dock shows no deltas) and F11 (the discovery line) is not
-shipped. The full record is [22-recent-changes-implementation.md](../../analysis/22-recent-changes-implementation.md).
+renderers; `/chat/history` lacks `before`/`after`, so the dock shows no deltas) and F11 (the discovery line) is moot
+after the card's removal. The full record is [22-recent-changes-implementation.md](../../analysis/22-recent-changes-implementation.md).
 
 **Harness** (gitignored `tmp/recent-changes/`): `seed.ts` builds the scratch DB, `serve.ts` runs the product code on
 :18091 with a fixed clock, `shoot.mjs` captures and probes the before states, `evidence.mjs` builds the annotated

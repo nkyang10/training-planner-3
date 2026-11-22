@@ -1,9 +1,9 @@
 # All changes: a standalone page for schedule, runs and muscles (2026-11-22)
 
 **Status.** Shipped. `/changes` is a general, server-rendered page reached from the account menu's **All changes**
-item, the calendar card's **See all changes** link and the dock's **Open all changes** link. It has three sections
-(schedule, activity, muscle), four counted filters, a filtered summary and its own empty state. `pnpm check` is green at
-**566/566 tests in 21 files**. No schema change.
+item and the dock's **Open all changes** link. The calendar's Recent changes card was removed in favor of this page, so
+the page is the changes surface. It has three sections (schedule, activity, muscle), four counted filters, a filtered
+summary and its own empty state. `pnpm check` is green at **627/627 tests in 22 files**. No schema change.
 
 ## 1. What shipped
 
@@ -41,10 +41,11 @@ here.` A non-empty page with one empty section shows that section's own empty li
 
 - The account menu (behind the runner's name) gains **All changes** (`account.changes`) between Coaching states and the
   sync item. It is on every page, including the calendar.
-- The calendar card's footnote gains **See all changes** (`changes.seeAll`) pointing at `/changes`; the page's own
-  schedule card omits the link so it does not point at itself.
-- The dock's footer link is now `/changes` with **Open all changes** (`coach.changesAll`); the old
-  `/calendar#recent-changes` label is gone.
+- The calendar's Recent changes card is removed; its **See all changes** link is gone with it. The page's own schedule
+  card has no such link.
+- The dock's Changes tab remains a coach-side quick view; its footer link is `/changes` with **Open all changes**
+  (`coach.changesAll`), and its no-JS undo lands on the page. The old `/calendar#recent-changes` label and the
+  `coach.changesCalendar` key are gone.
 - The page uses `activeView: "changes"`: `ViewName` gains the value, `navLabel` returns `changes.allTitle`, and
   `renderViewSwitch` keeps the three projection tabs reachable with none selected and no sliding thumb. The page title
   is `All changes · Milebook`; the page context is `All changes`.
@@ -69,24 +70,26 @@ pagination. The counts in the filters and the summary reflect the rows actually 
 
 ## 3. Files and tests
 
-- **`src/web.ts`**: `ChangesFilter` and `CHANGES_FILTERS` (`:676`), `changesFilterHref`/`changesFilterBar` (`:691`),
-  `activityEventRow` (`:709`), `muscleCheckInRow` (`:722`), `muscleControlRow` (`:740`), `renderChangesPage` (`:764`),
-  the `/changes` route (`:4719`), `RecentChangesCardOptions` (`:623`), `timeMeta` (`:554`), `safeNext` (`:229`,
-  now accepts `/changes` and `/changes?…`), `renderViewSwitch` (`:2204`) and the account-menu item (`:1828`).
+- **`src/web.ts`**: `ChangesFilter` and `CHANGES_FILTERS` (`:697`), `changesFilterHref`/`changesFilterBar` (`:712`),
+  `activityEventRow` (`:730`), `muscleCheckInRow` (`:743`), `muscleControlRow` (`:761`), `renderChangesPage` (`:785`),
+  the `/changes` route (`:5705`), `RecentChangesCardOptions` (`:649`), `timeMeta` (`:580`), `safeNext` (`:255`,
+  now accepts `/changes` and `/changes?…`), `renderViewSwitch` (`:2225`) and the account-menu item (`:1856`).
 - **`src/web-html.ts`**: `ViewName` gains `"changes"`.
-- **`src/i18n.ts`**: the page copy (`changes.allTitle` at `:774`, `changes.filterSummary` at `:778`, the section,
-  filter, event and status keys), `account.changes` (`:63`) and `coach.changesAll` (`:97`), in en and zh-HK.
-- **`src/styles.ts`**: `.filter-bar`/`.filter-pill`/`.filter-count` (`:765`), `.event-list`/`.event-item`/`.event-head`/
-  `.event-detail`/`.event-actions` (`:775`), `.change-see-all` (`:762`), and the focus rings.
+- **`src/i18n.ts`**: the page copy (`changes.allTitle` at `:858`, `changes.filterSummary` at `:862`, the section,
+  filter, event and status keys), `account.changes` (`:63`), `coach.changesAll` (`:96`) and the updated
+  `js.undoLink`/`js.changeUndoFailed` copy, in en and zh-HK. `changes.seeAll` and `coach.changesCalendar` are gone.
+- **`src/styles.ts`**: `.filter-bar`/`.filter-pill`/`.filter-count` (`:784`), `.event-list`/`.event-item`/`.event-head`/
+  `.event-detail`/`.event-actions` (`:794`), and the focus rings. The `.change-see-all` rule is gone with the card link.
 - **`test/web.test.ts`**: `renders the all-changes page across schedule, activity and muscle` (the three sections, the
   counted filters, `Showing 1 of 4 changes`, the account menu, the nav with no `aria-current`, the no-JS undo landing)
-  and `shows the all-changes empty state and the account-menu entry`; the calendar card's `See all changes` link; the
-  dock label assertions updated to `Open all changes` / `查看所有變更`.
+  and `shows the all-changes empty state and the account-menu entry`; the card vocabulary tests now read `/changes` and
+  the calendar card's `See all changes` assertion is removed; the delete toast says `Undo in All changes`; the dock
+  label assertions remain `Open all changes` / `查看所有變更`.
 - **`test/i18n.test.ts`**: `changes.allTitle`, `changes.filterSummary` and `account.changes` in both locales.
-- **`test/muscle-web.test.ts`**: the cross-runner leak assertion now checks the specific `Calves 7/10` row instead of the
+- **`test/muscle-web.test.ts`**: the cross-runner leak assertion checks the specific `Calves 7/10` row instead of the
   generic `1 muscle`, which is now also part of the client-side change copy.
 
-`pnpm check`: **566/566 tests in 21 files**, lint and `tsc --noEmit` clean.
+`pnpm check`: **627/627 tests in 22 files**, lint and `tsc --noEmit` clean.
 
 ## 4. Measured (seeded runner)
 
@@ -102,11 +105,12 @@ pagination. The counts in the filters and the summary reflect the rows actually 
 The filtered views are short: the Activity page is 900 px with a 380 px card and `Showing 3 of 10 changes`; the Muscle
 page is 900 px with a 284 px card and `Showing 2 of 10 changes`. The account menu opened with
 `aria-expanded="true"` and `hidden` removed. The page title is `All changes · Milebook` (`所有變更 · Milebook`); the
-zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the page's active filter does.
+zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the page's active filter does. The calendar
+page no longer renders the 897 px schedule card, so it is that much shorter; the page's measurements are unchanged.
 
 ## 5. Verification
 
-- `pnpm check` green at **566/566** in 21 files.
+- `pnpm check` green at **627/627** in 22 files.
 - The page test seeds one change set, one Garmin activity, one check-in and one held control, then asserts the three
   section ids, the `4 changes` summary, the schedule headline and `name="next" value="/changes"`, the activity title and
   `/activity/garmin%3Aall-1`, the `Hamstrings 6/10` and `held until you change it` rows, the three filter hrefs and the
@@ -115,10 +119,12 @@ zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the
   `Showing 1 of 4`.
 - The no-JS undo posts `next=/changes`, redirects to `/changes?undone=1#recent-changes`, and the landing page shows the
   counted banner and the schedule card.
-- The empty page shows `changes-empty-card` and no section ids; the calendar page contains the `/changes` account link.
-- The calendar card's `See all changes` link and the dock's `Open all changes` link are asserted.
-- Captures: the account menu, the two filters, the zh-HK page, 390 and 320 with no horizontal overflow
-  (`docs/design/changes-page/`).
+- The empty page shows `changes-empty-card` and no section ids; the calendar page contains the `/changes` account link
+  and no `recent-changes` card.
+- The dock's `Open all changes` link is asserted; the calendar card's `See all changes` assertion is removed; the card
+  vocabulary tests now read `/changes`; the delete toast says `Undo in All changes`.
+- Captures: the account menu, the two filters, the zh-HK page, 390 and 320 with no horizontal overflow, the calendar
+  without the card and the dock's Changes tab (`docs/design/changes-page/`).
 
 ## 6. Limits and next
 
@@ -128,9 +134,12 @@ zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the
   "Load more" or a period picker, as the training log has.
 - **The page is long at 1280** (2075 px). The filters and section cards make it navigable, but the schedule card still
   dominates; a compact schedule mode or a section jump bar is the next density lever.
-- **No fourth nav tab.** The page is reached from the account menu, the calendar card and the dock; the three projection
-  tabs stay visible with none selected. This is deliberate (the user asked for the account-menu entry), but a tab would
-  make the page more discoverable.
+- **No fourth nav tab.** The page is reached from the account menu and the dock; the calendar card is removed. The three
+  projection tabs stay visible with none selected. This is deliberate (the user asked for the account-menu entry), but a
+  tab would make the page more discoverable.
+- **The dock's Changes tab remains a second display.** It is a coach-side quick view with the same journal and its own
+  client card; the calendar card is gone, but the dock tab still shows changes. Removing it would make the page the only
+  display; keeping it keeps the coach's context one tap away.
 - **Activity action copy.** The row's action is the generic `Details`; the title link is the primary route to the run.
   "Open run" would be clearer in a future copy pass.
 - **Muscle controls show only hold/resolve.** The derived level and conditions live on the muscle page; the changes row
@@ -139,9 +148,11 @@ zh-HK summary is `10 項變更`. The three nav tabs carry no `aria-current`; the
 
 ## 7. Evidence
 
-- [docs/design/changes-page/](../../design/changes-page/README.md) — the nine captures, the account menu, the two
-  filters, the zh-HK page and `changes-page.json` (filters, section/document heights, overflow, nav and account items).
-- [22-recent-changes-implementation.md](22-recent-changes-implementation.md) — the schedule card this page reuses.
+- [docs/design/changes-page/](../../design/changes-page/README.md) — the page captures, the account menu, the two
+  filters, the zh-HK page, the calendar without the card, the dock Changes tab and `changes-page.json` (filters,
+  section/document heights, overflow, nav and account items).
+- [22-recent-changes-implementation.md](22-recent-changes-implementation.md) — the schedule card this page reuses; its
+  calendar card was removed in favor of this page.
 - [21-recent-changes-review.md](21-recent-changes-review.md) — the review that produced the card.
 - Harness (gitignored): `tmp/recent-changes/changes-page.mjs`; the seed now adds the activity, check-in and held-status
   rows.
