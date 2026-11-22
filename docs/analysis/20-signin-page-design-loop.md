@@ -600,7 +600,7 @@ forms or the 320 px error state, and they are documented rather than papered ove
 - **Mode/error container borders are below 3:1.** The state/error is carried by text, underline, icon and field
   border; documented rather than colour-only.
 - **Autofill needs a manual password-manager check** beyond the static CSS/probe.
-- **The live deployment is not updated by this worktree.** The final answer should say so; the live README row
+- **The live deployment is not updated by this change.** The final answer should say so; the live README row
   remains historical.
 
 

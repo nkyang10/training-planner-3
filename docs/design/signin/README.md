@@ -38,4 +38,4 @@ CDP. The full local runner scripts and intermediate captures live under `tmp/sig
 - `src/vendor/signin/calendar-object.webp` - Blender Cycles November-2026 calendar sculpture.
 - `src/vendor/signin/paper-grain.webp` - deterministic Pillow noise tile.
 
-All three are original to this worktree; no stock or remote images are used.
+All three are original to this project; no stock or remote images are used.

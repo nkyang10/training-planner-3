@@ -1,7 +1,7 @@
 # Milebook - runner workflow, needs and improvement analysis
 
-**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20) is implemented in its worktree and not
-deployed. **Date:** 2026-11-22.
+**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20) is merged to main and not deployed.
+**Date:** 2026-11-22.
 **Scope:** a full user-workflow and feature analysis of Milebook (the private calendar-first AI coach for runners), mapped
 against runner needs researched from public training-sharing sources, reviewed for missing or improvable parts, and
 turned into a ranked, sliced backlog.
@@ -115,8 +115,8 @@ Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numberi
 - **Competitor data is dated 2026-11-18.** Prices and features change; the matrix footnotes mark uncertain cells.
 - **No primary runner interviews were run.** The validation plan in 05 section 8 is a proposal, not evidence.
 - **This package is analysis plus one implementation record.** Documents 00-18 are analysis or proposals; 19 is the
-  sign-in research; 20 is the four-cycle auth design loop and its implementation record. The auth page changes live in
-  this worktree and are not deployed.
+  sign-in research; 20 is the four-cycle auth design loop and its implementation record. The auth page changes are
+  merged to main and are not deployed.
 
 ## How to use it
 
