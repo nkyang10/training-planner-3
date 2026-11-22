@@ -527,10 +527,14 @@ signup error 742); at 980x800 the sheet signup is the known long-form exception.
 - Mode-container border 1.42:1 and error-container border 1.43:1 are decorative: the state and error are identified
   by text, the active underline, the icon and the field border. This is documented rather than hidden.
 - Targets: inputs 48 px (52 on login), 44 px on short desktop; submit 46-54; mode 40; language 30-32; reveal 44;
-  goal summary 38-44; goal chip 32; skip 37; brand 32. The only sub-24 target is the inline error link, which sits
-  inside a sentence and falls under the WCAG 2.5.8 inline exception.
+  goal summary 38-44; goal chip 32; skip 37; brand 32. The sub-24 targets are inline text links inside sentences
+  (the error link and the footer "Create an account" / "Create a new account" / "Sign in" links); the WCAG 2.5.8
+  inline exception applies. Every standalone control is at least 24x24.
 - Bilingual: English and zh-HK client errors captured; no overflow at 390; title prefix localised; new strings exist
   in both catalogs.
+- Final audit: one h1, one h2, one main, all labels present, unique ids, no nested interactive elements, no external
+  URLs, no fake auth controls, current language has no `role="button"`, and all three images are local decorative
+  WebP with empty alt.
 - 562/562 tests pass; typecheck passes.
 
 ### 5.5 Findings
