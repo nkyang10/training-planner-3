@@ -7,7 +7,7 @@
  *
  * No secret is exported: the profile omits the password hash and the Garmin key is never included.
  */
-import type { Activity, ChangeSet, MuscleCheckIn, MuscleStatusControl, TrainingSession } from "./types";
+import type { Activity, ChangeSet, MuscleCheckIn, MuscleProposal, MuscleStatusControl, TrainingSession } from "./types";
 
 export interface ExportProfile {
   userId: string;
@@ -29,6 +29,8 @@ export interface ExportBundle {
   muscleCheckIns: MuscleCheckIn[];
   /** Per-muscle status controls: the hold-constant choices and user-claimed ends. */
   muscleStatusControls: MuscleStatusControl[];
+  /** The coach's muscle suggestions and the runner's decisions on them. */
+  muscleProposals: MuscleProposal[];
 }
 
 export interface ExportInput {
@@ -39,6 +41,7 @@ export interface ExportInput {
   changeSets: readonly ChangeSet[];
   muscleCheckIns?: readonly MuscleCheckIn[];
   muscleStatusControls?: readonly MuscleStatusControl[];
+  muscleProposals?: readonly MuscleProposal[];
 }
 
 export function buildExportBundle(input: ExportInput): ExportBundle {
@@ -58,6 +61,7 @@ export function buildExportBundle(input: ExportInput): ExportBundle {
     changeSets: [...input.changeSets],
     muscleCheckIns: [...(input.muscleCheckIns ?? [])],
     muscleStatusControls: [...(input.muscleStatusControls ?? [])],
+    muscleProposals: [...(input.muscleProposals ?? [])],
   };
 }
 

@@ -1,22 +1,28 @@
 # Milebook - runner workflow, needs and improvement analysis
 
-**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20) is merged to main. The calendar
-art/UIUX pass (21) is on its branch. Neither is deployed. **Date:** 2026-11-22.
+**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20), recent-changes/all-changes records
+(21-23), muscle-suggestion review/plan (24-25) and the calendar art/UIUX pass (26) are merged to main. None are
+deployed. **Date:** 2026-11-22.
 **Scope:** a full user-workflow and feature analysis of Milebook (the private calendar-first AI coach for runners), mapped
 against runner needs researched from public training-sharing sources, reviewed for missing or improvable parts, and
 turned into a ranked, sliced backlog.
 **Producer:** a multi-agent analysis run: five producer agents (workflow map, runner-needs research, competitive
 benchmark, gap analysis, improvement backlog) plus one adversarial reviewer, coordinated by the root agent. Documents
-00-06 are read-only analysis; `07-implementation-plan.md` and `10-implementation-record.md` are the later
-implementation records and the only documents that describe code changes.
+00-06 are read-only analysis; `07-implementation-plan.md`, `10-implementation-record.md`,
+`16-coach-interaction-implementation-record.md`, `20-signin-page-design-loop.md`,
+`22-recent-changes-implementation.md`, `23-all-changes-page.md` and `26-calendar-art-uiux.md` are the implementation
+records that describe code changes.
 
 ## Start here
 
 Read `00-EXECUTIVE-SUMMARY.md` first. It is the one-page decision document: what the product does well, the five
 structural gaps, the top ten improvements and the three slices. `07-implementation-plan.md` records which slice-1 items
-were actually built and verified, and `10-implementation-record.md` is the coach-relationship-slice record: what was
-actually built for the consultant-friend coach and the honest load signal, with what verification. The other documents
-are the evidence behind them.
+were actually built and verified, `10-implementation-record.md` is the coach-relationship-slice record: what was
+actually built for the consultant-friend coach and the honest load signal, with what verification, and
+`20-signin-page-design-loop.md`, `22-recent-changes-implementation.md`, `23-all-changes-page.md` and
+`26-calendar-art-uiux.md` are the 2026-11-22 implementation records. `24-muscle-suggestion-ux-review.md` and
+`25-muscle-suggestion-ux-plan.md` are the same day's self-contained UX review and plan/record for the coach-managed
+muscle-condition slice; they are not part of the 00-06 package. The other documents are the evidence behind them.
 
 | Document | Question it answers | Evidence base | Lines |
 |---|---|---|---|
@@ -43,7 +49,12 @@ are the evidence behind them.
 | [18-daily-pages-review.md](18-daily-pages-review.md) | What do the training log and the day page ask of a runner, and what shipped from applying the entry method to them? | seeded headless-Chrome captures at 1164/390 (Asia/Taipei, Nov 2026) + DOM probes (head, summary, disclosure, block positions, doc height) + the 560/560 gate + a 20-check live probe with a real manual-run POST (5 km / 30 min) | 113 |
 | [19-signin-page-research.md](19-signin-page-research.md) | What do OWASP, NIST, WCAG 2.2, NN/g, GOV.UK and FIDO say about sign-in and signup, and how does the current Milebook card measure against them? | 12 guidance items with URLs + measured baseline audit at 1440/390 + contrast/target math + 14 findings and a protect list | 180 |
 | [20-signin-page-design-loop.md](20-signin-page-design-loop.md) | What did the four-cycle research -> design -> POC -> review loop actually ship, what did each review measure, and what remains? | four cycles; original ComfyUI + Blender art; CDP captures at 1440x1000 through 320x700; client validation, autofill, forced-colors, 200% zoom, text spacing, focus and no-JS probes; final 562/562 gate and `r1`-`r4` evidence | 602 |
-| [21-calendar-art-uiux.md](21-calendar-art-uiux.md) | What did the calendar-page art/UIUX pass ship, what did the empty month and the coach bubble look like before and after, and what did the review measure? | four cycles; original ComfyUI paper textures + Blender blank-month plate/coach token; CDP 1440/980/768/390/320, forced-colors, no-JS and zh-HK; 562/562; `docs/design/calendar` evidence | 206 |
+| [21-recent-changes-review.md](21-recent-changes-review.md) | What does the Recent changes card ask of a normal runner, where does it fail, and what is the smallest fix slice? | seeded headless-Chrome captures at 1280/390/320 in en + zh-HK + 17 probe records + AX names + contrast math + the audited revert run (14 sessions deleted) + a prototype rendered in the real page; review at the time, the F1-F5 slice shipped on 2026-11-22 (doc 22) | 193 |
+| [22-recent-changes-implementation.md](22-recent-changes-implementation.md) | What shipped from the Recent changes review - the human headline, entry rows, real deltas, counted in-place undo, the undo record - and what remains? | the server card + the client enhancement + en/zh-HK catalogs + the rewritten and new web tests + `pnpm check` 564/564 + seeded captures at 1280/390/320 in en + zh-HK + geometry and AX JSON + the no-JS landing and in-place undo; F1-F9 shipped, F10 partial, F11 not shipped; the follow-up all-changes page is doc 23 | 179 |
+| [23-all-changes-page.md](23-all-changes-page.md) | What does a general all-changes page show across schedule, activity and muscle - and how does it stay reachable from the account menu? | the `/changes` route + three server-rendered sections + four counted filters + the reused schedule card + en/zh-HK copy + `pnpm check` 566/566 + seeded captures at 1280/390/320, the account menu and the filtered views + `changes-page.json`; read-only projection, latest 20/30/20, no schema change | 147 |
+| [24-muscle-suggestion-ux-review.md](24-muscle-suggestion-ux-review.md) | How does the coach-managed muscle-condition flow feel end to end - what does the runner see from "my calf is 6/10" to the confirmed record, where does it confuse, and what should be fixed before exposure? | a scripted-model simulation through the real web shell, gateway, store and decision endpoint (10 sessions: report, follow-up, all-better, hold, dismiss/recover, red flag, zh-HK, duplicate surfaces, expiry, dead end) with exact captured copy + code-level a11y/mobile checks (F1-F16, copy audit, measurement plan) | 347 |
+| [25-muscle-suggestion-ux-plan.md](25-muscle-suggestion-ux-plan.md) | What was decided about the six open product questions, which workstreams close F1-F16, and what actually shipped from the plan - with which acceptance evidence? | the decisions and workstreams of sections 1-2 + `pnpm check` 618/618 + the re-run simulated conversation (new card vocabulary, hold level, Now-context, zh copy, dead-ends filtered, undo path) | 73 |
+| [26-calendar-art-uiux.md](26-calendar-art-uiux.md) | What did the calendar-page art/UIUX pass ship, what did the empty month and the coach bubble look like before and after, and what did the review measure? | four cycles; original ComfyUI paper textures + Blender blank-month plate/coach token; CDP 1440/980/768/390/320, forced-colors, no-JS and zh-HK; 627/627; `docs/design/calendar` evidence | 206 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -52,14 +63,19 @@ assigned I-18 to slice 1, added the G-08/G-18 mapping note, reworded the infrast
 `??` defects in 03, deleted stale root-level copies of 01-03 and MILEBOOK-CALENDAR.md, and recorded the disposition of every
 finding in 06 section 8.
 
-**Character encoding.** 00, 02, 04, 05, 06, 07, 10, 18, 19, 21 and this index are pure ASCII. 01, 03, 08, 09, 11, 13, 14, 17 and 20
-are valid UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive
+**Character encoding.** 00, 02, 04, 05, 06, 07, 10, 18, 19 and 26 are pure ASCII; this index is ASCII except the
+`排版` quote in the 13 row. 01, 03, 08, 09, 11, 13, 14, 17, 20, 21, 22, 23, 24 and 25 are valid UTF-8 and intentionally
+contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive
 matrix's yes/partial/no glyphs (audited byte-by-byte in 06: the earlier "lone surrogate" alarm was a UTF-16 reporting
 artefact, not file corruption); 08 and 11 quote the calendar's own UI glyphs (the run checkmark and the workout
 diamond) in their findings tables; 09's tone book quotes both a lecturing and an advisory Traditional Chinese phrase
 pair; 14 uses typographic dashes and quotes around its 43 cited sources; 17 quotes the key's middle dot and the
-connect chevron; and 20 uses the zh-HK strings and the four-cycle arrows. 15 is ASCII except the sample zh-HK loading-line
-copy in section 4.6. No document contains mojibake or replacement characters.
+connect chevron; 20 uses the zh-HK strings and the four-cycle arrows; 21 quotes the card's Chinese session titles, its
+English machine summary and the right-arrow glyph in the move lines; 22 quotes the zh-HK headline, entry labels and undo
+copy; 23 quotes the zh-HK page title, filters, section headings and activity/muscle event copy; 24 quotes the
+zh-HK card copy and uses typographic dashes; 25 uses typographic dashes and zh-HK copy; 26 is pure ASCII. 15 is
+ASCII except the sample zh-HK loading-line copy in section 4.6. No document contains mojibake or replacement
+characters.
 
 ## ID conventions
 
@@ -97,7 +113,9 @@ copy in section 4.6. No document contains mojibake or replacement characters.
 | `AU-01..AU-14` | Measured baseline audit findings | 19 |
 | `AP-1..AP-8` | Auth-page design principles | 19 |
 | `R1-01..R4-09` | Auth design-loop review findings, by cycle | 20 |
-| `C1-01..C4-04` | Calendar art/UIUX review findings, by cycle | 21 |
+| `F1-F16` | Muscle-suggestion UX findings (headline copy, adjust path, duplicate surfaces, pending age, dead ends, next steps, a11y, layout, copy) | 24 |
+| `SIM-1..SIM-10` | Simulated muscle-suggestion conversation sessions (separate from 01's journey stages) | 24 |
+| `C1-01..C4-04` | Calendar art/UIUX review findings, by cycle | 26 |
 
 Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numbering is independent. Cite them as
 "02 S17" and "03 S17" to avoid ambiguity.
@@ -117,8 +135,9 @@ Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numberi
 - **Competitor data is dated 2026-11-18.** Prices and features change; the matrix footnotes mark uncertain cells.
 - **No primary runner interviews were run.** The validation plan in 05 section 8 is a proposal, not evidence.
 - **This package is analysis plus implementation records.** Documents 00-18 are analysis or proposals; 19 is the
-  sign-in research; 20 is the four-cycle auth design loop; 21 is the calendar-page art/UIUX pass. The auth page is
-  merged to main; the calendar art pass is on its branch. Neither is deployed.
+  sign-in research; 20 is the four-cycle auth design loop; 21-23 are the recent-changes review, its implementation
+  record and the all-changes page; 24-25 are the muscle-suggestion review/plan; 26 is the calendar art/UIUX pass. The
+  auth, changes, muscle and calendar art slices are merged to main and are not deployed.
 
 ## How to use it
 

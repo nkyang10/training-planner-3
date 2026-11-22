@@ -1,7 +1,7 @@
 # Calendar page art evidence
 
 This folder holds the rendered evidence for the calendar-page art/UIUX pass. The decision record is
-[`../../analysis/21-calendar-art-uiux.md`](../../analysis/21-calendar-art-uiux.md).
+[`../../analysis/26-calendar-art-uiux.md`](../../analysis/26-calendar-art-uiux.md).
 
 ## Baseline
 
@@ -39,4 +39,4 @@ All are original to this project; no stock or remote images.
 ## Reproduce
 
 The seeded review server is `tmp/calendar-art/server.ts` (gitignored) on `http://127.0.0.1:18092`, with an empty user
-and a populated demo user. Captures use headless Chrome over CDP. The final gate is `pnpm check` (562 tests).
+and a populated demo user. Captures use headless Chrome over CDP. The final gate is `pnpm check` (627 tests).

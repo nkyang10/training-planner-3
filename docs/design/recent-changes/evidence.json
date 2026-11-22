@@ -1,0 +1,173 @@
+{
+  "desktop": {
+    "scrollY": 975,
+    "viewport": {
+      "w": 1280,
+      "h": 900
+    },
+    "card": {
+      "x": 118,
+      "y": 1051,
+      "w": 1044,
+      "h": 864.8
+    },
+    "heading": {
+      "x": 139,
+      "y": 1091.9,
+      "w": 1002,
+      "h": 32
+    },
+    "footnote": {
+      "x": 139,
+      "y": 1143.8,
+      "w": 1002,
+      "h": 17
+    },
+    "first": {
+      "row": {
+        "x": 139,
+        "y": 1173.8,
+        "w": 1002,
+        "h": 111
+      },
+      "summary": {
+        "x": 139,
+        "y": 1173.8,
+        "w": 774.2,
+        "h": 21
+      },
+      "meta": {
+        "x": 1032,
+        "y": 1176.8,
+        "w": 109,
+        "h": 17
+      },
+      "detail": {
+        "x": 139,
+        "y": 1207.8,
+        "w": 1002,
+        "h": 17
+      },
+      "undo": {
+        "x": 139,
+        "y": 1237.8,
+        "w": 174.4,
+        "h": 47
+      },
+      "discuss": {
+        "x": 321.4,
+        "y": 1248.1,
+        "w": 129,
+        "h": 26.4
+      }
+    },
+    "last": {
+      "row": {
+        "x": 139,
+        "y": 1690.8,
+        "w": 1002,
+        "h": 204
+      },
+      "summary": {
+        "x": 139,
+        "y": 1701.8,
+        "w": 1002,
+        "h": 63
+      },
+      "meta": {
+        "x": 139,
+        "y": 1770.8,
+        "w": 116,
+        "h": 17
+      },
+      "detail": {
+        "x": 139,
+        "y": 1800.8,
+        "w": 1002,
+        "h": 34
+      }
+    }
+  },
+  "proposedDesktop": {
+    "height": 914,
+    "width": 1044,
+    "docHeight": 2118,
+    "buttons": 10,
+    "undo": {
+      "w": 210,
+      "h": 47
+    },
+    "ask": {
+      "w": 57,
+      "h": 36
+    },
+    "undoLabels": [
+      "Undo these 2 sessions",
+      "Undo this session",
+      "Undo these 2 sessions",
+      "Undo these 2 sessions",
+      "Undo these 14 sessions"
+    ],
+    "firstRow": 131,
+    "lastRow": 200
+  },
+  "proposedPhone": {
+    "height": 1128,
+    "width": 370,
+    "docHeight": 2344,
+    "buttons": 10,
+    "undo": {
+      "w": 210,
+      "h": 47
+    },
+    "ask": {
+      "w": 57,
+      "h": 36
+    },
+    "undoLabels": [
+      "Undo these 2 sessions",
+      "Undo this session",
+      "Undo these 2 sessions",
+      "Undo these 2 sessions",
+      "Undo these 14 sessions"
+    ],
+    "firstRow": 195,
+    "lastRow": 223
+  },
+  "proposed320": {
+    "height": 1522,
+    "width": 300,
+    "docHeight": 2835,
+    "buttons": 10,
+    "undo": {
+      "w": 210,
+      "h": 47
+    },
+    "ask": {
+      "w": 57,
+      "h": 36
+    },
+    "undoLabels": [
+      "Undo these 2 sessions",
+      "Undo this session",
+      "Undo these 2 sessions",
+      "Undo these 2 sessions",
+      "Undo these 14 sessions"
+    ],
+    "firstRow": 280,
+    "lastRow": 285
+  },
+  "landing": {
+    "url": "http://127.0.0.1:18091/calendar?month=2026-11&undone=1",
+    "scrollY": 0,
+    "banner": {
+      "text": "Change undone. The calendar is back to its previous state.",
+      "role": "status",
+      "y": 92
+    },
+    "card": {
+      "y": 1083,
+      "h": 762
+    }
+  }
+}

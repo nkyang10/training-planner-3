@@ -392,6 +392,8 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 /* Ink label on the kept ember-to-solar gradient: 5.92-10.09:1, where white fell to 1.83:1 at the solar end. */
 #coach-bubble { position: fixed; right: 18px; bottom: 18px; z-index: 20; border: 0; border-radius: 999px; padding: 14px 20px; font-weight: 800; font-size: 15px; color: var(--ink); background: linear-gradient(135deg, var(--ember), var(--solar)); box-shadow: 0 12px 30px rgba(255, 90, 31, .35); cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
 #coach-bubble .coach-token { width: 26px; height: 26px; object-fit: contain; flex: none; }
+/* The launcher doubles as the pending-decision badge host while the panel is closed (F4). */
+#coach-bubble .coach-pending-badge { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; pointer-events: none; box-shadow: 0 1px 3px rgba(27, 18, 12, .25); }
 #coach-panel { position: fixed; right: 18px; bottom: 18px; z-index: 21; width: min(380px, calc(100vw - 24px)); height: calc(100vh - 36px); height: calc(100dvh - 36px); max-height: calc(100dvh - 36px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 24px 60px rgba(27, 18, 12, .25); overflow: hidden; }
 .coach-dock { display: contents; }
 #month-picker { position: fixed; z-index: 55; display: grid; gap: 10px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(27, 18, 12, .24); }
@@ -495,6 +497,14 @@ input[readonly] { background: #f6eee6; color: var(--muted); }
 .coach-change-entries { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--ink-2); display: grid; gap: 2px; }
 .coach-change-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
 .coach-change-actions .btn { padding: 6px 10px; font-size: 12px; }
+.coach-change-ask { border: 0; background: none; padding: 8px 2px; font: inherit; font-size: 12px; font-weight: 700; color: var(--ember-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.coach-change-ask:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.coach-change-more { margin-top: 2px; }
+.coach-change-more > summary { display: inline-flex; align-items: center; min-height: 32px; cursor: pointer; font-size: 12px; font-weight: 700; color: var(--ember-text); list-style: none; }
+.coach-change-more > summary::-webkit-details-marker { display: none; }
+.coach-change-more > summary::marker { content: ""; }
+.coach-change-more > summary::before { content: "+ "; }
+.coach-change-more[open] > summary::before { content: "\\2212  "; }
 .coach-change-undo { display: contents; }
 #coach-log { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .bubble { max-width: 88%; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
@@ -744,9 +754,54 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .change-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
 .change-item { border-top: 1px dashed var(--line); padding-top: 10px; }
 .change-item:first-child { border-top: 0; padding-top: 0; }
-.change-item.undone { opacity: .62; }
-.change-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
-.change-undo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+/* An undone batch stays readable: the badge carries the state, the text keeps its contrast. */
+.change-item.undone .change-head strong { color: var(--muted); }
+.change-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.change-head strong { font-size: 15px; overflow-wrap: anywhere; }
+.change-meta { font-size: 12px; color: var(--muted); }
+.change-badge { display: inline-block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.change-entries { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+.change-entry { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; color: var(--ink-2); line-height: 1.4; }
+.change-day { flex: 0 0 84px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.change-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.change-act, .change-title { font-weight: 600; }
+.change-delta { color: var(--ember-text); font-weight: 700; }
+.change-kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; white-space: nowrap; }
+.change-more { margin-top: 8px; border-top: 1px dashed var(--line); padding-top: 4px; }
+.change-more > summary { display: inline-flex; align-items: center; min-height: 44px; cursor: pointer; font-size: 12.5px; font-weight: 800; color: var(--ember-text); list-style: none; }
+.change-more > summary::-webkit-details-marker { display: none; }
+.change-more > summary::marker { content: ""; }
+.change-more > summary::before { content: "+ "; }
+.change-more[open] > summary::before { content: "\\2212  "; }
+.change-actions { margin-top: 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.change-actions .btn { padding: 13px 16px; font-size: 13px; }
+.change-ask { border: 0; background: none; padding: 10px 4px; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ember-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+#recent-changes .btn:focus-visible, #recent-changes .change-ask:focus-visible, #recent-changes .change-more > summary:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.change-see-all { color: var(--ember-text); font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+.change-see-all:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+/* The standalone all-changes page: one filter row, then schedule batches and quieter activity/muscle rows. */
+.filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.filter-pill { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font-size: 13px; font-weight: 700; text-decoration: none; }
+.filter-pill:hover { border-color: var(--ember); color: var(--ember-text); }
+.filter-pill.active { border-color: var(--ember); background: var(--wash); color: var(--ember-text); }
+.filter-pill:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.filter-count { font-size: 11px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.filter-pill.active .filter-count { color: var(--ember-text); }
+.changes-summary { margin: 4px 0 12px; }
+.changes-footnote { margin-top: 12px; }
+.changes-empty-card p { margin: 0; }
+.event-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.event-item { border-top: 1px dashed var(--line); padding-top: 10px; }
+.event-item:first-child { border-top: 0; padding-top: 0; }
+.event-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; }
+.event-head strong { font-size: 15px; overflow-wrap: anywhere; }
+.event-meta { font-size: 12px; color: var(--muted); }
+.event-detail { margin: 6px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); overflow-wrap: anywhere; }
+.event-detail a { color: var(--ember-text); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.event-detail a:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
+.event-detail .chip { font-size: 10.5px; }
+.event-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 8px; }
+.event-actions .chip:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; }
 /* The offer shown after a goal change: one tap opens the chat with an editable message. */
 .goal-offer { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px dashed var(--line); border-radius: 12px; background: var(--wash); }
 .peek-intent { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--line); }
@@ -889,6 +944,29 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .attention-badge { display: inline-block; vertical-align: 2px; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; }
 .muscle-attention-chip { text-transform: none; letter-spacing: 0; font-weight: 800; text-decoration: none; border-color: #ffb7a6; color: #a3260b; background: #ffe9e2; }
 .muscle-status-card { margin-bottom: 16px; }
+/* The coach-suggestion card: the model's notice about a muscle, waiting for the runner's one tap. It reads as a
+   soft prompt on the page and as a chat bubble in the dock, and both surfaces post to the same decision endpoint. */
+.muscle-proposal-card { margin-bottom: 16px; border-color: #f0d9a8; background: #fffaf1; }
+.muscle-proposal-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.muscle-proposal { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.muscle-proposal p { margin: 0; }
+.muscle-proposal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.muscle-proposal-chip { border-color: #e7c98e; background: #fdf3df; color: #7a5a1f; text-transform: none; letter-spacing: 0; }
+.muscle-proposal-meta { margin-top: -2px; }
+/* The decision buttons are the point of the card: a full-size target on the page and a raised one in the dock,
+   never the 28px sliver the first pass shipped. */
+.proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.proposal-actions .btn { padding: 8px 14px; font-size: 13px; }
+.proposal-action-form { display: inline-flex; gap: 8px; margin: 0; }
+.proposal-adjust { text-decoration: none; background: #fff; white-space: nowrap; }
+#coach-panel .proposal-actions .btn { min-height: 36px; }
+.banner-undo { display: inline-flex; margin: 0 0 0 8px; }
+.bubble.muscle-suggestion { max-width: 92%; border-color: #f0d9a8; background: #fffaf1; }
+.bubble.muscle-suggestion p { margin: 4px 0 0; }
+.bubble.muscle-suggestion.ok { border-color: #b7d7b0; background: #f4faf1; }
+.muscle-suggestion-pending { font-style: italic; }
+.muscle-suggestion-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-weight: 700; }
+.muscle-suggestion-undo { cursor: pointer; background: #fff; }
 /* Muscle page: the status/readings rail sits beside the check-in figure from 1024px, so the first interactive
    surface is visible at load instead of below a tall status card. Below that, DOM order (status → form → readings)
    is preserved. */

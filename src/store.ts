@@ -16,6 +16,8 @@ import type {
   Memory,
   Message,
   MuscleCheckIn,
+  MuscleProposal,
+  MuscleProposalStatus,
   MuscleStatusControl,
   PromptSnapshot,
   Store,
@@ -144,6 +146,17 @@ CREATE TABLE IF NOT EXISTS muscle_status_controls (
   payload TEXT NOT NULL,
   PRIMARY KEY (user_id, muscle_id)
 );
+
+CREATE TABLE IF NOT EXISTS muscle_proposals (
+  proposal_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  decided_at TEXT,
+  payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS muscle_proposals_user_status ON muscle_proposals (user_id, status, created_at);
 
 CREATE TABLE IF NOT EXISTS change_sets (
   change_set_id TEXT PRIMARY KEY,
@@ -277,6 +290,23 @@ const UPSERT_MUSCLE_STATUS_CONTROL = `
   ON CONFLICT(user_id, muscle_id) DO UPDATE SET
     updated_at = excluded.updated_at,
     payload = excluded.payload
+`;
+const INSERT_MUSCLE_PROPOSAL = `
+  INSERT INTO muscle_proposals (proposal_id, user_id, status, created_at, updated_at, decided_at, payload)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`;
+const UPDATE_MUSCLE_PROPOSAL = `
+  UPDATE muscle_proposals
+     SET status = ?, updated_at = ?, decided_at = ?, payload = ?
+   WHERE user_id = ? AND proposal_id = ?
+`;
+/** The coach's suggestion journal is small: keep the newest rows and drop the tail. */
+const PRUNE_MUSCLE_PROPOSALS = `
+  DELETE FROM muscle_proposals
+   WHERE user_id = ?
+     AND proposal_id NOT IN (
+       SELECT proposal_id FROM muscle_proposals WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 40
+     )
 `;
 const MARK_NOTIFICATIONS_READ =
   "UPDATE notifications SET read_at = ? WHERE user_id = ? AND read_at IS NULL";
@@ -715,6 +745,65 @@ class SqliteStore implements Store {
     this.db
       .prepare(UPSERT_MUSCLE_STATUS_CONTROL)
       .run(control.userId, control.muscleId, control.updatedAt, JSON.stringify(control));
+  }
+
+  appendMuscleProposal(proposal: MuscleProposal): void {
+    this.db
+      .prepare(INSERT_MUSCLE_PROPOSAL)
+      .run(
+        proposal.proposalId,
+        proposal.userId,
+        proposal.status,
+        proposal.createdAt,
+        proposal.updatedAt,
+        proposal.decidedAt,
+        JSON.stringify(proposal),
+      );
+    this.db.prepare(PRUNE_MUSCLE_PROPOSALS).run(proposal.userId, proposal.userId);
+  }
+
+  getMuscleProposal(userId: string, proposalId: string): MuscleProposal | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM muscle_proposals WHERE user_id = ? AND proposal_id = ?")
+      .get(userId, proposalId);
+    return row === undefined ? undefined : decode<MuscleProposal>(String(row["payload"]));
+  }
+
+  listMuscleProposals(userId: string, status?: MuscleProposalStatus, limit = 20): MuscleProposal[] {
+    const take = normalizeLimit(limit, 20);
+    if (take === 0) return [];
+    const rows =
+      status === undefined
+        ? this.db
+            .prepare(
+              `SELECT payload FROM muscle_proposals
+                WHERE user_id = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT ?`,
+            )
+            .all(userId, take)
+        : this.db
+            .prepare(
+              `SELECT payload FROM muscle_proposals
+                WHERE user_id = ? AND status = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT ?`,
+            )
+            .all(userId, status, take);
+    return rows.map((row) => decode<MuscleProposal>(String(row["payload"])));
+  }
+
+  updateMuscleProposal(proposal: MuscleProposal): void {
+    this.db
+      .prepare(UPDATE_MUSCLE_PROPOSAL)
+      .run(
+        proposal.status,
+        proposal.updatedAt,
+        proposal.decidedAt,
+        JSON.stringify(proposal),
+        proposal.userId,
+        proposal.proposalId,
+      );
   }
 
   listNotifications(userId: string, limit = 20): AppNotification[] {

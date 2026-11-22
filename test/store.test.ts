@@ -18,6 +18,8 @@ import type {
   Memory,
   Message,
   MuscleCheckIn,
+  MuscleProposal,
+  MuscleProposalStatus,
   MuscleStatusControl,
   PromptSnapshot,
   TrainingSession,
@@ -1153,6 +1155,87 @@ describe("muscle check-ins", () => {
     expect(rows[0]?.muscles[1]?.soreness).toBe(2);
     reopened.close();
     rmSync(directory, { recursive: true, force: true });
+  });
+});
+
+describe("muscle proposals", () => {
+  const proposal = (
+    userId: string,
+    proposalId: string,
+    status: MuscleProposalStatus,
+    createdAt: string,
+  ): MuscleProposal => ({
+    proposalId,
+    userId,
+    action: "report",
+    muscleId: "calves",
+    soreness: 6,
+    conditions: ["tight"],
+    side: "left",
+    warmUp: null,
+    note: null,
+    activityId: null,
+    evidence: ["my calf is tight"],
+    confidence: 0.8,
+    day: createdAt.slice(0, 10),
+    status,
+    createdAt,
+    updatedAt: createdAt,
+    decidedAt: status === "proposed" ? null : createdAt,
+  });
+
+  it("appends, fetches and filters by status without crossing runners", () => {
+    const { store, close } = memoryStore();
+    store.appendMuscleProposal(proposal("u1", "p1", "proposed", "2026-11-03T08:00:00.000Z"));
+    store.appendMuscleProposal(proposal("u1", "p2", "confirmed", "2026-11-04T08:00:00.000Z"));
+    store.appendMuscleProposal(proposal("u1", "p3", "proposed", "2026-11-05T08:00:00.000Z"));
+    store.appendMuscleProposal(proposal("u2", "other", "proposed", "2026-11-05T08:00:00.000Z"));
+    expect(store.listMuscleProposals("u1").map((row) => row.proposalId)).toEqual(["p3", "p2", "p1"]);
+    expect(store.listMuscleProposals("u1", "proposed").map((row) => row.proposalId)).toEqual(["p3", "p1"]);
+    expect(store.listMuscleProposals("u1", "proposed", 1).map((row) => row.proposalId)).toEqual(["p3"]);
+    expect(store.listMuscleProposals("u1", undefined, 0)).toEqual([]);
+    expect(store.getMuscleProposal("u1", "p2")?.status).toBe("confirmed");
+    expect(store.getMuscleProposal("u1", "p2")?.evidence).toEqual(["my calf is tight"]);
+    expect(store.getMuscleProposal("u2", "p1")).toBeUndefined();
+    close();
+  });
+
+  it("replaces a row when the runner decides and keeps it across a reopen", () => {
+    const directory = mkdtempSync(join(tmpdir(), "milebook-muscle-proposals-"));
+    const dbPath = join(directory, "proposals.sqlite");
+    const handle = createStore(`sqlite:${dbPath}`);
+    handle.store.appendMuscleProposal(proposal("u1", "p1", "proposed", "2026-11-05T08:00:00.000Z"));
+    const decided: MuscleProposal = {
+      ...proposal("u1", "p1", "confirmed", "2026-11-05T08:00:00.000Z"),
+      decidedAt: "2026-11-05T09:00:00.000Z",
+      updatedAt: "2026-11-05T09:00:00.000Z",
+    };
+    handle.store.updateMuscleProposal(decided);
+    expect(handle.store.getMuscleProposal("u1", "p1")).toMatchObject({
+      status: "confirmed",
+      decidedAt: "2026-11-05T09:00:00.000Z",
+    });
+    handle.close();
+    const reopened = createStore(`sqlite:${dbPath}`);
+    expect(reopened.store.listMuscleProposals("u1", "confirmed")).toHaveLength(1);
+    expect(reopened.store.listMuscleProposals("u1", "proposed")).toHaveLength(0);
+    reopened.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("keeps the newest rows and drops the journal tail", () => {
+    const { store, close } = memoryStore();
+    for (let index = 0; index < 45; index += 1) {
+      const minute = String(index).padStart(2, "0");
+      store.appendMuscleProposal(
+        proposal("u1", `p${index}`, "confirmed", `2026-11-05T08:${minute}:00.000Z`),
+      );
+    }
+    const rows = store.listMuscleProposals("u1", undefined, 100);
+    expect(rows).toHaveLength(40);
+    expect(rows[0]?.proposalId).toBe("p44");
+    expect(rows.some((row) => row.proposalId === "p4")).toBe(false);
+    close();
   });
 });
 

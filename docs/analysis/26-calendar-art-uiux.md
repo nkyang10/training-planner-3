@@ -1,4 +1,4 @@
-# 21 - Calendar page art and UI/UX review
+# 26 - Calendar page art and UI/UX review
 
 **Scope:** the signed-in Plan/calendar page. This is the same four-cycle research -> design/brainstorm -> POC ->
 review loop used for the auth page, applied to a data-dense surface instead of a marketing surface.
@@ -17,7 +17,7 @@ real muscle anatomy with illustration. The calendar must stay usable before it l
 - Four cycles, each ending in rendered evidence and a decision.
 - Original assets only: ComfyUI Flux2 paper textures, Blender 5.3 Cycles objects, Pillow compositing.
 - Headless Chrome over CDP at 1440, 980, 768, 390 and 320 widths; measurements from `getBoundingClientRect`.
-- The final gate is `pnpm check` (562 tests in 21 files).
+- The final gate is `pnpm check` (627 tests in 22 files after the merge with main).
 - Evidence lives in [`docs/design/calendar/`](../design/calendar/).
 
 ## 2. Cycle 1 - research and baseline
@@ -126,7 +126,7 @@ route. It belongs to any month.
 |---|---:|---:|---:|---:|---|
 | Empty 1440x1000 | 1400 | 145 | 96 | 314 | No overflow; CTA visible |
 | Empty 390x844 | 1390 | 221 | 72 | 418 | No overflow; CTA visible |
-| Empty 320x700 | 1515 | 251 | 72 | 464 | No overflow; CTA visible |
+| Empty 320x700 | 1498 | 251 | 72 | 464 | No overflow; CTA visible |
 | Empty 768x1024 | 1444 | 189 | 72 | 358 | Stacked plate; no overflow |
 | Empty 980x800 | 1400 | 145 | 96 | 314 | Three-column strip; no overflow |
 | Populated 1440x1000 | 1348 | 93 | 0 | 262 | Unchanged; no wash |
@@ -148,7 +148,7 @@ route. It belongs to any month.
 
 ### 5.1 Viewport and layout
 
-- Empty calendar: 1400 px at 1440x1000, 1390 px at 390x844, 1515 px at 320x700, 1444 px at 768x1024,
+- Empty calendar: 1400 px at 1440x1000, 1390 px at 390x844, 1498 px at 320x700, 1444 px at 768x1024,
   1400 px at 980x800.
 - Baseline cost: +73 px desktop, +77 px phone. The month grid still begins at 410 px desktop and 533 px phone.
 - Populated calendar, history, profile and muscle keep their previous page heights; the only change is the coach

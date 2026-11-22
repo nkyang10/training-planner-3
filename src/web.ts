@@ -45,12 +45,21 @@ import {
   type MuscleSide,
   type MuscleWarmUp,
 } from "./muscles";
-import { computeMuscleStatuses } from "./muscle-status";
+import { computeMuscleStatuses, type MuscleStatusControl } from "./muscle-status";
+import {
+  confirmMuscleProposal,
+  dismissMuscleProposal,
+  listPendingMuscleProposals,
+  partitionPendingMuscleProposals,
+  restoreMuscleProposal,
+} from "./muscle-proposals";
 import {
   muscleCalendarChip,
+  muscleProposalView,
   musclesWorkedCard,
   renderMusclePage,
   type MuscleActivityOption,
+  type MuscleProposalView,
   type MuscleTrainingRow,
 } from "./web-muscle";
 import { CSS } from "./styles";
@@ -93,6 +102,7 @@ import type {
   ActivityWorkout,
   ActivityWorkoutStep,
   AppNotification,
+  ChangeEntry,
   ChangeSet,
   CoachStateKey,
   GarminKey,
@@ -250,7 +260,9 @@ function safeNext(value: string | null): string {
       value === "/history" ||
       value.startsWith("/history?") ||
       value === "/muscle" ||
-      value.startsWith("/muscle?"))
+      value.startsWith("/muscle?") ||
+      value === "/changes" ||
+      value.startsWith("/changes?"))
   ) {
     return value;
   }
@@ -322,8 +334,9 @@ function syncFlash(params: URLSearchParams, tx: Translator): string {
   if (params.get("logged") === "1") {
     return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.runLogged"))}</p>`;
   }
-  if (params.get("undone") === "1") {
-    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.changeUndone"))}</p>`;
+  const undoneCount = Number(params.get("undone") ?? "");
+  if (Number.isInteger(undoneCount) && undoneCount > 0) {
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.changeUndoneCount", { count: undoneCount }))}</p>`;
   }
   const undoError = params.get("undoError");
   if (undoError !== null && undoError.length > 0) {
@@ -493,38 +506,319 @@ function formatShortDate(day: string, date: DateFormat = defaultTranslator.date)
   return date.shortDate(day);
 }
 
-function changeActionLabel(action: string, tx: Translator): string {
-  if (action === "add") return tx.t("changes.added");
-  if (action === "remove") return tx.t("changes.deleted");
-  if (action === "revert") return tx.t("changes.reverted");
-  return tx.t("changes.moved");
+/** One batch's human headline: count + action + the day or range it touched. Never the raw coach log. */
+interface ChangeHeadline {
+  readonly text: string;
+  readonly action: "add" | "remove" | "update" | "revert" | "mixed";
+}
+
+/** The days a batch touched: the `toDay` when there is one, else the `fromDay`. */
+function changeDays(changeSet: ChangeSet): string[] {
+  const days = changeSet.entries
+    .map((entry) => entry.toDay ?? entry.fromDay)
+    .filter((day): day is string => day !== null && day.length === 10);
+  return [...new Set(days)].sort();
+}
+
+function changeRange(changeSet: ChangeSet, tx: Translator): string {
+  const days = changeDays(changeSet);
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (first === undefined || last === undefined) return "";
+  return first === last ? tx.date.weekdayDate(first) : `${tx.date.shortDate(first)} – ${tx.date.shortDate(last)}`;
+}
+
+function changeAction(changeSet: ChangeSet): "add" | "remove" | "update" | "revert" | "mixed" {
+  const actions = new Set(changeSet.entries.map((entry) => entry.action));
+  if (actions.size !== 1) return "mixed";
+  const action = changeSet.entries[0]?.action;
+  return action === "add" || action === "remove" || action === "update" ? action : action === "revert" ? "revert" : "mixed";
+}
+
+/** What a revert batch reversed: an undo that deleted an added session reversed an add. */
+function revertAction(changeSet: ChangeSet): "add" | "remove" | "update" | "mixed" {
+  const effects = changeSet.entries.map((entry) => {
+    if (entry.after === null) return "add" as const;
+    if (entry.before === null) return "remove" as const;
+    return "update" as const;
+  });
+  const unique = new Set(effects);
+  return unique.size === 1 ? effects[0] ?? "mixed" : "mixed";
+}
+
+function changeHeadline(changeSet: ChangeSet, tx: Translator): ChangeHeadline {
+  const count = changeSet.entries.length;
+  const unit = count === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
+  const phrase = (action: "add" | "remove" | "update" | "mixed"): string => {
+    if (action === "add") return tx.t("changes.headline.added", { count, unit });
+    if (action === "remove") return tx.t("changes.headline.removed", { count, unit });
+    if (action === "update") return tx.t("changes.headline.updated", { count, unit });
+    return tx.t("changes.headline.mixed", { count });
+  };
+  const action = changeAction(changeSet);
+  let text: string;
+  if (action === "revert") {
+    const original = revertAction(changeSet);
+    text = original === "remove"
+      ? tx.t("changes.headline.restored", { count, unit })
+      : tx.t("changes.headline.undone", { phrase: phrase(original) });
+  } else {
+    text = phrase(action);
+  }
+  const range = changeRange(changeSet, tx);
+  return { text: range.length === 0 ? text : `${text} · ${range}`, action };
+}
+
+function changeDayDiff(day: string, today: string): number {
+  const from = Date.parse(`${day}T00:00:00.000Z`);
+  const to = Date.parse(`${today}T00:00:00.000Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
+  return Math.max(0, Math.round((to - from) / 86_400_000));
+}
+
+/** A timestamp in the runner's zone, with relative freshness for the last week. */
+function timeMeta(createdAt: string, today: string, timezone: string, tx: Translator): string {
+  const day = localDay(createdAt, timezone);
+  const diff = changeDayDiff(day, today);
+  if (diff === 0) return tx.t("changes.changedToday");
+  if (diff === 1) return tx.t("changes.changedYesterday");
+  if (diff <= 7) return tx.t("changes.changedDaysAgo", { date: tx.date.shortDate(day), count: diff });
+  return tx.t("changes.changedOn", { date: tx.date.shortDate(day) });
+}
+
+function changeMeta(changeSet: ChangeSet, today: string, timezone: string, tx: Translator): string {
+  return timeMeta(changeSet.createdAt, today, timezone, tx);
+}
+
+/** One entry as the runner reads it: what happened, to which session, and what actually moved. */
+function describeChangeEntry(entry: ChangeEntry, tx: Translator): { action: string; delta: string } {
+  if (entry.action === "add") return { action: tx.t("changes.added"), delta: "" };
+  if (entry.action === "remove") return { action: tx.t("changes.deleted"), delta: "" };
+  if (entry.action === "revert") {
+    return entry.after === null
+      ? { action: tx.t("changes.deleted"), delta: "" }
+      : { action: tx.t("changes.putBack"), delta: "" };
+  }
+  const moved = entry.fromDay !== null && entry.toDay !== null && entry.fromDay !== entry.toDay;
+  const deltas: string[] = [];
+  if (moved && entry.fromDay !== null) deltas.push(tx.t("changes.fromDay", { day: tx.date.shortDate(entry.fromDay) }));
+  const before = entry.before;
+  const after = entry.after;
+  if (before !== null && after !== null) {
+    if (before.title !== after.title) deltas.push(tx.t("changes.renamed"));
+    if (before.distanceKm !== after.distanceKm) {
+      const distance = (value: number | null): string => (value === null ? "–" : `${value} km`);
+      deltas.push(`${distance(before.distanceKm)} → ${distance(after.distanceKm)}`);
+    }
+    if (before.durationMin !== after.durationMin) {
+      const duration = (value: number | null): string => (value === null ? "–" : formatMinutes(value));
+      deltas.push(`${duration(before.durationMin)} → ${duration(after.durationMin)}`);
+    }
+    if (before.kind !== after.kind) deltas.push(`${sessionKindLabel(before.kind, tx)} → ${sessionKindLabel(after.kind, tx)}`);
+    if ((before.note ?? "") !== (after.note ?? "")) deltas.push(tx.t("changes.noteUpdated"));
+  }
+  return { action: moved ? tx.t("changes.moved") : tx.t("changes.updated"), delta: deltas.join(" · ") };
+}
+
+function changeEntryRow(entry: ChangeEntry, tx: Translator): string {
+  const day = entry.toDay ?? entry.fromDay;
+  const { action, delta } = describeChangeEntry(entry, tx);
+  const dayLabel = day === null ? "" : tx.date.weekdayDate(day);
+  return `<li class="change-entry"><span class="change-day">${escapeHtml(dayLabel)}</span><span class="change-what"><span class="change-act">${escapeHtml(action)}</span> <span class="change-title">${escapeHtml(entry.title)}</span>${delta.length === 0 ? "" : ` <span class="change-delta">${escapeHtml(delta)}</span>`} <span class="change-kind">${escapeHtml(sessionKindLabel(entry.kind, tx))}</span></span></li>`;
+}
+
+/** The question the runner actually asks: what changed on which day, not the raw coach log. */
+function discussMessageFor(changeSet: ChangeSet, tx: Translator): string {
+  const count = changeSet.entries.length;
+  const range = changeRange(changeSet, tx);
+  if (count === 1) {
+    const entry = changeSet.entries[0];
+    const day = entry === undefined ? null : entry.toDay ?? entry.fromDay;
+    if (entry !== undefined && day !== null) return tx.t("changes.discussOne", { title: entry.title, day: tx.date.weekdayDate(day) });
+  }
+  if (count > 1 && range.length > 0) {
+    return tx.t("changes.discussMany", { count, unit: tx.t("changes.unitOther"), when: range });
+  }
+  return tx.t("changes.discussGeneric");
 }
 
 /**
- * The runner-facing change history. The journal already existed but was reachable only by asking the coach; this card
- * makes each batch visible with an Undo form that reuses the same audited revert path.
+ * The runner-facing change history. Each batch is a human sentence, a short list of what moved, and an Undo whose
+ * label carries the blast radius. The raw coach summary stays in the store and the prompt; it is not UI copy.
  */
-function recentChangesCard(changeSets: readonly ChangeSet[], next: string, tx: Translator): string {
-  const date = tx.date;
-  const heading = `<h2>${escapeHtml(tx.t("changes.title"))}</h2>`;
+interface RecentChangesCardOptions {
+  readonly headingKey?: MessageKey;
+  /** Where the calendar card's "See all changes" footnote link points; omit on the all-changes page itself. */
+  readonly allHref?: string;
+}
+
+function recentChangesCard(
+  changeSets: readonly ChangeSet[],
+  next: string,
+  tx: Translator,
+  today: string,
+  timezone: string,
+  options: RecentChangesCardOptions = {},
+): string {
+  const heading = `<h2>${escapeHtml(tx.t(options.headingKey ?? "changes.title"))}</h2>`;
   if (changeSets.length === 0) {
     return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.empty"))}</p></section>`;
   }
-  const rows = changeSets.map((set) => {
+  const rows = changeSets.map((set, index) => {
     const undone = set.revertedAt !== null;
-    const entries = set.entries
-      .map((entry) => `${changeActionLabel(entry.action, tx)} ${entry.title}${entry.fromDay === null || entry.toDay === null ? "" : ` (${formatShortDate(entry.fromDay, date)} → ${formatShortDate(entry.toDay, date)})`}`)
-      .join(" · ");
-    // The visible question names the day and the batch so the coach discusses the exact change, never a guess.
-    const discussMessage = tx.t("changes.discussMessage", { date: formatShortDate(set.createdAt.slice(0, 10), date), summary: set.summary });
-    const discussButton = `<button type="button" class="coach-ask" title="${escapeHtml(tx.t("changes.discussTitle"))}" data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">${escapeHtml(tx.t("changes.discuss"))}</button>`;
+    const headline = changeHeadline(set, tx);
+    const count = set.entries.length;
+    const unit = count === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
+    const badge = undone ? ` <span class="change-badge">${escapeHtml(tx.t("changes.undoneBadge"))}</span>` : "";
+    const meta = `<span class="change-meta muted small">${escapeHtml(changeMeta(set, today, timezone, tx))}${badge}</span>`;
+    const sorted = [...set.entries].sort((left, right) => (left.toDay ?? left.fromDay ?? "").localeCompare(right.toDay ?? right.fromDay ?? ""));
+    const entryRows = sorted.map((entry) => changeEntryRow(entry, tx));
+    const visible = entryRows.slice(0, 3);
+    const hidden = entryRows.slice(3);
+    const list = visible.length === 0 ? "" : `<ul class="change-entries">${visible.join("")}</ul>`;
+    const more = hidden.length === 0
+      ? ""
+      : `<details class="change-more"><summary>${escapeHtml(tx.t("changes.showAll", { count: entryRows.length }))}</summary><ul class="change-entries">${hidden.join("")}</ul></details>`;
+    const helpId = `rc-change-help-${index}`;
+    const askWhy = `<button type="button" class="change-ask" title="${escapeHtml(tx.t("changes.discussTitle"))}" aria-label="${escapeHtml(`${tx.t("changes.askWhy")} — ${headline.text}`)}" aria-describedby="${helpId}" data-coach-message="${escapeHtml(discussMessageFor(set, tx))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">${escapeHtml(tx.t("changes.askWhy"))}</button><span class="sr-only" id="${helpId}">${escapeHtml(tx.t("changes.discussTitle"))}</span>`;
+    const isRevert = headline.action === "revert";
+    const undoLabel = isRevert
+      ? tx.t("changes.putItBack")
+      : count === 1
+        ? tx.t("changes.undoOne")
+        : tx.t("changes.undoCount", { count, unit });
     const undoForm = undone
-      ? `<div class="change-undo">${discussButton}</div>`
-      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo"><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit">${escapeHtml(tx.t("changes.undo"))}</button>${discussButton}</form>`;
-    const unit = set.entries.length === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
-    return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(set.summary)}</strong><span class="muted small">${escapeHtml(formatShortDate(set.createdAt.slice(0, 10), date))} · ${set.entries.length} ${escapeHtml(unit)}${undone ? ` · ${escapeHtml(tx.t("changes.undone"))}` : ""}</span></div><p class="muted small">${escapeHtml(entries)}</p>${undoForm}</li>`;
+      ? ""
+      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo-form" data-change-count="${count}"${isRevert ? ` data-change-putback="1"` : ""}><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit" aria-label="${escapeHtml(`${undoLabel} — ${headline.text}`)}">${escapeHtml(undoLabel)}</button></form>`;
+    return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(headline.text)}</strong>${meta}</div>${list}${more}<div class="change-actions">${undoForm}${askWhy}</div></li>`;
   }).join("");
-  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}</p><ul class="change-list">${rows}</ul></section>`;
+  const seeAll = options.allHref === undefined
+    ? ""
+    : ` <a class="change-see-all" href="${escapeHtml(options.allHref)}">${escapeHtml(tx.t("changes.seeAll"))}</a>`;
+  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}${seeAll}</p><ul class="change-list">${rows}</ul></section>`;
+}
+
+/** The standalone all-changes page: schedule batches, runs and muscle events in one place. */
+type ChangesFilter = "all" | "schedule" | "activity" | "muscle";
+
+const CHANGES_FILTERS: readonly ChangesFilter[] = ["all", "schedule", "activity", "muscle"];
+
+function changesFilterHref(filter: ChangesFilter): string {
+  return filter === "all" ? "/changes" : `/changes?type=${filter}`;
+}
+
+interface ChangesCounts {
+  readonly all: number;
+  readonly schedule: number;
+  readonly activity: number;
+  readonly muscle: number;
+}
+
+function changesFilterBar(filter: ChangesFilter, counts: ChangesCounts, tx: Translator): string {
+  const labels: Record<ChangesFilter, MessageKey> = {
+    all: "changes.filterAll",
+    schedule: "changes.filterSchedule",
+    activity: "changes.filterActivity",
+    muscle: "changes.filterMuscle",
+  };
+  const links = CHANGES_FILTERS.map((key) => {
+    const active = key === filter;
+    return `<a class="filter-pill${active ? " active" : ""}" href="${changesFilterHref(key)}"${active ? ' aria-current="page"' : ""}>${escapeHtml(tx.t(labels[key]))} <span class="filter-count">${counts[key]}</span></a>`;
+  }).join("");
+  return `<nav class="filter-bar" aria-label="${escapeHtml(tx.t("changes.filterAria"))}">${links}</nav>`;
+}
+
+function eventHead(action: string, meta: string): string {
+  return `<div class="event-head"><strong>${escapeHtml(action)}</strong><span class="event-meta muted small">${escapeHtml(meta)}</span></div>`;
+}
+
+function activityEventRow(activity: Activity, today: string, timezone: string, tx: Translator): string {
+  const action = activity.source === "garmin" ? tx.t("changes.activitySynced") : tx.t("changes.activityLogged");
+  const meta = timeMeta(activity.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(activity.day);
+  const metrics = activityMetrics(activity);
+  const source = activitySourceLabel(activity, tx);
+  const title = activity.title.trim().length > 0 ? activity.title : day;
+  const href = `/activity/${encodeURIComponent(activity.activityId)}`;
+  const detail = `<a class="event-day" href="/day/${escapeHtml(activity.day)}">${escapeHtml(day)}</a> · <a class="event-link" href="${href}">${escapeHtml(title)}</a>${metrics.length === 0 ? "" : ` · ${escapeHtml(metrics)}`} <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(source)}</span>`;
+  const more = `<a class="chip" href="${href}" aria-label="${escapeHtml(`${tx.t("activity.detail")} — ${title} · ${day}`)}">${escapeHtml(tx.t("activity.detail"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${detail}</p><div class="event-actions">${more}</div></li>`;
+}
+
+function muscleCheckInRow(checkIn: MuscleCheckIn, today: string, timezone: string, tx: Translator): string {
+  const meta = timeMeta(checkIn.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(checkIn.day);
+  const worst = [...checkIn.muscles].sort((left, right) => right.soreness - left.soreness)[0];
+  const parts = [tx.t("changes.muscleForDay", { day }), tx.t("changes.muscleCount", { count: checkIn.muscles.length })];
+  if (worst !== undefined) {
+    const name = tx.t(`muscle.short.${worst.muscleId}` as MessageKey);
+    parts.push(tx.t("changes.muscleWorst", { name, level: worst.soreness }));
+    const conditions = worst.conditions.map((key) => tx.t(`muscle.condition.${key}.label` as MessageKey)).join(" · ");
+    if (conditions.length > 0) parts.push(`(${conditions})`);
+  }
+  const links = [`<a class="chip" href="/muscle?day=${encodeURIComponent(checkIn.day)}" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${day}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`];
+  if (checkIn.activityId !== null) {
+    links.push(`<a class="chip" href="/activity/${encodeURIComponent(checkIn.activityId)}" aria-label="${escapeHtml(`${tx.t("changes.fromRun")} — ${day}`)}">${escapeHtml(tx.t("changes.fromRun"))}</a>`);
+  }
+  return `<li class="event-item">${eventHead(tx.t("changes.muscleCheckedIn"), meta)}<p class="event-detail">${escapeHtml(parts.join(" · "))}</p><div class="event-actions">${links.join("")}</div></li>`;
+}
+
+function muscleControlRow(control: MuscleStatusControl, today: string, timezone: string, tx: Translator): string {
+  const name = tx.t(`muscle.short.${control.muscleId}` as MessageKey);
+  const resolved = control.resolvedDay !== null;
+  const action = tx.t(resolved ? "changes.muscleStatusResolved" : control.hold ? "changes.muscleStatusHeld" : "changes.muscleStatusReleased");
+  const detail = resolved
+    ? tx.t("changes.muscleStatusResolvedDetail", { name, day: tx.date.weekdayDate(control.resolvedDay ?? control.updatedAt.slice(0, 10)) })
+    : tx.t(control.hold ? "changes.muscleStatusHeldDetail" : "changes.muscleStatusReleasedDetail", { name });
+  const meta = timeMeta(control.updatedAt, today, timezone, tx);
+  const link = `<a class="chip" href="/muscle?focus=${encodeURIComponent(control.muscleId)}#check-in" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${name}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${escapeHtml(detail)}</p><div class="event-actions">${link}</div></li>`;
+}
+
+interface ChangesPageInput {
+  readonly scheduleCard: string;
+  readonly scheduleCount: number;
+  readonly activities: readonly Activity[];
+  readonly checkIns: readonly MuscleCheckIn[];
+  readonly controls: readonly MuscleStatusControl[];
+  readonly filter: ChangesFilter;
+  readonly tx: Translator;
+  readonly today: string;
+  readonly timezone: string;
+}
+
+function renderChangesPage(input: ChangesPageInput): string {
+  const { scheduleCard, scheduleCount, activities, checkIns, controls, filter, tx, today, timezone } = input;
+  const counts: ChangesCounts = {
+    all: scheduleCount + activities.length + checkIns.length + controls.length,
+    schedule: scheduleCount,
+    activity: activities.length,
+    muscle: checkIns.length + controls.length,
+  };
+  const head = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("changes.allEyebrow"))}</p><h1>${escapeHtml(tx.t("changes.allTitle"))}</h1><p class="muted">${escapeHtml(tx.t("changes.allIntro"))}</p></header>`;
+  const filters = changesFilterBar(filter, counts, tx);
+  const summaryText = filter === "all"
+    ? tx.t("changes.allSummary", { count: counts.all })
+    : tx.t("changes.filterSummary", { shown: counts[filter], total: counts.all });
+  const summary = `<p class="changes-summary muted small">${escapeHtml(summaryText)}</p>`;
+  if (counts.all === 0) {
+    return `${head}${filters}${summary}<section class="card changes-empty-card"><p class="muted">${escapeHtml(tx.t("changes.allEmpty"))}</p></section>`;
+  }
+  const sections: string[] = [];
+  if (filter === "all" || filter === "schedule") sections.push(scheduleCard);
+  if (filter === "all" || filter === "activity") {
+    const rows = activities.map((activity) => activityEventRow(activity, today, timezone, tx)).join("");
+    sections.push(`<section class="card" id="activity-changes"><h2>${escapeHtml(tx.t("changes.activityTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.activityEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  if (filter === "all" || filter === "muscle") {
+    const events = [
+      ...checkIns.map((checkIn) => ({ at: checkIn.createdAt, row: muscleCheckInRow(checkIn, today, timezone, tx) })),
+      ...controls.map((control) => ({ at: control.updatedAt, row: muscleControlRow(control, today, timezone, tx) })),
+    ].sort((left, right) => right.at.localeCompare(left.at));
+    const rows = events.map((event) => event.row).join("");
+    sections.push(`<section class="card" id="muscle-changes"><h2>${escapeHtml(tx.t("changes.muscleTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.muscleEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  return `${head}${filters}${summary}${sections.join("")}<p class="muted small changes-footnote">${escapeHtml(tx.t("changes.allFootnote"))}</p>`;
 }
 
 type HistoryView = "week" | "month" | "year";
@@ -1564,6 +1858,7 @@ function renderAccountMenu(user: AuthUser, tx: Translator): string {
       <p class="account-id"><strong>${escapeHtml(user.displayName)}</strong><span>@${escapeHtml(user.username)}</span></p>
       <a class="account-item" href="/profile">${escapeHtml(tx.t("account.profile"))}</a>
       <a class="account-item" href="/coach-states">${escapeHtml(tx.t("account.coachStates"))}</a>
+      <a class="account-item" href="/changes">${escapeHtml(tx.t("account.changes"))}</a>
       ${renderSyncItem(tx)}
       <a class="account-item" href="/calendar?garmin=setup">${escapeHtml(tx.t("account.garminKey"))}</a>
       <a class="account-item" href="/export.json">${escapeHtml(tx.t("account.export"))}</a>
@@ -1911,6 +2206,7 @@ function navLabel(user: AuthUser | undefined, activeView: ViewName, tx: Translat
   if (activeView === "calendar") return tx.t("nav.plan");
   if (activeView === "history") return tx.t("nav.log");
   if (activeView === "muscle") return tx.t("nav.muscles");
+  if (activeView === "changes") return tx.t("changes.allTitle");
   return "";
 }
 
@@ -1940,7 +2236,9 @@ function renderViewSwitch(activeView: ViewName, tx: Translator): string {
   const plan = escapeHtml(tx.t("nav.plan"));
   const log = escapeHtml(tx.t("nav.log"));
   const muscle = escapeHtml(tx.t("nav.muscles"));
-  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
+  // The changes page is a fourth projection but has no tab of its own: keep the three tabs reachable, select none.
+  const thumb = activeView === "changes" ? "" : `<span class="view-thumb" aria-hidden="true"></span>`;
+  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}">${thumb}<a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
 }
 
 function renderLanguageSwitch(tx: Translator, extraClass = ""): string {
@@ -2013,7 +2311,7 @@ function layout(
   const trackScript = renderTrackScript();
   return `<!doctype html><html lang="${localeTag}" dir="${dir}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(documentTitle(title, user, activeView, unread, tx))}</title><link rel="stylesheet" href="/static/app.css?v=${APP_CSS_VERSION}"></head>
-  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
+  <body data-site-name="${escapeHtml(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${escapeHtml(context)}" data-active-view="${activeView}" data-timezone="${timezone}">${nav}<div class="app-shell"><main>${flash}${body}</main>${bubble}</div>${renderFooter(tx)}${i18nScript}${notificationScript}${accountScript}${muscleBadgeScript}${trackScript}</body></html>`;
 }
 
 /** The in-calendar coach bubble: suggestions are tappable; undo is requested in chat, with no history panel. */
@@ -2023,7 +2321,7 @@ function renderChatBubble(tx: Translator): string {
   <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel" data-track="coach-open" data-track-value="launcher"><img class="coach-token" src="/static/coach-token.webp" alt="" width="26" height="26" decoding="async"> ${E(tx.t("coach.bubbleLabel"))}</button>
   <section id="coach-panel" hidden role="region" aria-label="${E(tx.t("coach.title"))}">
     <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}" data-track="coach-close" data-track-value="close">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}" data-track="coach-close" data-track-value="minimize">−</button></div></header>
-    <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
+    <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}<span class="coach-tab-count" data-coach-count="chat" hidden></span></button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
     <div class="coach-tab-panel" id="coach-tabpanel-chat" role="tabpanel" aria-labelledby="coach-tab-chat" data-coach-panel="chat">
       <div id="coach-log" role="log" aria-live="polite"></div>
       <div id="coach-suggestions" aria-label="${E(tx.t("coach.suggestionsAria"))}"></div>
@@ -2035,13 +2333,18 @@ function renderChatBubble(tx: Translator): string {
     </div>
     <div class="coach-tab-panel" id="coach-tabpanel-changes" role="tabpanel" aria-labelledby="coach-tab-changes" data-coach-panel="changes" hidden>
       <div class="coach-tab-body" id="coach-changes-list"></div>
-      <div class="coach-tab-foot"><a class="chip" href="/calendar#recent-changes">${E(tx.t("coach.changesCalendar"))}</a></div>
+      <div class="coach-tab-foot"><a class="chip" href="/changes">${E(tx.t("coach.changesAll"))}</a></div>
     </div>
   </section>
   <script>
   (() => {
     const ui = window.__I18N__ || {};
     const tr = (key, fallback) => (typeof ui[key] === 'string' ? ui[key] : fallback);
+    const trf = (key, fallback, vars) => {
+      const template = tr(key, fallback);
+      if (!vars) return template;
+      return template.replace(/\\{(\\w+)\\}/g, (whole, name) => (vars[name] === undefined ? whole : String(vars[name])));
+    };
     const pageLocale = document.body.dataset.locale || 'en';
     const bubble = document.getElementById('coach-bubble');
     const panel = document.getElementById('coach-panel');
@@ -2168,6 +2471,62 @@ function renderChatBubble(tx: Translator): string {
       badge.hidden = value === 0;
       badge.title = typeof label === 'string' ? label : '';
     };
+    /**
+     * Pending muscle suggestions are decisions, not decoration: the launcher badge shows them while the panel is
+     * closed, and the Chat tab counts them while it is open (F4). Both disappear at zero, and the launcher keeps
+     * its spoken label in step with the count.
+     */
+    const updateMusclePendingCount = (count) => {
+      const value = Math.max(0, Math.floor(Number(count) || 0));
+      setCount('chat', value, tr('musclePendingOne', 'coach muscle suggestion waiting'));
+      for (const badge of bubble.querySelectorAll('.coach-pending-badge')) badge.remove();
+      // The server-rendered launcher label is the localized truth; keep it and only append the pending count.
+      const baseAria = bubble.dataset.baseAria || bubble.getAttribute('aria-label') || 'Talk to the coach';
+      bubble.dataset.baseAria = baseAria;
+      if (value === 0) {
+        bubble.setAttribute('aria-label', baseAria);
+        return;
+      }
+      const badge = document.createElement('span');
+      badge.className = 'view-badge coach-pending-badge';
+      badge.textContent = value > 9 ? '9+' : String(value);
+      badge.setAttribute('aria-hidden', 'true');
+      bubble.appendChild(badge);
+      const suffix = value === 1
+        ? tr('musclePendingOne', 'coach muscle suggestion waiting')
+        : tr('musclePendingOther', 'coach muscle suggestions waiting');
+      bubble.setAttribute('aria-label', baseAria + ' — ' + value + ' ' + suffix);
+    };
+    /** A confirm changes the attention count the app-bar badge reads; refresh it in place instead of waiting for a reload (F6). */
+    const refreshMuscleAttention = () => {
+      const tab = document.querySelector('.view-tab[href="/muscle"]');
+      if (tab === null) return;
+      const ui = window.__I18N__ || {};
+      fetch('/muscle/attention.json', { headers: { accept: 'application/json' } })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (data === null || typeof data !== 'object') return;
+          const count = Math.max(0, Math.floor(Number(data.count) || 0));
+          for (const badge of tab.querySelectorAll('.view-badge')) badge.remove();
+          if (count === 0) {
+            tab.setAttribute('aria-label', ui.muscleTabBase || 'Muscles');
+            return;
+          }
+          const badge = document.createElement('span');
+          badge.className = 'view-badge';
+          badge.textContent = count > 9 ? '9+' : String(count);
+          badge.setAttribute('aria-hidden', 'true');
+          tab.appendChild(badge);
+          const base = ui.muscleTabBase || 'Muscles';
+          const suffix = count === 1
+            ? (ui.muscleStatusOne || 'muscle in a special status')
+            : (ui.muscleStatusOther || 'muscles in a special status');
+          tab.setAttribute('aria-label', base + ' — ' + count + ' ' + suffix);
+        })
+        .catch(() => {
+          // Without the count the tab is still a working link.
+        });
+    };
     const show = (focusComposer) => {
       document.body.classList.add('coach-open');
       panel.hidden = false;
@@ -2233,11 +2592,17 @@ function renderChatBubble(tx: Translator): string {
           if (Array.isArray(data.states)) {
             addStateCards(data.states.filter((state) => state && state.status === 'observing'));
           }
+          // Pending muscle suggestions are durable rows too: the runner can still confirm or dismiss them after a
+          // refresh, not only on the turn that produced them.
+          addMuscleProposalCards(data.muscleProposals);
         }
         // The context tabs read the same durable rows: states are what the coach currently believes, changes are
         // what it actually wrote. Refreshing them after a turn keeps the three groups in step without a page load.
         if (Array.isArray(data.states)) renderStatesTab(data.states);
         if (Array.isArray(data.changes)) renderChangesTab(data.changes);
+        // The pending-suggestion count is a decision queue: the launcher badge and the Chat tab count both track
+        // it here so a waiting decision is visible before the log is ever opened.
+        updateMusclePendingCount(Array.isArray(data.muscleProposals) ? data.muscleProposals.length : 0);
         historyLoaded = true;
       } catch {
         // A failed history read leaves the bubble empty; the next turn still works.
@@ -2519,6 +2884,200 @@ function renderChatBubble(tx: Translator): string {
         scrollToLatest();
       }
     };
+    /**
+     * One pending coach muscle suggestion. It is the coach's notice, not a write: Confirm posts exactly the record
+     * the Muscle tab's own form would have written, Dismiss drops it (with an Undo, because a mis-tap should cost
+     * one tap, not a re-entry), and Adjust opens the form on the coach's reading so a misparse is corrected in
+     * place. The card is a labelled group announced once by the log's live region, never a nested status.
+     */
+    const buildMuscleProposalCard = (proposal) => {
+      const card = document.createElement('div');
+      card.className = 'bubble muscle-suggestion';
+      card.dataset.proposalId = proposal.proposalId;
+      card.setAttribute('role', 'group');
+      const headId = 'sug-' + String(proposal.proposalId).replace(/[^a-z0-9-]/gi, '');
+      card.setAttribute('aria-labelledby', headId);
+      const head = document.createElement('strong');
+      head.id = headId;
+      head.textContent = tr('muscleSuggestion', 'Muscle suggestion');
+      card.appendChild(head);
+      const lineRow = document.createElement('p');
+      lineRow.className = 'muscle-suggestion-line';
+      lineRow.textContent = typeof proposal.line === 'string' ? proposal.line : '';
+      if (typeof proposal.readingLabel === 'string' && proposal.readingLabel.length > 0) {
+        const chip = document.createElement('span');
+        chip.className = 'chip muscle-level level-' + String(proposal.reading || 'ok');
+        chip.textContent = proposal.readingLabel;
+        lineRow.append(' ', chip);
+      }
+      card.appendChild(lineRow);
+      if (typeof proposal.suggestedLabel === 'string' && proposal.suggestedLabel.length > 0) {
+        const meta = document.createElement('p');
+        meta.className = 'muted small';
+        meta.textContent = proposal.suggestedLabel;
+        card.appendChild(meta);
+      }
+      if (Array.isArray(proposal.evidence) && proposal.evidence.length > 0) {
+        const evidence = document.createElement('p');
+        evidence.className = 'muted small';
+        const quotes = proposal.evidence.map((quote) => '“' + String(quote) + '”').join(' · ');
+        evidence.textContent = tr('muscleSuggestionEvidence', 'You said: {quotes}').replace('{quotes}', quotes);
+        card.appendChild(evidence);
+      }
+      if (typeof proposal.note === 'string' && proposal.note.length > 0) {
+        const note = document.createElement('p');
+        note.className = 'muted small';
+        note.textContent = tr('muscleSuggestionNote', 'Your note: {note}').replace('{note}', proposal.note);
+        card.appendChild(note);
+      }
+      if (typeof proposal.contextLabel === 'string' && proposal.contextLabel.length > 0) {
+        const context = document.createElement('p');
+        context.className = 'muted small';
+        context.textContent = proposal.contextLabel;
+        card.appendChild(context);
+      }
+      if (typeof proposal.runLabel === 'string' && proposal.runLabel.length > 0 && typeof proposal.runHref === 'string') {
+        const run = document.createElement('p');
+        run.className = 'muted small';
+        const link = document.createElement('a');
+        link.href = proposal.runHref;
+        link.textContent = proposal.runLabel;
+        run.appendChild(link);
+        card.appendChild(run);
+      }
+      const pending = document.createElement('p');
+      pending.className = 'muted small muscle-suggestion-pending';
+      pending.textContent = tr('muscleSuggestionPending', 'Suggested - nothing is saved until you confirm.');
+      card.appendChild(pending);
+      const actions = document.createElement('div');
+      actions.className = 'proposal-actions';
+      const decide = async (decision, button) => {
+        button.disabled = true;
+        try {
+          const result = await fetch('/muscle/proposals/' + encodeURIComponent(proposal.proposalId) + '/' + decision, {
+            method: 'POST',
+            headers: { accept: 'application/json' },
+          });
+          if (!result.ok) {
+            // The typed detail says which honest failure happened: an already-decided row re-syncs instead of
+            // showing the generic apology, so a stale copy never claims a second confirm.
+            const body = await result.json().catch(() => null);
+            const detail = body && typeof body.detail === 'string' ? body.detail : '';
+            if (detail === 'not-pending' || detail === 'not-found') {
+              card.replaceChildren();
+              card.classList.add('muted');
+              card.textContent = tr('muscleAlreadyDecided', 'That suggestion was already confirmed or dismissed - refreshing.');
+              setWaitFlag('Muscle');
+              void loadConversation(true);
+              return;
+            }
+            track('muscle-suggestion-failed', detail || 'unknown');
+            button.disabled = false;
+            pending.textContent = tr('muscleFailed', 'That suggestion could not be applied. Open the Muscle tab to check in.');
+            return;
+          }
+          track('muscle-suggestion-' + decision, typeof proposal.action === 'string' ? proposal.action : 'report');
+          if (decision === 'confirm') {
+            card.replaceChildren();
+            card.classList.add('ok');
+            // The success line names the muscle, the way a friend would say it back - not a system's
+            // "record updated".
+            const name = typeof proposal.name === 'string' ? proposal.name.trim() : '';
+            const noted = name.length > 0
+              ? tr('muscleConfirmedName', 'Noted — {name} is on your record now').replace('{name}', name)
+              : tr('muscleConfirmed', 'Noted — saved to your muscle record');
+            card.textContent = noted + ' · ';
+            const view = document.createElement('a');
+            view.href = '/muscle';
+            view.textContent = tr('muscleViewRecord', 'See it on the Muscle tab');
+            card.appendChild(view);
+            refreshMuscleAttention();
+          } else {
+            card.replaceChildren();
+            card.classList.add('muted');
+            card.textContent = tr('muscleDismissed', 'Dropped — nothing changed') + ' · ';
+            const undo = document.createElement('button');
+            undo.type = 'button';
+            undo.className = 'chip muscle-suggestion-undo';
+            undo.textContent = tr('muscleUndo', 'Undo');
+            undo.addEventListener('click', async () => {
+              undo.disabled = true;
+              try {
+                const undone = await fetch('/muscle/proposals/' + encodeURIComponent(proposal.proposalId) + '/restore', {
+                  method: 'POST',
+                  headers: { accept: 'application/json' },
+                });
+                if (!undone.ok) throw new Error('restore failed');
+                card.replaceWith(buildMuscleProposalCard(proposal));
+                scrollToLatest();
+              } catch {
+                undo.disabled = false;
+              }
+            });
+            card.appendChild(undo);
+          }
+          setWaitFlag('Muscle');
+          void loadConversation(true);
+        } catch {
+          track('muscle-suggestion-failed', 'network');
+          button.disabled = false;
+          pending.textContent = tr('muscleFailed', 'That suggestion could not be applied. Open the Muscle tab to check in.');
+        }
+      };
+      const confirm = document.createElement('button');
+      confirm.type = 'button';
+      confirm.className = 'btn';
+      confirm.textContent = tr('confirm', 'Confirm');
+      confirm.addEventListener('click', () => { void decide('confirm', confirm); });
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'btn ghost';
+      dismiss.textContent = tr('dismiss', 'Dismiss');
+      dismiss.addEventListener('click', () => { void decide('dismiss', dismiss); });
+      actions.append(confirm, dismiss);
+      const adjust = document.createElement('a');
+      adjust.className = 'chip proposal-adjust';
+      adjust.href = '/muscle?proposal=' + encodeURIComponent(proposal.proposalId) + '#check-in';
+      adjust.textContent = tr('muscleAdjust', 'Adjust in the form');
+      adjust.addEventListener('click', () => { track('muscle-suggestion-adjust', typeof proposal.action === 'string' ? proposal.action : 'report'); });
+      actions.appendChild(adjust);
+      card.appendChild(actions);
+      return card;
+    };
+    // Pending muscle suggestions are durable rows: after a refresh the runner can still decide them here. On the
+    // Muscle tab the page card owns the standing queue, so history cards defer to it with one link instead of a
+    // second Confirm for the same record (F3); a card the turn just created renders here even there, because the
+    // page card only exists after the next reload.
+    const onMusclePage = () => (document.body.dataset.activeView || '') === 'muscle';
+    const addMuscleProposalCards = (proposals, options) => {
+      if (!Array.isArray(proposals) || proposals.length === 0) return;
+      const fromTurn = !!(options && options.fromTurn === true);
+      if (!fromTurn && onMusclePage()) {
+        const note = document.createElement('p');
+        note.className = 'bubble system';
+        const link = document.createElement('a');
+        link.href = '#muscle-suggestions';
+        link.textContent = tr('muscleOnThisPage', 'Coach suggestions are waiting on this page');
+        note.appendChild(link);
+        log.appendChild(note);
+        scrollToLatest();
+        return;
+      }
+      track('muscle-suggestion-shown', fromTurn ? 'dock-turn' : 'dock-history');
+      let firstConfirm = null;
+      for (const proposal of proposals) {
+        if (!proposal || typeof proposal.proposalId !== 'string' || proposal.status !== 'proposed') continue;
+        const card = buildMuscleProposalCard(proposal);
+        if (firstConfirm === null) firstConfirm = card.querySelector('.proposal-actions .btn');
+        log.appendChild(card);
+      }
+      scrollToLatest();
+      if ((options && options.focus === true) && firstConfirm !== null) {
+        // The decision is the turn's real next step: keyboard and screen-reader users land on it instead of
+        // Shift-Tabbing backwards past the chips to find it.
+        firstConfirm.focus();
+      }
+    };
     // The States tab is the durable half of the conversation: active and proposed states stay put instead of
     // scrolling away with the messages that produced them. Proposals that need a decision come first, and the badge
     // counts only those — an active state is context, not an alert.
@@ -2539,67 +3098,173 @@ function renderChatBubble(tx: Translator): string {
       }
       setCount('states', proposed.length, tr('statesBadgeTitle', 'proposed states'));
     };
-    const formatChangeDate = (value) => {
+    const formatChangeDate = (value, withWeekday = false) => {
       const day = typeof value === 'string' ? value.slice(0, 10) : '';
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return '';
+      const tag = pageLocale === 'en' ? 'en-GB' : pageLocale;
       try {
-        return new Date(day + 'T12:00:00Z').toLocaleDateString(pageLocale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        const date = new Date(day + 'T12:00:00Z');
+        if (!withWeekday) return date.toLocaleDateString(tag, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        // English keeps the comma its long day labels use; Chinese uses the locale's own order.
+        if (pageLocale === 'en') {
+          return date.toLocaleDateString(tag, { weekday: 'short', timeZone: 'UTC' }) + ', ' + date.toLocaleDateString(tag, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        }
+        return date.toLocaleDateString(tag, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
       } catch {
         return day;
       }
     };
-    const changeEntryText = (entry) => {
-      const from = formatChangeDate(entry.fromDay);
-      const to = formatChangeDate(entry.toDay);
-      const moved = entry.action === 'update' && from.length > 0 && to.length > 0 && entry.fromDay !== entry.toDay;
-      const label = entry.action === 'remove'
-        ? tr('actionRemove', 'Delete')
-        : entry.action === 'add'
-          ? tr('actionAdd', 'Add')
-          : moved
-            ? tr('actionMoved', 'Moved')
-            : tr('actionUpdate', 'Update');
-      const title = typeof entry.title === 'string' && entry.title.trim().length > 0 ? entry.title.trim() : tr('sessionWord', 'session');
-      const when = moved ? ' (' + from + ' → ' + to + ')' : to.length > 0 ? ' (' + to + ')' : from.length > 0 ? ' (' + from + ')' : '';
-      return label + ' ' + title + when;
+    /** The runner's local day for an instant, so the panel and the page date a batch the same way. */
+    const localDayOf = (value) => {
+      const date = typeof value === 'string' ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) return '';
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: document.body.dataset.timezone || 'UTC',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(date);
+        const map = {};
+        for (const part of parts) if (part.type !== 'literal') map[part.type] = part.value;
+        return map.year + '-' + map.month + '-' + map.day;
+      } catch {
+        return date.toISOString().slice(0, 10);
+      }
     };
-    // The change set on the page is server-rendered; after an in-place undo its Undo form must disappear too, or the
-    // runner can press a button that is already spent.
+    const changeUnit = (count) => tr(count === 1 ? 'changes.unitOne' : 'changes.unitOther', count === 1 ? 'session' : 'sessions');
+    const changeRangeText = (entries) => {
+      const days = [...new Set(entries.map((entry) => (typeof entry.toDay === 'string' && entry.toDay.length === 10 ? entry.toDay : entry.fromDay)).filter((day) => typeof day === 'string' && day.length === 10))].sort();
+      if (days.length === 0) return '';
+      return days.length === 1 ? formatChangeDate(days[0], true) : formatChangeDate(days[0]) + ' – ' + formatChangeDate(days[days.length - 1]);
+    };
+    const changeHeadlineText = (change) => {
+      const entries = Array.isArray(change.entries) ? change.entries : [];
+      const count = entries.length;
+      const unit = changeUnit(count);
+      const range = changeRangeText(entries);
+      const actions = new Set(entries.map((entry) => entry.action));
+      let text;
+      if (actions.size === 1 && actions.has('add')) text = trf('changes.headline.added', '{count} {unit} added', { count, unit });
+      else if (actions.size === 1 && actions.has('remove')) text = trf('changes.headline.removed', '{count} {unit} removed', { count, unit });
+      else if (actions.size === 1 && actions.has('update')) text = trf('changes.headline.updated', '{count} {unit} updated', { count, unit });
+      else if (actions.size === 1 && actions.has('revert')) text = trf('changes.headline.revert', 'Undone · {count} {unit}', { count, unit });
+      else text = trf('changes.headline.mixed', '{count} changes', { count });
+      return range.length === 0 ? text : text + ' · ' + range;
+    };
+    const changeEntryText = (entry) => {
+      const day = formatChangeDate(entry.toDay || entry.fromDay, true);
+      const moved = entry.action === 'update' && typeof entry.fromDay === 'string' && typeof entry.toDay === 'string' && entry.fromDay !== entry.toDay;
+      const label = entry.action === 'remove'
+        ? tr('changes.deleted', 'Deleted')
+        : entry.action === 'add'
+          ? tr('changes.added', 'Added')
+          : entry.action === 'revert'
+            ? tr('changes.reverted', 'Reverted')
+            : moved
+              ? tr('changes.moved', 'Moved')
+              : tr('changes.updated', 'Updated');
+      const title = typeof entry.title === 'string' && entry.title.trim().length > 0 ? entry.title.trim() : tr('sessionWord', 'session');
+      return day.length > 0 ? day + ' · ' + label + ' ' + title : label + ' ' + title;
+    };
+    // The page card is server-rendered; an in-place undo removes only its form and leaves "Ask why" usable.
     const markRecentChangeUndone = (changeSetId) => {
       for (const item of document.querySelectorAll('#recent-changes .change-item')) {
         if (item.dataset.changeSet !== changeSetId) continue;
         item.classList.add('undone');
-        const undo = item.querySelector('.change-undo');
-        if (undo !== null) undo.remove();
-        const meta = item.querySelector('.change-head .muted');
-        if (meta !== null) meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+        const undoForm = item.querySelector('.change-undo-form');
+        if (undoForm !== null) undoForm.remove();
+        const meta = item.querySelector('.change-head .change-meta');
+        if (meta !== null && meta.querySelector('.change-badge') === null) {
+          const badge = document.createElement('span');
+          badge.className = 'change-badge';
+          badge.textContent = tr('changes.undoneBadge', 'Undone');
+          meta.append(' ', badge);
+        }
       }
     };
+    const undoToast = (count, putBack) => {
+      const unit = changeUnit(count);
+      return putBack
+        ? trf('js.changePutBackToast', 'Put back: {count} {unit}', { count, unit })
+        : trf('js.changeUndoToast', 'Undone: {count} {unit}', { count, unit });
+    };
+    // Progressive enhancement for the server-rendered card: the plain form still works without script.
+    const wireRecentChanges = () => {
+      for (const undoForm of document.querySelectorAll('#recent-changes .change-undo-form')) {
+        undoForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const undoButton = undoForm.querySelector('button[type=submit]');
+          const count = Number(undoForm.dataset.changeCount || '1');
+          const putBack = undoForm.dataset.changePutback === '1';
+          if (undoButton !== null) undoButton.disabled = true;
+          try {
+            const response = await fetch(undoForm.action, {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ next: location.pathname + location.search }).toString(),
+              redirect: 'follow',
+            });
+            if (!response.ok) throw new Error('undo failed');
+            const item = undoForm.closest('.change-item');
+            markRecentChangeUndone(item === null ? '' : item.dataset.changeSet || '');
+            await refreshCalendar();
+            void loadConversation(true);
+            showToast(undoToast(count, putBack));
+          } catch {
+            if (undoButton !== null) undoButton.disabled = false;
+            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
+          }
+        });
+      }
+    };
+    wireRecentChanges();
     const buildChangeCard = (change) => {
       const reverted = change.revertedAt !== null && change.revertedAt !== undefined;
+      const entries = Array.isArray(change.entries) ? change.entries : [];
+      const count = entries.length;
+      const unit = changeUnit(count);
+      const isRevert = entries.length > 0 && entries.every((entry) => entry.action === 'revert');
       const card = document.createElement('article');
       card.className = 'coach-change' + (reverted ? ' undone' : '');
       card.dataset.changeSet = change.changeSetId;
       const head = document.createElement('div');
       head.className = 'coach-change-head';
       const title = document.createElement('strong');
-      title.textContent = typeof change.summary === 'string' && change.summary.trim().length > 0 ? change.summary : tr('changeDefault', 'Coach change');
+      title.textContent = changeHeadlineText(change);
       const meta = document.createElement('span');
       meta.className = 'coach-change-meta';
-      const entries = Array.isArray(change.entries) ? change.entries : [];
-      const count = entries.length;
-      meta.textContent = formatChangeDate(change.createdAt) + ' · ' + count + ' ' + (count === 1 ? tr('sessionWord', 'session') : tr('sessionsWord', 'sessions')) + (reverted ? ' · ' + tr('changeUndone', 'Undone') : '');
+      const changedDay = localDayOf(change.createdAt);
+      meta.textContent = (changedDay.length === 0 ? '' : trf('changes.changedOn', 'Changed {date}', { date: formatChangeDate(changedDay) })) + (reverted ? ' · ' + tr('changes.undoneBadge', 'Undone') : '');
       head.append(title, meta);
       card.appendChild(head);
-      if (entries.length > 0) {
+      const sortedEntries = entries.slice().sort((left, right) => String(left.toDay || left.fromDay || '').localeCompare(String(right.toDay || right.fromDay || '')));
+      if (sortedEntries.length > 0) {
+        const visible = sortedEntries.slice(0, 3);
+        const hidden = sortedEntries.slice(3);
         const list = document.createElement('ul');
         list.className = 'coach-change-entries';
-        for (const entry of entries) {
+        for (const entry of visible) {
           const item = document.createElement('li');
           item.textContent = changeEntryText(entry);
           list.appendChild(item);
         }
         card.appendChild(list);
+        if (hidden.length > 0) {
+          const more = document.createElement('details');
+          more.className = 'coach-change-more';
+          const summary = document.createElement('summary');
+          summary.textContent = trf('changes.showAll', 'Show all {count}', { count: sortedEntries.length });
+          const hiddenList = document.createElement('ul');
+          hiddenList.className = 'coach-change-entries';
+          for (const entry of hidden) {
+            const item = document.createElement('li');
+            item.textContent = changeEntryText(entry);
+            hiddenList.appendChild(item);
+          }
+          more.append(summary, hiddenList);
+          card.appendChild(more);
+        }
       }
       const actions = document.createElement('div');
       actions.className = 'coach-change-actions';
@@ -2615,7 +3280,12 @@ function renderChatBubble(tx: Translator): string {
         const undoButton = document.createElement('button');
         undoButton.type = 'submit';
         undoButton.className = 'btn ghost';
-        undoButton.textContent = tr('changeUndo', 'Undo this change');
+        undoButton.textContent = isRevert
+          ? tr('changes.putItBack', 'Put it back')
+          : count === 1
+            ? tr('changes.undoOne', 'Undo 1 session')
+            : trf('changes.undoCount', 'Undo {count} {unit}', { count, unit });
+        undoButton.setAttribute('aria-label', undoButton.textContent + ' — ' + title.textContent);
         undoForm.append(nextInput, undoButton);
         // Undo in place: the audited revert runs, the grid refreshes, and the chat stays where it is. The plain form
         // still works without script and lands on Recent changes.
@@ -2632,11 +3302,11 @@ function renderChatBubble(tx: Translator): string {
             if (!response.ok) throw new Error('undo failed');
             card.classList.add('undone');
             undoForm.remove();
-            meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+            meta.textContent = meta.textContent + ' · ' + tr('changes.undoneBadge', 'Undone');
             markRecentChangeUndone(change.changeSetId);
             await refreshCalendar();
             void loadConversation(true);
-            showToast(tr('changeUndoToast', 'Change undone'));
+            showToast(undoToast(count, isRevert));
           } catch {
             undoButton.disabled = false;
             addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
@@ -2646,10 +3316,17 @@ function renderChatBubble(tx: Translator): string {
       }
       const discuss = document.createElement('button');
       discuss.type = 'button';
-      discuss.className = 'btn ghost';
-      discuss.textContent = tr('changeDiscuss', 'Discuss this change');
+      discuss.className = 'coach-change-ask';
+      discuss.textContent = tr('changes.askWhy', 'Ask why');
+      discuss.setAttribute('aria-label', discuss.textContent + ' — ' + title.textContent);
       discuss.addEventListener('click', () => {
-        openCoach(tr('changeDiscussMessage', 'Can we talk through the change you just made?'), true, { kind: 'discuss-change', changeSetId: change.changeSetId, source: 'coach-dock' });
+        const range = changeRangeText(entries);
+        const message = entries.length === 0 || (entries.length > 1 && range.length === 0)
+          ? tr('changes.discussGeneric', 'Why did the plan change?')
+          : entries.length === 1
+            ? trf('changes.discussOne', 'Why did you change "{title}" on {day}?', { title: entries[0].title, day: formatChangeDate(entries[0].toDay || entries[0].fromDay, true) })
+            : trf('changes.discussMany', 'Why did you change {count} {unit} for {when}?', { count, unit, when: range });
+        openCoach(message, true, { kind: 'discuss-change', changeSetId: change.changeSetId, source: 'coach-dock' });
       });
       actions.appendChild(discuss);
       // Jump to the month the batch touched, so "what changed" and "where" are one tap apart.
@@ -2663,6 +3340,7 @@ function renderChatBubble(tx: Translator): string {
         link.className = 'chip';
         link.href = '/calendar?month=' + month;
         link.textContent = tr('changeShow', 'Show on calendar');
+        link.setAttribute('aria-label', link.textContent + ' — ' + title.textContent);
         actions.appendChild(link);
       }
       card.appendChild(actions);
@@ -2756,6 +3434,7 @@ function renderChatBubble(tx: Translator): string {
           addGuardrail(tr('calendarUnchanged', 'Calendar unchanged'));
         }
         addStateCards(data.states);
+        addMuscleProposalCards(data.muscleProposals, { focus: true, fromTurn: true });
         if (Array.isArray(data.blockedByStates) && data.blockedByStates.length > 0) {
           const labels = data.blockedByStates.map((s) => (s && s.label ? String(s.label) : tr('blockedByDefault', 'a coaching state')));
           addGuardrail(tr('guardrailProtected', 'Calendar unchanged — {labels} is protecting the plan · want to talk through what would work instead?').replace('{labels}', labels.join(', ')));
@@ -4694,6 +5373,14 @@ export function createWeb(options: WebOptions): WebApp {
               elevationGainM: activity.elevationGainM ?? null,
             }),
           }));
+          // A ?proposal= Adjust link opens the form on the coach's reading: the muscle is selected with the
+          // proposal's own level, tags, side, warm-up, note and run, so correcting a misparse is one edit, not a
+          // dismiss plus a full re-entry (F2).
+          const proposalParam = url.searchParams.get("proposal");
+          const adjustProposal =
+            proposalParam === null ? undefined : options.store.getMuscleProposal(user.userId, proposalParam);
+          const prefillProposal =
+            adjustProposal !== undefined && adjustProposal.status === "proposed" ? adjustProposal : null;
           const prefillId = url.searchParams.get("activity");
           const prefillActivity =
             prefillId === null ? undefined : options.store.getActivity(user.userId, prefillId);
@@ -4702,7 +5389,7 @@ export function createWeb(options: WebOptions): WebApp {
           // muscles still prefill: the form defaults to today and says so, so the "Check in these muscles"
           // deep link never silently drops the run.
           const prefillOld = prefillActivity !== undefined && prefillActivity.day < twoWeeksAgo ? prefillActivity : undefined;
-          const formDay = prefillRecent !== undefined ? prefillRecent.day : today;
+          const formDay = prefillProposal !== null ? prefillProposal.day : prefillRecent !== undefined ? prefillRecent.day : today;
           const activityOptions: MuscleActivityOption[] = options.store
             .listActivities(user.userId, 60)
             .filter((activity) => activity.day === formDay)
@@ -4712,34 +5399,48 @@ export function createWeb(options: WebOptions): WebApp {
               label: `${activity.title}${activity.distanceKm === null ? "" : ` · ${activity.distanceKm} km`}`,
             }));
           // The linked run must stay selectable even when the newest-60 window missed it.
-          if (prefillRecent !== undefined && !activityOptions.some((option) => option.activityId === prefillRecent.activityId)) {
-            activityOptions.push({
-              activityId: prefillRecent.activityId,
-              day: prefillRecent.day,
-              label: `${prefillRecent.title}${prefillRecent.distanceKm === null ? "" : ` · ${prefillRecent.distanceKm} km`}`,
-            });
+          const keepSelectable = (activity: Activity): void => {
+            if (!activityOptions.some((option) => option.activityId === activity.activityId)) {
+              activityOptions.push({
+                activityId: activity.activityId,
+                day: activity.day,
+                label: `${activity.title}${activity.distanceKm === null ? "" : ` · ${activity.distanceKm} km`}`,
+              });
+            }
+          };
+          if (prefillRecent !== undefined) keepSelectable(prefillRecent);
+          if (prefillProposal !== null && prefillProposal.activityId !== null) {
+            const proposalRun = options.store.getActivity(user.userId, prefillProposal.activityId);
+            if (proposalRun !== undefined && proposalRun.day === formDay) keepSelectable(proposalRun);
           }
           // A ?focus= deep link opens the form on one muscle — the "Update" path from a status row.
           const focusParam = url.searchParams.get("focus");
           const focusMuscleId = focusParam !== null && isMuscleId(focusParam) ? focusParam : null;
           const prefillMuscleIds =
-            focusMuscleId !== null
-              ? [focusMuscleId]
-              : prefillRecent !== undefined
-                ? musclesForRun({
-                    title: prefillRecent.title,
-                    kind: runKind(prefillRecent),
-                    distanceKm: prefillRecent.distanceKm,
-                    elevationGainM: prefillRecent.elevationGainM ?? null,
-                  }).primary
-                : prefillOld === undefined
-                  ? []
-                  : musclesForRun({
-                      title: prefillOld.title,
-                      kind: runKind(prefillOld),
-                      distanceKm: prefillOld.distanceKm,
-                      elevationGainM: prefillOld.elevationGainM ?? null,
-                    }).primary;
+            prefillProposal !== null
+              ? [prefillProposal.muscleId]
+              : focusMuscleId !== null
+                ? [focusMuscleId]
+                : prefillRecent !== undefined
+                  ? musclesForRun({
+                      title: prefillRecent.title,
+                      kind: runKind(prefillRecent),
+                      distanceKm: prefillRecent.distanceKm,
+                      elevationGainM: prefillRecent.elevationGainM ?? null,
+                    }).primary
+                  : prefillOld === undefined
+                    ? []
+                    : musclesForRun({
+                        title: prefillOld.title,
+                        kind: runKind(prefillOld),
+                        distanceKm: prefillOld.distanceKm,
+                        elevationGainM: prefillOld.elevationGainM ?? null,
+                      }).primary;
+          // The honest partition: only offerable suggestions become cards; expired and dead-end rows are counted
+          // so the page says what happened instead of silently vanishing (F5/F14).
+          const pending = partitionPendingMuscleProposals(options.store, user.userId, today);
+          const dismissedProposalId =
+            url.searchParams.get("saved") === "dismissed" ? url.searchParams.get("proposal") : null;
           sendHtml(
             response,
             200,
@@ -4751,7 +5452,14 @@ export function createWeb(options: WebOptions): WebApp {
                 formDay,
                 saved: url.searchParams.get("saved") === "1",
                 statusSaved: url.searchParams.get("saved") === "status",
+                proposalSaved: url.searchParams.get("saved") === "proposal",
+                proposalDismissed: url.searchParams.get("saved") === "dismissed",
+                dismissedProposalId: dismissedProposalId === null ? null : dismissedProposalId,
                 errorCode: url.searchParams.get("error"),
+                pendingProposals: pending.offered,
+                pendingExpired: pending.expired,
+                pendingInactive: pending.inactive,
+                prefillProposal,
                 dayCheckIn,
                 history: checkIns,
                 statuses,
@@ -4759,7 +5467,12 @@ export function createWeb(options: WebOptions): WebApp {
                 oldRunId: prefillOld === undefined ? null : prefillOld.activityId,
                 trainingRows,
                 activityOptions,
-                prefillActivityId: prefillRecent === undefined ? null : prefillRecent.activityId,
+                prefillActivityId:
+                  prefillProposal !== null && prefillProposal.activityId !== null
+                    ? prefillProposal.activityId
+                    : prefillRecent === undefined
+                      ? null
+                      : prefillRecent.activityId,
                 prefillMuscleIds,
               },
               { layout: pageLayout },
@@ -4901,6 +5614,77 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      /**
+       * The one-tap decision on a coach suggestion. A confirm writes exactly what the Muscle tab's own form would
+       * have written — a check-in, a hold, a release or an all-better claim — and only then is the suggestion
+       * marked confirmed. The dock calls it with an Accept header and gets JSON; a no-script form gets a redirect
+       * back to the Muscle tab, where the record now lives.
+       */
+      const proposalAction = /^\/muscle\/proposals\/([^/]+)\/(confirm|dismiss|restore)$/.exec(url.pathname);
+      if (proposalAction !== null) {
+        if (method !== "POST") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          return;
+        }
+        let proposalId = "";
+        try {
+          proposalId = decodeURIComponent(proposalAction[1] ?? "");
+        } catch {
+          proposalId = "";
+        }
+        const decision = proposalAction[2];
+        const wantsJson = (request.headers["accept"] ?? "").includes("application/json");
+        let outcome: { ok: true } | { ok: false; detail: string };
+        if (proposalId.length === 0) {
+          outcome = { ok: false, detail: "not-found" };
+        } else if (decision === "confirm") {
+          const confirmed = options.store.transaction(() =>
+            confirmMuscleProposal({ store: options.store, userId: user.userId, proposalId, today, now: now() }),
+          );
+          outcome = confirmed.ok ? { ok: true } : { ok: false, detail: confirmed.detail };
+        } else if (decision === "restore") {
+          // Undo a dismissal while the suggestion is still inside its window: a mis-tap costs one tap (F7).
+          const restored = options.store.transaction(() =>
+            restoreMuscleProposal({ store: options.store, userId: user.userId, proposalId, today, now: now() }),
+          );
+          outcome = restored ? { ok: true } : { ok: false, detail: "not-found" };
+        } else {
+          const dismissed = options.store.transaction(() =>
+            dismissMuscleProposal({ store: options.store, userId: user.userId, proposalId, now: now() }),
+          );
+          outcome = dismissed ? { ok: true } : { ok: false, detail: "not-found" };
+        }
+        if (wantsJson) {
+          if (!outcome.ok) {
+            sendJson(response, outcome.detail === "not-found" ? 404 : 409, { ok: false, detail: outcome.detail });
+            return;
+          }
+          sendJson(response, 200, { ok: true, decision });
+          return;
+        }
+        if (!outcome.ok) {
+          const code =
+            outcome.detail === "expired"
+              ? "proposal-expired"
+              : outcome.detail === "no-active-status" || outcome.detail === "incomplete"
+                ? "proposal-status"
+                : "proposal-missing";
+          redirect(response, `/muscle?error=${code}`);
+          return;
+        }
+        // A dismissal redirects with its id so the banner can offer Undo; a restore lands back on the page where
+        // the card is pending again.
+        redirect(
+          response,
+          decision === "confirm"
+            ? "/muscle?saved=proposal"
+            : decision === "dismiss"
+              ? `/muscle?saved=dismissed&proposal=${encodeURIComponent(proposalId)}`
+              : "/muscle",
+        );
+        return;
+      }
+
       /** The attention feed the app-bar badge reads: the count of muscles in a special status, plus the rows. */
       if (url.pathname === "/muscle/attention.json" && method === "GET") {
         const checkIns = options.store.listMuscleCheckIns(user.userId, 40);
@@ -4924,6 +5708,28 @@ export function createWeb(options: WebOptions): WebApp {
             })),
           },
         );
+        return;
+      }
+
+      /**
+       * The standalone all-changes page: the schedule journal, logged/synced runs and muscle events in one place.
+       * It is a projection, not a new audit table: every row already exists in the store with its own timestamp.
+       */
+      if (url.pathname === "/changes") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "changes"));
+          return;
+        }
+        const typeParam = url.searchParams.get("type");
+        const filter: ChangesFilter = typeParam === "schedule" || typeParam === "activity" || typeParam === "muscle" ? typeParam : "all";
+        const timezone = safeTimeZone(user.timezone);
+        const changeSets = options.store.listChangeSets(user.userId, 20);
+        const activities = options.store.listActivities(user.userId, 30).slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        const checkIns = options.store.listMuscleCheckIns(user.userId, 20);
+        const controls = options.store.listMuscleStatusControls(user.userId).slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        const scheduleCard = recentChangesCard(changeSets, "/changes", tx, today, timezone, { headingKey: "changes.scheduleTitle" });
+        const body = renderChangesPage({ scheduleCard, scheduleCount: changeSets.length, activities, checkIns, controls, filter, tx, today, timezone });
+        sendHtml(response, 200, pageLayout(tx.t("changes.allTitle"), body, user, "changes", flash));
         return;
       }
 
@@ -5000,6 +5806,7 @@ export function createWeb(options: WebOptions): WebApp {
               blockedWrites?: number;
               directiveId?: string | null;
               states?: unknown[];
+              muscleProposals?: unknown[];
               blockedByStates?: unknown[];
               prefill?: {
                 epoch?: string;
@@ -5073,6 +5880,38 @@ export function createWeb(options: WebOptions): WebApp {
               blockedByStates.push({ key: value, label: tx.t(`coachState.label.${value}` as const) });
             }
           }
+          // Muscle suggestions ride back with the turn so the dock can render one card per suggestion. The rows
+          // are read from the store, never trusted from the upstream payload.
+          const rawMuscleProposals = Array.isArray(payload.milebook?.muscleProposals)
+            ? payload.milebook.muscleProposals
+            : [];
+          const turnStatuses = computeMuscleStatuses({
+            checkIns: options.store.listMuscleCheckIns(user.userId, 40),
+            controls: options.store.listMuscleStatusControls(user.userId),
+            today,
+          });
+          const muscleProposals: MuscleProposalView[] = [];
+          for (const value of rawMuscleProposals) {
+            if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+            const proposalId = (value as Record<string, unknown>)["proposalId"];
+            if (typeof proposalId !== "string" || proposalId.length === 0) continue;
+            const stored = options.store.getMuscleProposal(user.userId, proposalId);
+            if (stored === undefined) continue;
+            muscleProposals.push(
+              muscleProposalView(
+                {
+                  proposal: stored,
+                  statuses: turnStatuses,
+                  today,
+                  run:
+                    stored.activityId === null
+                      ? undefined
+                      : options.store.getActivity(user.userId, stored.activityId) ?? undefined,
+                },
+                tx,
+              ),
+            );
+          }
           response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
           response.end(JSON.stringify({
             reply,
@@ -5091,6 +5930,7 @@ export function createWeb(options: WebOptions): WebApp {
             blockedWrites: typeof payload.milebook?.blockedWrites === "number" ? payload.milebook.blockedWrites : 0,
             directiveId: typeof payload.milebook?.directiveId === "string" ? payload.milebook.directiveId : null,
             states,
+            muscleProposals,
             blockedByStates,
             prefill: typeof payload.milebook?.prefill === "object" && payload.milebook?.prefill !== null
               ? payload.milebook.prefill
@@ -5149,8 +5989,29 @@ export function createWeb(options: WebOptions): WebApp {
             toDay: entry.toDay,
           })),
         }));
+        // Pending coach muscle suggestions are durable rows, not DOM-only cards: after a refresh the runner must
+        // still be able to confirm or dismiss them here. The views carry the record's own vocabulary, the age, the
+        // current status context and the run link, so the dock never invents its own wording.
+        const muscleProposals = listPendingMuscleProposals(options.store, user.userId, today).map((proposal) =>
+          muscleProposalView(
+            {
+              proposal,
+              statuses: computeMuscleStatuses({
+                checkIns: options.store.listMuscleCheckIns(user.userId, 40),
+                controls: options.store.listMuscleStatusControls(user.userId),
+                today,
+              }),
+              today,
+              run:
+                proposal.activityId === null
+                  ? undefined
+                  : options.store.getActivity(user.userId, proposal.activityId) ?? undefined,
+            },
+            tx,
+          ),
+        );
         response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-        response.end(JSON.stringify({ messages, states, changes }));
+        response.end(JSON.stringify({ messages, states, changes, muscleProposals }));
         return;
       }
 
@@ -5588,7 +6449,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
-          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx)}
+          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx, today, user.timezone, { allHref: "/changes" })}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;
@@ -5880,8 +6741,10 @@ export function createWeb(options: WebOptions): WebApp {
           return;
         }
         try {
-          applyRevert(options.store, user.userId, changeSet, now());
-          redirect(response, withParams(next, { undone: "1" }));
+          const result = applyRevert(options.store, user.userId, changeSet, now());
+          const restored = result.restored + result.deleted;
+          // Land on the card, not the top of the page: the runner pressed Undo to see the result.
+          redirect(response, `${withParams(next, { undone: String(restored) })}#recent-changes`);
         } catch {
           redirect(response, withParams(next, { undoError: "the calendar could not be restored" }));
         }
@@ -5904,6 +6767,7 @@ export function createWeb(options: WebOptions): WebApp {
           changeSets: options.store.listChangeSets(user.userId, 500),
           muscleCheckIns: options.store.listMuscleCheckIns(user.userId, 500),
           muscleStatusControls: options.store.listMuscleStatusControls(user.userId),
+          muscleProposals: options.store.listMuscleProposals(user.userId, undefined, 200),
         });
         response.writeHead(200, {
           "content-type": "application/json; charset=utf-8",

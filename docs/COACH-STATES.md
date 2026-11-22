@@ -178,6 +178,10 @@ Rules:
 - The model is told: never diagnose; for pain, illness, pregnancy, a medical red flag or low energy availability, use a
   low-confidence proposal and tell the runner to confirm and, where relevant, see a clinician.
 - The prompt catalog and the tool schema both list the exact keys, so the model cannot silently invent a new one.
+- The sibling channel for the body's own record is `muscleProposals` (2026-11-22): a report, hold, release or
+  all-better suggestion waits for one tap on the Muscle tab or in the dock and writes a check-in or a status control,
+  never a state. The trust split is the same — the model notices, the runner decides — and the two channels do not
+  overlap: a state shapes advice and guardrails, a muscle suggestion records what the runner said about a muscle.
 
 The user can set any catalog state on `/coach-states`, with a TTL and an optional evidence note. A user-set state is
 `active` immediately, source `user`, confidence 1. This is the escape hatch for situations the app cannot detect.

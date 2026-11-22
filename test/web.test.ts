@@ -5,7 +5,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { GarminError, mapGarminActivity, type GarminClient } from "../src/garmin";
 import { createStore, type StoreHandle } from "../src/store";
-import type { ChangeSet, CoachStateKey, CoachStateRecord, SessionKind, Store } from "../src/types";
+import type {
+  Activity,
+  ChangeSet,
+  CoachStateKey,
+  CoachStateRecord,
+  MuscleProposal,
+  SessionKind,
+  Store,
+  TrainingSession,
+} from "../src/types";
+import type { MuscleCheckIn } from "../src/muscles";
+import type { MuscleStatusControl } from "../src/muscle-status";
 import { createWeb } from "../src/web";
 
 const TODAY = "2026-11-05";
@@ -455,7 +466,8 @@ describe("authentication pages", () => {
     expect(html).toContain(`value="${DISPLAY_NAME}"`);
     expect(html).toContain('action="/profile"');
     expect(html).not.toContain("view-switch");
-    expect(html).not.toContain("view-tab");
+    // No app-bar tab strip here, but the dock's attention refresh still names the Muscles tab it looks for.
+    expect(html).not.toContain('class="view-tab"');
     expect(html).toContain('href="/coach-states"');
     expect(html).not.toContain('href="/coach-audit"');
     expect(html).not.toContain("hidden directives");
@@ -2795,7 +2807,7 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain('id="coach-close"');
     expect(html).toContain('aria-label="Close coach panel"');
     expect(html).toContain("All coaching states");
-    expect(html).toContain("Open Recent changes");
+    expect(html).toContain("Open all changes");
     expect(html).toContain("setTab");
     expect(html).toContain("renderStatesTab");
     expect(html).toContain("renderChangesTab");
@@ -2855,6 +2867,12 @@ describe("in-calendar coach bubble", () => {
     expect(html).toContain("animateChanges");
     expect(html).toContain("before.length * 140");
     expect(html).toContain("app.css?v=");
+    // Muscle suggestions ride back with the turn and stay as durable cards after a refresh.
+    expect(html).toContain("addMuscleProposalCards");
+    expect(html).toContain("muscleProposals");
+    expect(html).toContain("/muscle/proposals/");
+    expect(html).toContain("muscleSuggestionPending");
+    expect(html).toContain("muscleConfirmed");
     // Privacy-safe UI events: components mark the interaction; a host listens for the CustomEvent.
     expect(html).toContain("milebook:track");
     expect(html).toContain('data-track="coach-open"');
@@ -2876,6 +2894,9 @@ describe("in-calendar coach bubble", () => {
     expect(css).toContain("overflow-wrap: anywhere");
     expect(css).toContain(".activity-columns");
     expect(css).toContain(".muscle-layout");
+    expect(css).toContain(".muscle-proposal-card");
+    expect(css).toContain(".muscle-proposal");
+    expect(css).toContain(".bubble.muscle-suggestion");
     expect(css).toContain("body.coach-open .activity-columns");
     expect(css).toContain("body.coach-open .muscle-layout");
     expect(css).toContain(".history-activity");
@@ -2953,12 +2974,12 @@ describe("in-calendar coach bubble", () => {
   it("localizes the dock tabs, footers and close control in Chinese", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: `${cookie}; milebook_lang=zh-HK` } })).text();
-    expect(html).toContain(">對話</button>");
+    expect(html).toContain('>對話<span class="coach-tab-count" data-coach-count="chat" hidden></span></button>');
     expect(html).toContain(">狀態<");
     expect(html).toContain(">變更<");
     expect(html).toContain('aria-label="關閉教練面板"');
     expect(html).toContain("所有教練狀態");
-    expect(html).toContain("在近期變更中開啟");
+    expect(html).toContain("查看所有變更");
     expect(html).not.toContain(">Chat</button>");
   });
 
@@ -3997,7 +4018,7 @@ describe("page titles", () => {
     for (const path of ["/profile", "/coach-states", "/coach-audit", "/missing-page"]) {
       const html = await (await fetch(`${base}${path}`, { headers: { cookie } })).text();
       expect(html).not.toContain("view-switch");
-      expect(html).not.toContain("view-tab");
+      expect(html).not.toContain('class="view-tab"');
     }
 
     const login = await (await fetch(`${base}/login`)).text();
@@ -4216,7 +4237,7 @@ describe("honest demo slice", () => {
     ]));
   });
 
-  it("shows the recent change set and undoes it through the audited path", async () => {
+  it("renders a batch as a human sentence and undoes it through the audited path", async () => {
     const { base, cookie, handle, user } = await start();
     const before = {
       sessionId: "session:move",
@@ -4243,42 +4264,379 @@ describe("honest demo slice", () => {
 
     const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
     expect(calendar).toContain("Recent changes");
-    expect(calendar).toContain("Moved Easy 5 km to Sunday");
-    expect(calendar).toContain("Undo this change");
-    // Each change set also opens a comment-only discussion about what it did and why.
-    expect(calendar).toContain("Discuss this change");
-    expect(calendar).toContain("Why did the plan change on 5 Nov? (Moved Easy 5 km to Sunday)");
+    // The headline is a human sentence; the stored machine summary never reaches the page.
+    expect(calendar).toContain("1 session updated · Sun, 8 Nov");
+    expect(calendar).not.toContain("Moved Easy 5 km to Sunday");
+    expect(calendar).not.toContain('move "Easy 5 km"');
+    // The entry names the day, the action and the real move.
+    expect(calendar).toContain('<span class="change-act">Moved</span>');
+    expect(calendar).toContain("Easy 5 km");
+    expect(calendar).toContain("from 6 Nov");
+    expect(calendar).toContain('<span class="change-meta muted small">Changed today');
+    // The destructive action carries its blast radius and describes the batch it belongs to.
+    expect(calendar).toContain("Undo 1 session");
+    expect(calendar).toContain('aria-label="Undo 1 session — 1 session updated · Sun, 8 Nov"');
+    expect(calendar).toContain('class="change-undo-form"');
+    // Ask why is a quiet, accessible action with a question built from the entry, not the raw summary.
+    expect(calendar).toContain("Ask why");
+    expect(calendar).toContain('aria-label="Ask why — 1 session updated · Sun, 8 Nov"');
+    expect(calendar).toContain("Why did you change");
+    expect(calendar).toContain("on Sun, 8 Nov");
     expect(calendar).toContain("discuss-change");
     expect(calendar).toContain("recent-changes");
-    // The card carries the change-set id so the dock can mark it undone in place without a reload.
     expect(calendar).toContain('data-change-set="change:move"');
     expect(calendar).toContain(`title="Chat with the coach about what this change did. Your calendar will not change."`);
+    // The calendar card points at the standalone all-changes page.
+    expect(calendar).toContain('class="change-see-all" href="/changes"');
 
     const undo = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
     expect(undo.status).toBe(303);
-    expect(undo.headers.get("location")).toContain("undone=1");
+    const location = undo.headers.get("location") ?? "";
+    expect(location).toContain("undone=1");
+    // The no-script path lands on the card, where the runner can see the result.
+    expect(location).toContain("#recent-changes");
     expect(handle.store.getSession(user.userId, before.sessionId)?.day).toBe("2026-11-06");
     expect(handle.store.listChangeSets(user.userId, 10).some((set) => set.summary.startsWith("Undo:"))).toBe(true);
+    // The banner names how many sessions the undo touched.
+    const landingUrl = new URL(location, base);
+    const landing = await (await fetch(`${base}${landingUrl.pathname}${landingUrl.search}`, { headers: { cookie } })).text();
+    expect(landing).toContain("1 session undone");
 
     const again = await postForm(`${base}/calendar/changes/change%3Amove/revert`, cookie, { next: "/calendar" });
     const againLocation = new URL(again.headers.get("location") ?? "/", base);
     expect(againLocation.searchParams.get("undoError")).toBe("that change was already undone");
   });
 
+  it("renders a large batch as three entries plus a disclosure", async () => {
+    const { base, cookie, handle, user } = await start();
+    const plan = Array.from({ length: 14 }, (_, index) => {
+      const day = `2026-11-${String(17 + index).padStart(2, "0")}`;
+      const session: TrainingSession = {
+        sessionId: `session:plan-${index}`,
+        userId: user.userId,
+        day,
+        title: `Session ${index + 1}`,
+        kind: "easy",
+        distanceKm: 5,
+        durationMin: 35,
+        note: null,
+        createdAt: `${TODAY}T00:00:00.000Z`,
+      };
+      handle.store.upsertSession(session);
+      return session;
+    });
+    const changeSet: ChangeSet = {
+      changeSetId: "change:plan",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: plan.map((session) => `add "${session.title}" on ${session.day}`).join("; "),
+      entries: plan.map((session) => ({ action: "add" as const, sessionId: session.sessionId, before: null, after: session, fromDay: null, toDay: session.day, title: session.title, kind: session.kind })),
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("14 sessions added");
+    expect(calendar).toContain("17 Nov – 30 Nov");
+    expect(calendar).toContain("Show all 14");
+    expect(calendar).toContain('<details class="change-more">');
+    expect(calendar).toContain("Undo 14 sessions");
+    expect(calendar).not.toContain('add "');
+    const detailsAt = calendar.indexOf('<details class="change-more">');
+    expect(detailsAt).toBeGreaterThan(0);
+    const cardAt = calendar.indexOf('id="recent-changes"');
+    expect(cardAt).toBeGreaterThan(0);
+    const visible = calendar.slice(cardAt, detailsAt);
+    expect((visible.match(/class="change-entry"/g) ?? []).length).toBe(3);
+    expect(visible).toContain("Session 1");
+    expect(visible).not.toContain("Session 4");
+    const hidden = calendar.slice(detailsAt);
+    expect(hidden).toContain("Session 4");
+    expect(hidden).toContain("Session 14");
+  });
+
+  it("describes a same-day update with its real delta instead of a no-op move", async () => {
+    const { base, cookie, handle, user } = await start();
+    const before: TrainingSession = {
+      sessionId: "session:long",
+      userId: user.userId,
+      day: "2026-11-22",
+      title: "Long run",
+      kind: "long",
+      distanceKm: 15,
+      durationMin: 90,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const after: TrainingSession = { ...before, distanceKm: 18 };
+    handle.store.upsertSession(after);
+    const changeSet: ChangeSet = {
+      changeSetId: "change:delta",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: 'move "Long run" 2026-11-22 → 2026-11-22',
+      entries: [{ action: "update", sessionId: before.sessionId, before, after, fromDay: before.day, toDay: after.day, title: after.title, kind: after.kind }],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("1 session updated");
+    expect(calendar).toContain("15 km → 18 km");
+    expect(calendar).toContain('<span class="change-act">Updated</span>');
+    expect(calendar).not.toContain('<span class="change-act">Moved</span>');
+    expect(calendar).not.toContain("2026-11-22 → 2026-11-22");
+    expect(calendar).not.toContain('move "Long run"');
+  });
+
+  it("dates a batch in the runner's zone and marks an undone batch without dimming it", async () => {
+    const { base, cookie, handle, user } = await start();
+    const session: TrainingSession = {
+      sessionId: "session:local",
+      userId: user.userId,
+      day: "2026-11-05",
+      title: "Mobility",
+      kind: "cross",
+      distanceKm: null,
+      durationMin: 20,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    handle.store.upsertSession(session);
+    const changeSet: ChangeSet = {
+      changeSetId: "change:local",
+      userId: user.userId,
+      createdAt: "2026-11-04T20:00:00.000Z", // 05 Nov 04:00 in Asia/Hong_Kong
+      summary: 'add "Mobility" on 2026-11-05',
+      entries: [{ action: "add", sessionId: session.sessionId, before: null, after: session, fromDay: null, toDay: session.day, title: session.title, kind: session.kind }],
+      revertedAt: "2026-11-05T01:00:00.000Z",
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    // 20:00Z is already 05 Nov in Hong Kong: the meta must say today, not 04 Nov.
+    expect(calendar).toContain('<span class="change-meta muted small">Changed today');
+    expect(calendar).not.toContain("Changed 4 Nov");
+    expect(calendar).toContain("1 session added");
+    expect(calendar).toContain("Thu, 5 Nov");
+    expect(calendar).toContain("Undone");
+    expect(calendar).toContain("Ask why");
+    expect(calendar).not.toContain('class="change-undo-form"');
+    expect(calendar).toContain('class="change-item undone"');
+  });
+
+  it("renders a revert batch as an undo record with Put it back", async () => {
+    const { base, cookie, handle, user } = await start();
+    const first: TrainingSession = {
+      sessionId: "session:undo-1",
+      userId: user.userId,
+      day: "2026-11-21",
+      title: "Mobility 20",
+      kind: "cross",
+      distanceKm: null,
+      durationMin: 20,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const second: TrainingSession = { ...first, sessionId: "session:undo-2", day: "2026-11-24", title: "Mobility 15", durationMin: 15 };
+    const changeSet: ChangeSet = {
+      changeSetId: "change:undo",
+      userId: user.userId,
+      createdAt: `${TODAY}T10:00:00.000Z`,
+      summary: 'Undo: add "Mobility 20" on 2026-11-21; add "Mobility 15" on 2026-11-24',
+      entries: [
+        { action: "revert", sessionId: first.sessionId, before: first, after: null, fromDay: first.day, toDay: null, title: first.title, kind: first.kind },
+        { action: "revert", sessionId: second.sessionId, before: second, after: null, fromDay: second.day, toDay: null, title: second.title, kind: second.kind },
+      ],
+      revertedAt: null,
+    };
+    handle.store.appendChangeSet(changeSet);
+    const calendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } })).text();
+    expect(calendar).toContain("Undone: 2 sessions added");
+    expect(calendar).toContain("21 Nov – 24 Nov");
+    expect(calendar).toContain("Put it back");
+    expect(calendar).toContain('data-change-putback="1"');
+    expect(calendar).toContain('<span class="change-act">Deleted</span>');
+    expect(calendar).toContain("Mobility 20");
+    expect(calendar).toContain("Why did you change 2 sessions");
+    expect(calendar).not.toContain('Undo: add "Mobility 20"');
+  });
+
+  it("renders the all-changes page across schedule, activity and muscle", async () => {
+    const { base, cookie, handle, user } = await start();
+    const before: TrainingSession = {
+      sessionId: "session:all",
+      userId: user.userId,
+      day: "2026-11-06",
+      title: "Easy 5 km",
+      kind: "easy",
+      distanceKm: 5,
+      durationMin: 35,
+      note: null,
+      createdAt: `${TODAY}T00:00:00.000Z`,
+    };
+    const after: TrainingSession = { ...before, day: "2026-11-08" };
+    handle.store.upsertSession(after);
+    handle.store.appendChangeSet({
+      changeSetId: "change:all",
+      userId: user.userId,
+      createdAt: `${TODAY}T09:00:00.000Z`,
+      summary: "Moved Easy 5 km to Sunday",
+      entries: [{ action: "update", sessionId: before.sessionId, before, after, fromDay: before.day, toDay: after.day, title: before.title, kind: before.kind }],
+      revertedAt: null,
+    });
+    const activity: Activity = {
+      activityId: "garmin:all-1",
+      userId: user.userId,
+      day: "2026-11-04",
+      title: "Morning run",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: 140,
+      source: "garmin",
+      createdAt: `${TODAY}T09:30:00.000Z`,
+    };
+    handle.store.appendActivity(activity);
+    const checkIn: MuscleCheckIn = {
+      checkInId: "checkin:all-1",
+      userId: user.userId,
+      day: "2026-11-04",
+      activityId: activity.activityId,
+      muscles: [{ muscleId: "hamstrings", soreness: 6, conditions: ["tight"], side: "left", warmUp: null }],
+      note: null,
+      createdAt: `${TODAY}T10:00:00.000Z`,
+    };
+    handle.store.appendMuscleCheckIn(checkIn);
+    const control: MuscleStatusControl = {
+      userId: user.userId,
+      muscleId: "hamstrings",
+      hold: true,
+      resolvedDay: null,
+      updatedAt: `${TODAY}T11:00:00.000Z`,
+    };
+    handle.store.upsertMuscleStatusControl(control);
+
+    const page = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
+    expect(page).toContain("<h1>All changes</h1>");
+    expect(page).toContain("Schedule changes");
+    expect(page).toContain("Activity changes");
+    expect(page).toContain("Muscle changes");
+    expect(page).toContain("4 changes");
+    // The three sections are distinct cards; their ids are the reliable presence check (the copy is also in the client strings).
+    expect(page).toContain('id="recent-changes"');
+    expect(page).toContain('id="activity-changes"');
+    expect(page).toContain('id="muscle-changes"');
+    // The account menu carries the requested entry; the schedule card carries the counted undo and posts back to this page.
+    expect(page).toContain('<a class="account-item" href="/changes">All changes</a>');
+    expect(page).toContain("1 session updated");
+    expect(page).toContain("Undo 1 session");
+    expect(page).toContain('name="next" value="/changes"');
+    // The activity row: source-aware label, title, metrics and a link to the run.
+    expect(page).toContain("Garmin run synced");
+    expect(page).toContain("Morning run");
+    expect(page).toContain("5 km");
+    expect(page).toContain("30 min");
+    expect(page).toContain("/activity/garmin%3Aall-1");
+    // The muscle rows: the check-in summary and the held status.
+    expect(page).toContain("Muscle check-in");
+    expect(page).toContain("Hamstrings");
+    expect(page).toContain("6/10");
+    expect(page).toContain("Status held");
+    expect(page).toContain("held until you change it");
+    expect(page).toContain("/muscle?focus=hamstrings#check-in");
+    expect(page).toContain("?type=schedule");
+    expect(page).toContain("?type=activity");
+    expect(page).toContain("?type=muscle");
+    // The fourth page keeps the three projection tabs reachable but selects none of them.
+    const navStart = page.indexOf('class="view-switch"');
+    const navEnd = page.indexOf("</nav>", navStart);
+    expect(navStart).toBeGreaterThan(0);
+    expect(page.slice(navStart, navEnd)).not.toContain('aria-current="page"');
+
+    // Filters are server-rendered: each keeps only its own section and reports its slice of the total.
+    const activityPage = await (await fetch(`${base}/changes?type=activity`, { headers: { cookie } })).text();
+    expect(activityPage).toContain('id="activity-changes"');
+    expect(activityPage).not.toContain('id="recent-changes"');
+    expect(activityPage).not.toContain('id="muscle-changes"');
+    expect(activityPage).toContain("Showing 1 of 4 changes");
+    expect(activityPage).toContain("Morning run");
+    const musclePage = await (await fetch(`${base}/changes?type=muscle`, { headers: { cookie } })).text();
+    expect(musclePage).toContain('id="muscle-changes"');
+    expect(musclePage).not.toContain('id="recent-changes"');
+    expect(musclePage).not.toContain('id="activity-changes"');
+    expect(musclePage).toContain("Showing 2 of 4 changes");
+    expect(musclePage).toContain("Hamstrings");
+    const schedulePage = await (await fetch(`${base}/changes?type=schedule`, { headers: { cookie } })).text();
+    expect(schedulePage).toContain('id="recent-changes"');
+    expect(schedulePage).not.toContain('id="activity-changes"');
+    expect(schedulePage).not.toContain('id="muscle-changes"');
+    expect(schedulePage).toContain("Showing 1 of 4 changes");
+
+    // A no-JS undo on the page lands back on the page with the counted banner.
+    const undo = await postForm(`${base}/calendar/changes/change%3Aall/revert`, cookie, { next: "/changes" });
+    expect(undo.status).toBe(303);
+    expect(undo.headers.get("location")).toContain("/changes?undone=1#recent-changes");
+    const landing = await (await fetch(`${base}/changes?undone=1`, { headers: { cookie } })).text();
+    expect(landing).toContain("1 session undone");
+    expect(landing).toContain('id="recent-changes"');
+  });
+
+  it("shows the all-changes empty state and the account-menu entry", async () => {
+    const { base, cookie } = await start();
+    const page = await (await fetch(`${base}/changes`, { headers: { cookie } })).text();
+    expect(page).toContain('<section class="card changes-empty-card"><p class="muted">No changes yet.');
+    expect(page).toContain("Book a session, log a run or check in your muscles");
+    expect(page).not.toContain('id="recent-changes"');
+    expect(page).not.toContain('id="activity-changes"');
+    expect(page).not.toContain('id="muscle-changes"');
+    // The account menu is on every page, including the calendar.
+    const calendar = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(calendar).toContain('<a class="account-item" href="/changes">All changes</a>');
+  });
+
   it("exports only the runner's own data as JSON and ICS", async () => {
     const { base, auth, cookie, handle, user } = await start({
       seed: (store, runner) => seedActivity(store, runner.userId, "garmin:export", "2026-11-04", "Export run", 6),
     });
+    const proposal: MuscleProposal = {
+      proposalId: "muscle-proposal:export",
+      userId: user.userId,
+      action: "report",
+      muscleId: "calves",
+      soreness: 5,
+      conditions: [],
+      side: "both",
+      warmUp: null,
+      note: null,
+      activityId: null,
+      evidence: ["calves are 5/10"],
+      confidence: 0.7,
+      day: TODAY,
+      status: "confirmed",
+      createdAt: `${TODAY}T08:00:00.000Z`,
+      updatedAt: `${TODAY}T08:00:00.000Z`,
+      decidedAt: `${TODAY}T08:00:00.000Z`,
+    };
+    handle.store.appendMuscleProposal(proposal);
     const jsonResponse = await fetch(`${base}/export.json`, { headers: { cookie } });
     expect(jsonResponse.status).toBe(200);
     expect(jsonResponse.headers.get("content-disposition")).toContain("attachment");
     const text = await jsonResponse.text();
     expect(text).not.toContain("passwordHash");
     expect(text).not.toContain("apiKey");
-    const bundle = JSON.parse(text) as { profile: { username: string }; sessions: unknown[]; activities: Array<{ title: string }> };
+    const bundle = JSON.parse(text) as {
+      profile: { username: string };
+      sessions: unknown[];
+      activities: Array<{ title: string }>;
+      muscleProposals: Array<{ proposalId: string; muscleId: string; status: string }>;
+    };
     expect(bundle.profile.username).toBe(USERNAME);
     expect(bundle.sessions).toHaveLength(1);
     expect(bundle.activities[0]?.title).toBe("Export run");
+    expect(bundle.muscleProposals).toHaveLength(1);
+    expect(bundle.muscleProposals[0]).toMatchObject({
+      proposalId: "muscle-proposal:export",
+      muscleId: "calves",
+      status: "confirmed",
+    });
 
     const icsResponse = await fetch(`${base}/export.ics`, { headers: { cookie } });
     expect(icsResponse.status).toBe(200);

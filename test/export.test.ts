@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildCalendarIcs, buildExportBundle } from "../src/export";
-import type { Activity, ChangeSet, TrainingSession } from "../src/types";
+import type { Activity, ChangeSet, MuscleProposal, TrainingSession } from "../src/types";
 
 const session = (overrides: Partial<TrainingSession> = {}): TrainingSession => ({
   sessionId: "session:easy",
@@ -38,6 +38,26 @@ const changeSet: ChangeSet = {
   revertedAt: null,
 };
 
+const muscleProposal: MuscleProposal = {
+  proposalId: "muscle-proposal:1",
+  userId: "u1",
+  action: "report",
+  muscleId: "calves",
+  soreness: 6,
+  conditions: ["tight"],
+  side: "left",
+  warmUp: "eases",
+  note: null,
+  activityId: null,
+  evidence: ["my calf is tight"],
+  confidence: 0.8,
+  day: "2026-11-05",
+  status: "confirmed",
+  createdAt: "2026-11-05T08:00:00.000Z",
+  updatedAt: "2026-11-05T09:00:00.000Z",
+  decidedAt: "2026-11-05T09:00:00.000Z",
+};
+
 describe("export bundle", () => {
   it("exports the profile without a password hash and with only the runner's rows", () => {
     const bundle = buildExportBundle({
@@ -53,6 +73,7 @@ describe("export bundle", () => {
       sessions: [session()],
       activities: [activity],
       changeSets: [changeSet],
+      muscleProposals: [muscleProposal],
     });
     expect(bundle.app).toBe("Milebook");
     expect(bundle.profile).toEqual({
@@ -67,6 +88,15 @@ describe("export bundle", () => {
     expect(JSON.stringify(bundle)).not.toContain("apiKey");
     expect(bundle.sessions).toHaveLength(1);
     expect(bundle.activities[0]?.source).toBe("chat");
+    // The coach's suggestions and the runner's decisions on them leave with the rest of the runner's data.
+    expect(bundle.muscleProposals).toHaveLength(1);
+    expect(bundle.muscleProposals[0]).toMatchObject({
+      proposalId: "muscle-proposal:1",
+      muscleId: "calves",
+      status: "confirmed",
+    });
+    expect(bundle.muscleCheckIns).toEqual([]);
+    expect(bundle.muscleStatusControls).toEqual([]);
   });
 });
 

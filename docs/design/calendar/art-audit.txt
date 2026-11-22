@@ -19,7 +19,7 @@ Contrast (semantic text, not decorative art)
 Viewport / layout
 - empty 1440x1000: page 1400, today strip 145, art 96, calendar card top 314
 - empty 390x844: page 1390, today strip 221, art 72, calendar card top 418
-- empty 320x700: page 1515, today strip 251, art 72, calendar card top 464
+- empty 320x700: page 1498, today strip 251, art 72, calendar card top 464
 - empty 768x1024: page 1444, today strip 189, art 72, calendar card top 358
 - empty 980x800: page 1400, today strip 145, art 96, calendar card top 314
 - demo 1440x1000: page 1348, no mark, no wash
