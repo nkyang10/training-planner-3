@@ -1,0 +1,1144 @@
+[
+  {
+    "region": "neck",
+    "parts": [
+      {
+        "fma": "FMA13408",
+        "name": "right sternocleidomastoid",
+        "fjs": [
+          "FJ1595"
+        ]
+      },
+      {
+        "fma": "FMA13409",
+        "name": "left sternocleidomastoid",
+        "fjs": [
+          "FJ1573"
+        ]
+      },
+      {
+        "fma": "FMA22653",
+        "name": "splenius capitis",
+        "fjs": [
+          "FJ1545",
+          "FJ1545M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "delts",
+    "parts": [
+      {
+        "fma": "FMA34676",
+        "name": "zone of deltoid",
+        "fjs": [
+          "FJ1467",
+          "FJ1467M",
+          "FJ1468",
+          "FJ1468M",
+          "FJ1513",
+          "FJ1513M"
+        ]
+      },
+      {
+        "fma": "FMA32544",
+        "name": "right supraspinatus",
+        "fjs": [
+          "FJ1506"
+        ]
+      },
+      {
+        "fma": "FMA32545",
+        "name": "left supraspinatus",
+        "fjs": [
+          "FJ1506M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "rotator-cuff",
+    "parts": [
+      {
+        "fma": "FMA32544",
+        "name": "right supraspinatus",
+        "fjs": [
+          "FJ1506"
+        ]
+      },
+      {
+        "fma": "FMA32545",
+        "name": "left supraspinatus",
+        "fjs": [
+          "FJ1506M"
+        ]
+      },
+      {
+        "fma": "FMA32547",
+        "name": "right infraspinatus muscle",
+        "fjs": [
+          "FJ1500"
+        ]
+      },
+      {
+        "fma": "FMA32548",
+        "name": "left infraspinatus muscle",
+        "fjs": [
+          "FJ1500M"
+        ]
+      },
+      {
+        "fma": "FMA13414",
+        "name": "right subscapularis",
+        "fjs": [
+          "FJ1504"
+        ]
+      },
+      {
+        "fma": "FMA13415",
+        "name": "left subscapularis",
+        "fjs": [
+          "FJ1504M"
+        ]
+      },
+      {
+        "fma": "FMA32553",
+        "name": "right teres minor",
+        "fjs": [
+          "FJ1508"
+        ]
+      },
+      {
+        "fma": "FMA32554",
+        "name": "left teres minor",
+        "fjs": [
+          "FJ1508M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "traps",
+    "parts": [
+      {
+        "fma": "FMA32529",
+        "name": "zone of trapezius",
+        "fjs": [
+          "FJ1554",
+          "FJ1554M"
+        ]
+      },
+      {
+        "fma": "FMA32555",
+        "name": "ascending part of trapezius",
+        "fjs": [
+          "FJ1520",
+          "FJ1520M"
+        ]
+      },
+      {
+        "fma": "FMA32556",
+        "name": "transverse part of trapezius",
+        "fjs": [
+          "FJ1554",
+          "FJ1554M"
+        ]
+      },
+      {
+        "fma": "FMA32557",
+        "name": "descending part of trapezius",
+        "fjs": [
+          "FJ1521",
+          "FJ1521M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "chest",
+    "parts": [
+      {
+        "fma": "FMA34690",
+        "name": "clavicular part of right pectoralis major",
+        "fjs": [
+          "FJ1447"
+        ]
+      },
+      {
+        "fma": "FMA34691",
+        "name": "clavicular part of left pectoralis major",
+        "fjs": [
+          "FJ1447M"
+        ]
+      },
+      {
+        "fma": "FMA79979",
+        "name": "sternocostal part of right pectoralis major",
+        "fjs": [
+          "FJ1464"
+        ]
+      },
+      {
+        "fma": "FMA79980",
+        "name": "sternocostal part of left pectoralis major",
+        "fjs": [
+          "FJ1464M"
+        ]
+      },
+      {
+        "fma": "FMA34699",
+        "name": "abdominal part of pectoralis major",
+        "fjs": [
+          "FJ1446",
+          "FJ1446M"
+        ]
+      },
+      {
+        "fma": "FMA45874",
+        "name": "abdominal part of right pectoralis major",
+        "fjs": [
+          "FJ1446"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "lats",
+    "parts": [],
+    "missing": [],
+    "empty": true
+  },
+  {
+    "region": "biceps",
+    "parts": [
+      {
+        "fma": "FMA37684",
+        "name": "short head of right biceps brachii",
+        "fjs": [
+          "FJ1512"
+        ]
+      },
+      {
+        "fma": "FMA37685",
+        "name": "short head of left biceps brachii",
+        "fjs": [
+          "FJ1512M"
+        ]
+      },
+      {
+        "fma": "FMA37682",
+        "name": "short head of biceps brachii",
+        "fjs": [
+          "FJ1512",
+          "FJ1512M"
+        ]
+      },
+      {
+        "fma": "FMA37683",
+        "name": "long head of biceps brachii",
+        "fjs": [
+          "FJ1478",
+          "FJ1478M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "triceps",
+    "parts": [
+      {
+        "fma": "FMA37694",
+        "name": "lateral head of triceps brachii",
+        "fjs": [
+          "FJ1477",
+          "FJ1477M"
+        ]
+      },
+      {
+        "fma": "FMA37695",
+        "name": "medial head of right triceps brachii",
+        "fjs": [
+          "FJ1480"
+        ]
+      },
+      {
+        "fma": "FMA37692",
+        "name": "long head of triceps brachii",
+        "fjs": [
+          "FJ1479",
+          "FJ1479M"
+        ]
+      },
+      {
+        "fma": "FMA37693",
+        "name": "medial head of triceps brachii",
+        "fjs": [
+          "FJ1480",
+          "FJ1480M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "forearms",
+    "parts": [
+      {
+        "fma": "FMA38486",
+        "name": "right brachioradialis",
+        "fjs": [
+          "FJ1487"
+        ]
+      },
+      {
+        "fma": "FMA38487",
+        "name": "left brachioradialis",
+        "fjs": [
+          "FJ1487M"
+        ]
+      },
+      {
+        "fma": "FMA38460",
+        "name": "right flexor carpi radialis",
+        "fjs": [
+          "FJ1496"
+        ]
+      },
+      {
+        "fma": "FMA38461",
+        "name": "left flexor carpi radialis",
+        "fjs": [
+          "FJ1496M"
+        ]
+      },
+      {
+        "fma": "FMA38495",
+        "name": "right extensor carpi radialis longus",
+        "fjs": [
+          "FJ1490"
+        ]
+      },
+      {
+        "fma": "FMA38496",
+        "name": "left extensor carpi radialis longus",
+        "fjs": [
+          "FJ1490M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "abs",
+    "parts": [
+      {
+        "fma": "FMA20278",
+        "name": "muscle of anterior abdominal wall",
+        "fjs": [
+          "FJ1452",
+          "FJ1452M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "obliques",
+    "parts": [
+      {
+        "fma": "FMA13336",
+        "name": "right external oblique",
+        "fjs": [
+          "FJ1452"
+        ]
+      },
+      {
+        "fma": "FMA13337",
+        "name": "left external oblique",
+        "fjs": [
+          "FJ1452M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "lower-back",
+    "parts": [
+      {
+        "fma": "FMA22709",
+        "name": "longissimus thoracis",
+        "fjs": [
+          "FJ1535",
+          "FJ1535M"
+        ]
+      },
+      {
+        "fma": "FMA22702",
+        "name": "iliocostalis lumborum",
+        "fjs": [
+          "FJ1527",
+          "FJ1527M"
+        ]
+      },
+      {
+        "fma": "FMA22703",
+        "name": "iliocostalis thoracis",
+        "fjs": [
+          "FJ1528",
+          "FJ1528M"
+        ]
+      },
+      {
+        "fma": "FMA22653",
+        "name": "splenius capitis",
+        "fjs": [
+          "FJ1545",
+          "FJ1545M"
+        ]
+      },
+      {
+        "fma": "FMA22681",
+        "name": "splenius cervicis",
+        "fjs": [
+          "FJ1546",
+          "FJ1546M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "glutes",
+    "parts": [
+      {
+        "fma": "FMA22328",
+        "name": "right gluteus maximus",
+        "fjs": [
+          "FJ1418"
+        ]
+      },
+      {
+        "fma": "FMA22329",
+        "name": "left gluteus maximus",
+        "fjs": [
+          "FJ1418M"
+        ]
+      },
+      {
+        "fma": "FMA22330",
+        "name": "right gluteus medius",
+        "fjs": [
+          "FJ1419"
+        ]
+      },
+      {
+        "fma": "FMA22331",
+        "name": "left gluteus medius",
+        "fjs": [
+          "FJ1419M"
+        ]
+      },
+      {
+        "fma": "FMA22332",
+        "name": "right gluteus minimus",
+        "fjs": [
+          "FJ1420"
+        ]
+      },
+      {
+        "fma": "FMA22333",
+        "name": "left gluteus minimus",
+        "fjs": [
+          "FJ1420M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "hip-flexors",
+    "parts": [
+      {
+        "fma": "FMA22342",
+        "name": "right psoas major",
+        "fjs": [
+          "FJ1431"
+        ]
+      },
+      {
+        "fma": "FMA22343",
+        "name": "left psoas major",
+        "fjs": [
+          "FJ1431M"
+        ]
+      },
+      {
+        "fma": "FMA22322",
+        "name": "right iliacus",
+        "fjs": [
+          "FJ1422"
+        ]
+      },
+      {
+        "fma": "FMA22323",
+        "name": "left iliacus",
+        "fjs": [
+          "FJ1422M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "adductors",
+    "parts": [
+      {
+        "fma": "FMA22456",
+        "name": "right adductor longus",
+        "fjs": [
+          "FJ1402"
+        ]
+      },
+      {
+        "fma": "FMA22457",
+        "name": "left adductor longus",
+        "fjs": [
+          "FJ1402M"
+        ]
+      },
+      {
+        "fma": "FMA22452",
+        "name": "right adductor brevis",
+        "fjs": [
+          "FJ1401"
+        ]
+      },
+      {
+        "fma": "FMA43883",
+        "name": "right gracilis",
+        "fjs": [
+          "FJ1421"
+        ]
+      },
+      {
+        "fma": "FMA43884",
+        "name": "left gracilis",
+        "fjs": [
+          "FJ1421M"
+        ]
+      },
+      {
+        "fma": "FMA22450",
+        "name": "right pectineus",
+        "fjs": [
+          "FJ1427"
+        ]
+      },
+      {
+        "fma": "FMA22451",
+        "name": "left pectineus",
+        "fjs": [
+          "FJ1427M"
+        ]
+      }
+    ],
+    "missing": [
+      "FMA22453"
+    ],
+    "empty": false
+  },
+  {
+    "region": "abductors",
+    "parts": [
+      {
+        "fma": "FMA22330",
+        "name": "right gluteus medius",
+        "fjs": [
+          "FJ1419"
+        ]
+      },
+      {
+        "fma": "FMA22331",
+        "name": "left gluteus medius",
+        "fjs": [
+          "FJ1419M"
+        ]
+      },
+      {
+        "fma": "FMA22332",
+        "name": "right gluteus minimus",
+        "fjs": [
+          "FJ1420"
+        ]
+      },
+      {
+        "fma": "FMA22333",
+        "name": "left gluteus minimus",
+        "fjs": [
+          "FJ1420M"
+        ]
+      },
+      {
+        "fma": "FMA22425",
+        "name": "right tensor fasciae latae",
+        "fjs": [
+          "FJ1438"
+        ]
+      },
+      {
+        "fma": "FMA22426",
+        "name": "left tensor fasciae latae",
+        "fjs": [
+          "FJ1438M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "quads",
+    "parts": [
+      {
+        "fma": "FMA38928",
+        "name": "right rectus femoris",
+        "fjs": [
+          "FJ1433"
+        ]
+      },
+      {
+        "fma": "FMA38929",
+        "name": "left rectus femoris",
+        "fjs": [
+          "FJ1433M"
+        ]
+      },
+      {
+        "fma": "FMA38930",
+        "name": "right vastus lateralis",
+        "fjs": [
+          "FJ1442"
+        ]
+      },
+      {
+        "fma": "FMA38931",
+        "name": "left vastus lateralis",
+        "fjs": [
+          "FJ1442M"
+        ]
+      },
+      {
+        "fma": "FMA22432",
+        "name": "vastus medialis",
+        "fjs": [
+          "FJ1443",
+          "FJ1443M"
+        ]
+      },
+      {
+        "fma": "FMA22433",
+        "name": "vastus intermedius",
+        "fjs": [
+          "FJ1441",
+          "FJ1441M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "hamstrings",
+    "parts": [
+      {
+        "fma": "FMA45888",
+        "name": "long head of right biceps femoris",
+        "fjs": [
+          "FJ1395"
+        ]
+      },
+      {
+        "fma": "FMA45889",
+        "name": "long head of left biceps femoris",
+        "fjs": [
+          "FJ1395M"
+        ]
+      },
+      {
+        "fma": "FMA22358",
+        "name": "right semitendinosus",
+        "fjs": [
+          "FJ1436"
+        ]
+      },
+      {
+        "fma": "FMA22359",
+        "name": "left semitendinosus",
+        "fjs": [
+          "FJ1436M"
+        ]
+      },
+      {
+        "fma": "FMA22448",
+        "name": "right semimembranosus",
+        "fjs": [
+          "FJ1435"
+        ]
+      },
+      {
+        "fma": "FMA22449",
+        "name": "left semimembranosus",
+        "fjs": [
+          "FJ1435M"
+        ]
+      },
+      {
+        "fma": "FMA45890",
+        "name": "short head of biceps femoris",
+        "fjs": [
+          "FJ1444",
+          "FJ1444M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "calves",
+    "parts": [
+      {
+        "fma": "FMA45957",
+        "name": "medial head of right gastrocnemius",
+        "fjs": [
+          "FJ1397"
+        ]
+      },
+      {
+        "fma": "FMA45958",
+        "name": "medial head of left gastrocnemius",
+        "fjs": [
+          "FJ1397M"
+        ]
+      },
+      {
+        "fma": "FMA45959",
+        "name": "lateral head of gastrocnemius",
+        "fjs": [
+          "FJ1394",
+          "FJ1394M"
+        ]
+      },
+      {
+        "fma": "FMA22558",
+        "name": "right soleus",
+        "fjs": [
+          "FJ1437"
+        ]
+      },
+      {
+        "fma": "FMA22559",
+        "name": "left soleus",
+        "fjs": [
+          "FJ1437M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "tibialis",
+    "parts": [
+      {
+        "fma": "FMA22544",
+        "name": "right tibialis anterior",
+        "fjs": [
+          "FJ1439"
+        ]
+      },
+      {
+        "fma": "FMA22545",
+        "name": "left tibialis anterior",
+        "fjs": [
+          "FJ1439M"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "femur",
+    "parts": [
+      {
+        "fma": "FMA9611",
+        "name": "femur",
+        "fjs": [
+          "FJ3259",
+          "FJ3365"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "tibia",
+    "parts": [
+      {
+        "fma": "FMA24477",
+        "name": "right tibia",
+        "fjs": [
+          "FJ3387"
+        ]
+      },
+      {
+        "fma": "FMA24478",
+        "name": "left tibia",
+        "fjs": [
+          "FJ3282"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "fibula",
+    "parts": [],
+    "missing": [],
+    "empty": true
+  },
+  {
+    "region": "humerus",
+    "parts": [
+      {
+        "fma": "FMA23130",
+        "name": "right humerus",
+        "fjs": [
+          "FJ3368"
+        ]
+      },
+      {
+        "fma": "FMA23131",
+        "name": "left humerus",
+        "fjs": [
+          "FJ3262"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "clavicle",
+    "parts": [
+      {
+        "fma": "FMA13322",
+        "name": "right clavicle",
+        "fjs": [
+          "FJ3362"
+        ]
+      },
+      {
+        "fma": "FMA13323",
+        "name": "left clavicle",
+        "fjs": [
+          "FJ3237"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "scapula",
+    "parts": [
+      {
+        "fma": "FMA13395",
+        "name": "right scapula",
+        "fjs": [
+          "FJ3384"
+        ]
+      },
+      {
+        "fma": "FMA13396",
+        "name": "left scapula",
+        "fjs": [
+          "FJ3279"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "sternum",
+    "parts": [
+      {
+        "fma": "FMA7487",
+        "name": "body of sternum",
+        "fjs": [
+          "FJ3178"
+        ]
+      },
+      {
+        "fma": "FMA12215",
+        "name": "zone of sternum",
+        "fjs": [
+          "FJ3290"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "patella",
+    "parts": [
+      {
+        "fma": "FMA24486",
+        "name": "right patella",
+        "fjs": [
+          "FJ3381"
+        ]
+      },
+      {
+        "fma": "FMA24487",
+        "name": "left patella",
+        "fjs": [
+          "FJ3275"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "talus",
+    "parts": [
+      {
+        "fma": "FMA24482",
+        "name": "right talus",
+        "fjs": [
+          "FJ3385"
+        ]
+      },
+      {
+        "fma": "FMA24483",
+        "name": "left talus",
+        "fjs": [
+          "FJ3280"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "calcaneus",
+    "parts": [
+      {
+        "fma": "FMA24497",
+        "name": "right calcaneus",
+        "fjs": [
+          "FJ3360"
+        ]
+      },
+      {
+        "fma": "FMA24498",
+        "name": "left calcaneus",
+        "fjs": [
+          "FJ3256"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "radius",
+    "parts": [
+      {
+        "fma": "FMA23464",
+        "name": "right radius",
+        "fjs": [
+          "FJ3349"
+        ]
+      },
+      {
+        "fma": "FMA23465",
+        "name": "left radius",
+        "fjs": [
+          "FJ3277"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "ulna",
+    "parts": [
+      {
+        "fma": "FMA23467",
+        "name": "right ulna",
+        "fjs": [
+          "FJ3391"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "ribs",
+    "parts": [
+      {
+        "fma": "FMA7574",
+        "name": "rib",
+        "fjs": [
+          "FJ3225",
+          "FJ3226",
+          "FJ3227",
+          "FJ3228",
+          "FJ3229",
+          "FJ3230",
+          "FJ3231",
+          "FJ3232",
+          "FJ3233",
+          "FJ3234",
+          "FJ3235",
+          "FJ3236",
+          "FJ3330",
+          "FJ3331",
+          "FJ3332",
+          "FJ3334",
+          "FJ3336",
+          "FJ3338",
+          "FJ3340",
+          "FJ3342",
+          "FJ3344",
+          "FJ3346",
+          "FJ3347",
+          "FJ3348"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "vertebrae",
+    "parts": [
+      {
+        "fma": "FMA9139",
+        "name": "thoracic vertebra",
+        "fjs": [
+          "FJ3154",
+          "FJ3155",
+          "FJ3156",
+          "FJ3158",
+          "FJ3160",
+          "FJ3163",
+          "FJ3166",
+          "FJ3169",
+          "FJ3171",
+          "FJ3173",
+          "FJ3174",
+          "FJ3175"
+        ]
+      },
+      {
+        "fma": "FMA9915",
+        "name": "cervical vertebra",
+        "fjs": [
+          "FJ3161",
+          "FJ3164",
+          "FJ3167",
+          "FJ3170",
+          "FJ3172",
+          "FJ3176",
+          "FJ3177"
+        ]
+      },
+      {
+        "fma": "FMA9921",
+        "name": "lumbar vertebra",
+        "fjs": [
+          "FJ3157",
+          "FJ3159",
+          "FJ3162",
+          "FJ3165",
+          "FJ3168"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "sacrum",
+    "parts": [
+      {
+        "fma": "FMA16202",
+        "name": "sacrum",
+        "fjs": [
+          "FJ3393"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "mandible",
+    "parts": [
+      {
+        "fma": "FMA52748",
+        "name": "mandible",
+        "fjs": [
+          "FJ3289"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  },
+  {
+    "region": "skin",
+    "parts": [
+      {
+        "fma": "FMA7163",
+        "name": "skin",
+        "fjs": [
+          "FJ2810"
+        ]
+      }
+    ],
+    "missing": [],
+    "empty": false
+  }
+]

@@ -8,8 +8,9 @@ coverage/
 .next/
 .turbo/
 
-# Local data and secrets
-data/
+# Local data and secrets. Anchored to the repository root: a `data` directory elsewhere in the tree
+# (e.g. tools/anatomy/data, the committed anatomy mapping) is source, not runtime state.
+/data/
 .env
 .env.*
 # The documented template is not a secret: it ships with the repository.
