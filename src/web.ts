@@ -148,9 +148,16 @@ const ANATOMY_MUSCLES_GLB = readFileSync(new URL("./vendor/anatomy-muscles.glb",
 const AUTH_HERO_WEBP = readFileSync(new URL("./vendor/signin/auth-hero.webp", import.meta.url));
 const AUTH_OBJECT_WEBP = readFileSync(new URL("./vendor/signin/calendar-object.webp", import.meta.url));
 const AUTH_GRAIN_WEBP = readFileSync(new URL("./vendor/signin/paper-grain.webp", import.meta.url));
+/**
+ * Original signed-in art: a Blender/ComfyUI empty-month plate, a wide paper wash for an empty calendar,
+ * and a Blender coach token for the bubble. All are local, read once and served with a cache header.
+ */
+const CALENDAR_EMPTY_WEBP = readFileSync(new URL("./vendor/calendar/calendar-empty.webp", import.meta.url));
+const CALENDAR_WASH_WEBP = readFileSync(new URL("./vendor/calendar/calendar-wash.webp", import.meta.url));
+const COACH_TOKEN_WEBP = readFileSync(new URL("./vendor/calendar/coach-token.webp", import.meta.url));
 
 /** Bump when the auth or shared stylesheet changes; tests only assert the cache-busting prefix. */
-const APP_CSS_VERSION = 31;
+const APP_CSS_VERSION = 32;
 
 const SESSION_COOKIE = "milebooksid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -2013,7 +2020,7 @@ function layout(
 function renderChatBubble(tx: Translator): string {
   const E = escapeHtml;
   return `<aside class="coach-dock" aria-label="${E(tx.t("coach.title"))}">
-  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel" data-track="coach-open" data-track-value="launcher">💬 ${E(tx.t("coach.bubbleLabel"))}</button>
+  <button id="coach-bubble" type="button" aria-label="${E(tx.t("coach.bubbleAria"))}" aria-expanded="false" aria-controls="coach-panel" data-track="coach-open" data-track-value="launcher"><img class="coach-token" src="/static/coach-token.webp" alt="" width="26" height="26" decoding="async"> ${E(tx.t("coach.bubbleLabel"))}</button>
   <section id="coach-panel" hidden role="region" aria-label="${E(tx.t("coach.title"))}">
     <header><div class="coach-head-text"><strong>${E(tx.t("coach.title"))}</strong><span class="coach-horizon">${E(tx.t("coach.horizon", { days: HORIZON_DAYS }))}</span></div><div class="coach-head-actions"><button id="coach-close" type="button" aria-label="${E(tx.t("coach.closeAria"))}" title="${E(tx.t("coach.closeTitle"))}" data-track="coach-close" data-track-value="close">×</button><button id="coach-minimize" type="button" aria-label="${E(tx.t("coach.minimizeAria"))}" title="${E(tx.t("coach.minimizeTitle"))}" data-track="coach-close" data-track-value="minimize">−</button></div></header>
     <div class="coach-tabs" role="tablist" aria-label="${E(tx.t("coach.tabsAria"))}"><button id="coach-tab-chat" class="coach-tab" type="button" role="tab" aria-selected="true" aria-controls="coach-tabpanel-chat" tabindex="0" data-coach-tab="chat">${E(tx.t("coach.tabChat"))}</button><button id="coach-tab-states" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-states" tabindex="-1" data-coach-tab="states">${E(tx.t("coach.tabStates"))}<span class="coach-tab-count" data-coach-count="states" hidden></span></button><button id="coach-tab-changes" class="coach-tab" type="button" role="tab" aria-selected="false" aria-controls="coach-tabpanel-changes" tabindex="-1" data-coach-tab="changes">${E(tx.t("coach.tabChanges"))}<span class="coach-tab-count" data-coach-count="changes" hidden></span></button></div>
@@ -4385,6 +4392,21 @@ export function createWeb(options: WebOptions): WebApp {
         response.end(AUTH_GRAIN_WEBP);
         return;
       }
+      if (url.pathname === "/static/calendar-empty.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(CALENDAR_EMPTY_WEBP);
+        return;
+      }
+      if (url.pathname === "/static/calendar-wash.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(CALENDAR_WASH_WEBP);
+        return;
+      }
+      if (url.pathname === "/static/coach-token.webp") {
+        response.writeHead(200, { "content-type": "image/webp", "cache-control": "public, max-age=86400" });
+        response.end(COACH_TOKEN_WEBP);
+        return;
+      }
       if (url.pathname === "/static/anatomy-muscles.glb") {
         response.writeHead(200, { "content-type": "model/gltf-binary", "cache-control": "no-store" });
         response.end(ANATOMY_MUSCLES_GLB);
@@ -5547,9 +5569,10 @@ export function createWeb(options: WebOptions): WebApp {
         }
         const todayStrip = month !== currentMonth
           ? ""
-          : `<section class="today-strip" aria-label="${escapeHtml(tx.t("calendar.today"))}">
+          : `<section class="today-strip${calendarEmpty ? " has-mark" : ""}" aria-label="${escapeHtml(tx.t("calendar.today"))}">
             <div class="today-strip-head"><span class="today-strip-label">${escapeHtml(tx.t("calendar.today"))}</span><span class="today-strip-date">${escapeHtml(formatDayLabel(today, date))}</span></div>
             ${todayMain}
+            ${calendarEmpty ? `<div class="today-strip-mark" aria-hidden="true"><img src="/static/calendar-empty.webp" alt="" width="96" height="96" decoding="async"></div>` : ""}
             ${todayActions}
             ${contextLine}
           </section>`;
@@ -5559,7 +5582,7 @@ export function createWeb(options: WebOptions): WebApp {
         </header>
           ${todayStrip}
           ${reviewCard}
-          <section class="card calendar-card">
+          <section class="card calendar-card${calendarEmpty ? " is-empty" : ""}">
             <div class="month-nav"><a href="/calendar?month=${escapeHtml(prev)}">${escapeHtml(tx.t("calendar.prev"))}</a><a id="month-current" class="month-current" data-month="${escapeHtml(month)}" data-current-month="${escapeHtml(currentMonth)}" href="/calendar?month=${escapeHtml(month)}" aria-haspopup="dialog" title="${escapeHtml(tx.t("calendar.chooseMonth"))}">${escapeHtml(monthLabel)}</a><a href="/calendar?month=${escapeHtml(next)}">${escapeHtml(tx.t("calendar.next"))}</a></div>
             ${calendarKey}
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>

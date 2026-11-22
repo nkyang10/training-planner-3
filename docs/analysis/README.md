@@ -1,7 +1,7 @@
 # Milebook - runner workflow, needs and improvement analysis
 
-**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20) is merged to main and not deployed.
-**Date:** 2026-11-22.
+**Status:** complete analysis package; the 2026-11-22 auth design loop (19-20) is merged to main. The calendar
+art/UIUX pass (21) is on its branch. Neither is deployed. **Date:** 2026-11-22.
 **Scope:** a full user-workflow and feature analysis of Milebook (the private calendar-first AI coach for runners), mapped
 against runner needs researched from public training-sharing sources, reviewed for missing or improvable parts, and
 turned into a ranked, sliced backlog.
@@ -43,6 +43,7 @@ are the evidence behind them.
 | [18-daily-pages-review.md](18-daily-pages-review.md) | What do the training log and the day page ask of a runner, and what shipped from applying the entry method to them? | seeded headless-Chrome captures at 1164/390 (Asia/Taipei, Nov 2026) + DOM probes (head, summary, disclosure, block positions, doc height) + the 560/560 gate + a 20-check live probe with a real manual-run POST (5 km / 30 min) | 113 |
 | [19-signin-page-research.md](19-signin-page-research.md) | What do OWASP, NIST, WCAG 2.2, NN/g, GOV.UK and FIDO say about sign-in and signup, and how does the current Milebook card measure against them? | 12 guidance items with URLs + measured baseline audit at 1440/390 + contrast/target math + 14 findings and a protect list | 180 |
 | [20-signin-page-design-loop.md](20-signin-page-design-loop.md) | What did the four-cycle research -> design -> POC -> review loop actually ship, what did each review measure, and what remains? | four cycles; original ComfyUI + Blender art; CDP captures at 1440x1000 through 320x700; client validation, autofill, forced-colors, 200% zoom, text spacing, focus and no-JS probes; final 562/562 gate and `r1`-`r4` evidence | 602 |
+| [21-calendar-art-uiux.md](21-calendar-art-uiux.md) | What did the calendar-page art/UIUX pass ship, what did the empty month and the coach bubble look like before and after, and what did the review measure? | four cycles; original ComfyUI paper textures + Blender blank-month plate/coach token; CDP 1440/980/768/390/320, forced-colors, no-JS and zh-HK; 562/562; `docs/design/calendar` evidence | 206 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -51,7 +52,7 @@ assigned I-18 to slice 1, added the G-08/G-18 mapping note, reworded the infrast
 `??` defects in 03, deleted stale root-level copies of 01-03 and MILEBOOK-CALENDAR.md, and recorded the disposition of every
 finding in 06 section 8.
 
-**Character encoding.** 00, 02, 04, 05, 06, 07, 10, 18, 19 and this index are pure ASCII. 01, 03, 08, 09, 11, 13, 14, 17 and 20
+**Character encoding.** 00, 02, 04, 05, 06, 07, 10, 18, 19, 21 and this index are pure ASCII. 01, 03, 08, 09, 11, 13, 14, 17 and 20
 are valid UTF-8 and intentionally contain typographic punctuation; 01 and 03 add Chinese UI quotes and the competitive
 matrix's yes/partial/no glyphs (audited byte-by-byte in 06: the earlier "lone surrogate" alarm was a UTF-16 reporting
 artefact, not file corruption); 08 and 11 quote the calendar's own UI glyphs (the run checkmark and the workout
@@ -96,6 +97,7 @@ copy in section 4.6. No document contains mojibake or replacement characters.
 | `AU-01..AU-14` | Measured baseline audit findings | 19 |
 | `AP-1..AP-8` | Auth-page design principles | 19 |
 | `R1-01..R4-09` | Auth design-loop review findings, by cycle | 20 |
+| `C1-01..C4-04` | Calendar art/UIUX review findings, by cycle | 21 |
 
 Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numbering is independent. Cite them as
 "02 S17" and "03 S17" to avoid ambiguity.
@@ -114,9 +116,9 @@ Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numberi
   what primary research would settle (G1-G10).
 - **Competitor data is dated 2026-11-18.** Prices and features change; the matrix footnotes mark uncertain cells.
 - **No primary runner interviews were run.** The validation plan in 05 section 8 is a proposal, not evidence.
-- **This package is analysis plus one implementation record.** Documents 00-18 are analysis or proposals; 19 is the
-  sign-in research; 20 is the four-cycle auth design loop and its implementation record. The auth page changes are
-  merged to main and are not deployed.
+- **This package is analysis plus implementation records.** Documents 00-18 are analysis or proposals; 19 is the
+  sign-in research; 20 is the four-cycle auth design loop; 21 is the calendar-page art/UIUX pass. The auth page is
+  merged to main; the calendar art pass is on its branch. Neither is deployed.
 
 ## How to use it
 

@@ -1,0 +1,1199 @@
+{
+  "empty-1440": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1400
+    },
+    "overflowX": false,
+    "today": {
+      "x": 198,
+      "y": 155,
+      "w": 1044,
+      "h": 145,
+      "bottom": 300
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 798.9,
+      "y": 189,
+      "w": 96,
+      "h": 96,
+      "bottom": 285
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 198,
+      "y": 314,
+      "w": 1044,
+      "h": 771,
+      "bottom": 1085
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": {
+      "x": 219,
+      "y": 410,
+      "w": 1002,
+      "h": 654,
+      "bottom": 1064
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 914.9,
+          "y": 204.5,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 248.5
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 1170.8,
+          "y": 214.5,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 238.5
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-390": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "scrollW": 390,
+      "scrollH": 1390
+    },
+    "overflowX": false,
+    "today": {
+      "x": 10,
+      "y": 183,
+      "w": 370,
+      "h": 221,
+      "bottom": 404
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 30,
+      "y": 265,
+      "w": 72,
+      "h": 72,
+      "bottom": 337
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 10,
+      "y": 418,
+      "w": 370,
+      "h": 634,
+      "bottom": 1052
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 271.9,
+      "y": 786,
+      "w": 106.1,
+      "h": 46,
+      "bottom": 832
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 287.9,
+        "y": 798,
+        "w": 22,
+        "h": 22,
+        "bottom": 820
+      }
+    },
+    "month": {
+      "x": 31,
+      "y": 533,
+      "w": 328,
+      "h": 498,
+      "bottom": 1031
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 30,
+          "y": 342,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 386
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 285.9,
+          "y": 352,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 376
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-320": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 320,
+      "h": 700,
+      "scrollW": 320,
+      "scrollH": 1515
+    },
+    "overflowX": false,
+    "today": {
+      "x": 10,
+      "y": 199,
+      "w": 300,
+      "h": 251,
+      "bottom": 450
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 30,
+      "y": 281,
+      "w": 72,
+      "h": 72,
+      "bottom": 353
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 10,
+      "y": 464,
+      "w": 300,
+      "h": 680,
+      "bottom": 1144
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 201.9,
+      "y": 642,
+      "w": 106.1,
+      "h": 46,
+      "bottom": 688
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 217.9,
+        "y": 654,
+        "w": 22,
+        "h": 22,
+        "bottom": 676
+      }
+    },
+    "month": {
+      "x": 31,
+      "y": 625,
+      "w": 258,
+      "h": 498,
+      "bottom": 1123
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 30,
+          "y": 358,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 402
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 30,
+          "y": 408,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 432
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-768": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 768,
+      "h": 1024,
+      "scrollW": 768,
+      "scrollH": 1444
+    },
+    "overflowX": false,
+    "today": {
+      "x": 18,
+      "y": 155,
+      "w": 732,
+      "h": 189,
+      "bottom": 344
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 38,
+      "y": 211,
+      "w": 72,
+      "h": 72,
+      "bottom": 283
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 18,
+      "y": 358,
+      "w": 732,
+      "h": 771,
+      "bottom": 1129
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 631.9,
+      "y": 952,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 1006
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 651.9,
+        "y": 966,
+        "w": 26,
+        "h": 26,
+        "bottom": 992
+      }
+    },
+    "month": {
+      "x": 39,
+      "y": 454,
+      "w": 690,
+      "h": 654,
+      "bottom": 1108
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 38,
+          "y": 285,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 329
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 293.9,
+          "y": 295,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 319
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-980": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 980,
+      "h": 800,
+      "scrollW": 980,
+      "scrollH": 1400
+    },
+    "overflowX": false,
+    "today": {
+      "x": 18,
+      "y": 155,
+      "w": 944,
+      "h": 145,
+      "bottom": 300
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 518.9,
+      "y": 189,
+      "w": 96,
+      "h": 96,
+      "bottom": 285
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 18,
+      "y": 314,
+      "w": 944,
+      "h": 771,
+      "bottom": 1085
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 843.9,
+      "y": 728,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 782
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 863.9,
+        "y": 742,
+        "w": 26,
+        "h": 26,
+        "bottom": 768
+      }
+    },
+    "month": {
+      "x": 39,
+      "y": 410,
+      "w": 902,
+      "h": 654,
+      "bottom": 1064
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 634.9,
+          "y": 204.5,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 248.5
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 890.8,
+          "y": 214.5,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 238.5
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-zh-390": {
+    "title": "訓練計劃 · Plan · Milebook",
+    "lang": "zh-HK",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "scrollW": 390,
+      "scrollH": 1390
+    },
+    "overflowX": false,
+    "today": {
+      "x": 10,
+      "y": 183,
+      "w": 370,
+      "h": 221,
+      "bottom": 404
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 30,
+      "y": 265,
+      "w": 72,
+      "h": 72,
+      "bottom": 337
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 10,
+      "y": 418,
+      "w": 370,
+      "h": 634,
+      "bottom": 1052
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 286,
+      "y": 786,
+      "w": 92,
+      "h": 46,
+      "bottom": 832
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 302,
+        "y": 798,
+        "w": 22,
+        "h": 22,
+        "bottom": 820
+      }
+    },
+    "month": {
+      "x": 31,
+      "y": 533,
+      "w": 328,
+      "h": 498,
+      "bottom": 1031
+    },
+    "buttons": [
+      {
+        "text": "請教練安排這個月",
+        "rect": {
+          "x": 30,
+          "y": 342,
+          "w": 140,
+          "h": 44,
+          "bottom": 386
+        }
+      },
+      {
+        "text": "手動記錄跑步",
+        "rect": {
+          "x": 180,
+          "y": 352,
+          "w": 76,
+          "h": 24,
+          "bottom": 376
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "demo-1440": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1348
+    },
+    "overflowX": false,
+    "today": {
+      "x": 198,
+      "y": 155,
+      "w": 1044,
+      "h": 93,
+      "bottom": 248
+    },
+    "todayClass": "today-strip",
+    "mark": null,
+    "markImg": null,
+    "card": {
+      "x": 198,
+      "y": 262,
+      "w": 1044,
+      "h": 771,
+      "bottom": 1033
+    },
+    "cardClass": "card calendar-card",
+    "wash": null,
+    "washDisplay": null,
+    "markBorder": null,
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": {
+      "x": 219,
+      "y": 358,
+      "w": 1002,
+      "h": 654,
+      "bottom": 1012
+    },
+    "buttons": [
+      {
+        "text": "View day",
+        "rect": {
+          "x": 1063.8,
+          "y": 178.5,
+          "w": 94.1,
+          "h": 44,
+          "bottom": 222.5
+        }
+      },
+      {
+        "text": "Ask coach",
+        "rect": {
+          "x": 1167.9,
+          "y": 188.5,
+          "w": 57.1,
+          "h": 24,
+          "bottom": 212.5
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "demo-390": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "scrollW": 390,
+      "scrollH": 1416
+    },
+    "overflowX": false,
+    "today": {
+      "x": 10,
+      "y": 183,
+      "w": 370,
+      "h": 205,
+      "bottom": 388
+    },
+    "todayClass": "today-strip",
+    "mark": null,
+    "markImg": null,
+    "card": {
+      "x": 10,
+      "y": 402,
+      "w": 370,
+      "h": 676.3,
+      "bottom": 1078.3
+    },
+    "cardClass": "card calendar-card",
+    "wash": null,
+    "washDisplay": null,
+    "markBorder": null,
+    "bubble": {
+      "x": 271.9,
+      "y": 786,
+      "w": 106.1,
+      "h": 46,
+      "bottom": 832
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 287.9,
+        "y": 798,
+        "w": 22,
+        "h": 22,
+        "bottom": 820
+      }
+    },
+    "month": {
+      "x": 31,
+      "y": 517,
+      "w": 328,
+      "h": 540.3,
+      "bottom": 1057.3
+    },
+    "buttons": [
+      {
+        "text": "View day",
+        "rect": {
+          "x": 30,
+          "y": 326,
+          "w": 94.1,
+          "h": 44,
+          "bottom": 370
+        }
+      },
+      {
+        "text": "Ask coach",
+        "rect": {
+          "x": 134.1,
+          "y": 336,
+          "w": 57.1,
+          "h": 24,
+          "bottom": 360
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "history-1440": {
+    "title": "Training log · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1559
+    },
+    "overflowX": false,
+    "today": null,
+    "todayClass": null,
+    "mark": null,
+    "markImg": null,
+    "card": null,
+    "cardClass": null,
+    "wash": null,
+    "washDisplay": null,
+    "markBorder": null,
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": null,
+    "buttons": [],
+    "images": [
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "profile-1440": {
+    "title": "Profile · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1160
+    },
+    "overflowX": false,
+    "today": null,
+    "todayClass": null,
+    "mark": null,
+    "markImg": null,
+    "card": null,
+    "cardClass": null,
+    "wash": null,
+    "washDisplay": null,
+    "markBorder": null,
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": null,
+    "buttons": [],
+    "images": [
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "muscle-1440": {
+    "title": "Muscles · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 2438
+    },
+    "overflowX": false,
+    "today": null,
+    "todayClass": null,
+    "mark": null,
+    "markImg": null,
+    "card": null,
+    "cardClass": null,
+    "wash": null,
+    "washDisplay": null,
+    "markBorder": null,
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": null,
+    "buttons": [],
+    "images": [
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-forced-colors-1440": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1400
+    },
+    "overflowX": false,
+    "today": {
+      "x": 198,
+      "y": 155,
+      "w": 1044,
+      "h": 145,
+      "bottom": 300
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 794.9,
+      "y": 189,
+      "w": 96,
+      "h": 96,
+      "bottom": 285
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 198,
+      "y": 314,
+      "w": 1044,
+      "h": 771,
+      "bottom": 1085
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "none",
+    "markBorder": "rgb(0, 0, 0)",
+    "bubble": {
+      "x": 1333.9,
+      "y": 930,
+      "w": 88.1,
+      "h": 52,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0,
+        "bottom": 0
+      }
+    },
+    "month": {
+      "x": 219,
+      "y": 410,
+      "w": 1002,
+      "h": 654,
+      "bottom": 1064
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 910.9,
+          "y": 204.5,
+          "w": 249.9,
+          "h": 44,
+          "bottom": 248.5
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 1170.8,
+          "y": 214.5,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 238.5
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  },
+  "empty-nojs-1440": {
+    "title": "Plan · Milebook",
+    "lang": "en",
+    "viewport": {
+      "w": 1440,
+      "h": 1000,
+      "scrollW": 1440,
+      "scrollH": 1400
+    },
+    "overflowX": false,
+    "today": {
+      "x": 198,
+      "y": 155,
+      "w": 1044,
+      "h": 145,
+      "bottom": 300
+    },
+    "todayClass": "today-strip has-mark",
+    "mark": {
+      "x": 798.9,
+      "y": 189,
+      "w": 96,
+      "h": 96,
+      "bottom": 285
+    },
+    "markImg": {
+      "src": "/static/calendar-empty.webp",
+      "alt": "",
+      "naturalW": 640,
+      "naturalH": 640,
+      "complete": true
+    },
+    "card": {
+      "x": 198,
+      "y": 314,
+      "w": 1044,
+      "h": 771,
+      "bottom": 1085
+    },
+    "cardClass": "card calendar-card is-empty",
+    "wash": "url(\"http://127.0.0.1:18092/static/calendar-wash.webp\")",
+    "washDisplay": "block",
+    "markBorder": "rgb(240, 220, 203)",
+    "bubble": {
+      "x": 1303.9,
+      "y": 928,
+      "w": 118.1,
+      "h": 54,
+      "bottom": 982
+    },
+    "bubbleImg": {
+      "src": "/static/coach-token.webp",
+      "alt": "",
+      "naturalW": 128,
+      "naturalH": 128,
+      "complete": true,
+      "rect": {
+        "x": 1323.9,
+        "y": 942,
+        "w": 26,
+        "h": 26,
+        "bottom": 968
+      }
+    },
+    "month": {
+      "x": 219,
+      "y": 410,
+      "w": 1002,
+      "h": 654,
+      "bottom": 1064
+    },
+    "buttons": [
+      {
+        "text": "Ask the coach to plan this month",
+        "rect": {
+          "x": 914.9,
+          "y": 204.5,
+          "w": 245.9,
+          "h": 44,
+          "bottom": 248.5
+        }
+      },
+      {
+        "text": "Log a run",
+        "rect": {
+          "x": 1170.8,
+          "y": 214.5,
+          "w": 54.2,
+          "h": 24,
+          "bottom": 238.5
+        }
+      }
+    ],
+    "images": [
+      {
+        "src": "/static/calendar-empty.webp",
+        "alt": "",
+        "w": 640,
+        "h": 640
+      },
+      {
+        "src": "/static/coach-token.webp",
+        "alt": "",
+        "w": 128,
+        "h": 128
+      }
+    ]
+  }
+}

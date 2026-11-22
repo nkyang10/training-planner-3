@@ -363,9 +363,9 @@ describe("authentication pages", () => {
     expect(invalid).toContain('<details class="auth-goal-disclosure" open>');
   });
 
-  it("serves the auth art as cacheable WebP", async () => {
+  it("serves the auth and calendar art as cacheable WebP", async () => {
     const { base } = await start();
-    for (const name of ["auth-hero.webp", "calendar-object.webp", "paper-grain.webp"]) {
+    for (const name of ["auth-hero.webp", "calendar-object.webp", "paper-grain.webp", "calendar-empty.webp", "calendar-wash.webp", "coach-token.webp"]) {
       const response = await fetch(`${base}/static/${name}`);
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("image/webp");
@@ -400,7 +400,7 @@ describe("authentication pages", () => {
     const calendarHtml = await calendar.text();
     expect(calendarHtml).toContain("Welcome back, New Runner");
     expect(calendarHtml).toContain("Your plan");
-    expect(calendarHtml).toContain('class="today-strip"');
+    expect(calendarHtml).toContain('class="today-strip has-mark"');
     expect(calendarHtml).toContain('class="cal-key"');
 
     const duplicate = await fetch(`${base}/signup`, {
@@ -2266,6 +2266,7 @@ describe("training log", () => {
     expect(html).toContain('class="entry-quiet-link" href="/day/2026-11-05#log-run"');
     expect(html).not.toContain("cal-legend");
     expect(html).not.toContain('class="head-actions"');
+    expect(html).not.toContain('class="card calendar-card is-empty"');
   });
 
   it("keeps one primary action when today is booked", async () => {
@@ -2303,6 +2304,11 @@ describe("training log", () => {
     expect(html).toContain("Nothing booked this month.");
     expect(html).toContain("Ask the coach to plan this month");
     expect(html).toContain('data-coach-message="Plan my training for this month."');
+    expect(html).toContain('class="today-strip has-mark"');
+    expect(html).toContain('class="today-strip-mark"');
+    expect(html).toContain('src="/static/calendar-empty.webp"');
+    expect(html).toContain('class="card calendar-card is-empty"');
+    expect(html).toContain('src="/static/coach-token.webp"');
     expect(html).not.toContain('class="empty-card"');
     expect(html).not.toContain('class="connect-card"');
     expect(html).toContain("Garmin is not connected");
