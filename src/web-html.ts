@@ -1,5 +1,5 @@
 /** Small HTML helpers shared by the web shell and the coaching-state renderer. */
-export type ViewName = "calendar" | "history" | "muscle" | "none";
+export type ViewName = "calendar" | "history" | "muscle" | "changes" | "none";
 
 export function escapeHtml(value: string): string {
   return value

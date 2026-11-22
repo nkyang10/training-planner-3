@@ -765,7 +765,8 @@ describe("the muscle status layer", () => {
     expect(feed.items).toHaveLength(0);
     const otherHtml = await (await fetch(`${base}/muscle`, { headers: { cookie: otherCookie } })).text();
     expect(otherHtml).toContain("All perfect");
-    expect(otherHtml).not.toContain("1 muscle");
+    // The first runner's status row is specific to them; the catalog name alone is shared, so check the row text.
+    expect(otherHtml).not.toContain("Calves 7/10");
   });
 });
 

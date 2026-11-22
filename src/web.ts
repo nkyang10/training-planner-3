@@ -45,7 +45,7 @@ import {
   type MuscleSide,
   type MuscleWarmUp,
 } from "./muscles";
-import { computeMuscleStatuses } from "./muscle-status";
+import { computeMuscleStatuses, type MuscleStatusControl } from "./muscle-status";
 import {
   muscleCalendarChip,
   musclesWorkedCard,
@@ -93,6 +93,7 @@ import type {
   ActivityWorkout,
   ActivityWorkoutStep,
   AppNotification,
+  ChangeEntry,
   ChangeSet,
   CoachStateKey,
   GarminKey,
@@ -243,7 +244,9 @@ function safeNext(value: string | null): string {
       value === "/history" ||
       value.startsWith("/history?") ||
       value === "/muscle" ||
-      value.startsWith("/muscle?"))
+      value.startsWith("/muscle?") ||
+      value === "/changes" ||
+      value.startsWith("/changes?"))
   ) {
     return value;
   }
@@ -315,8 +318,9 @@ function syncFlash(params: URLSearchParams, tx: Translator): string {
   if (params.get("logged") === "1") {
     return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.runLogged"))}</p>`;
   }
-  if (params.get("undone") === "1") {
-    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.changeUndone"))}</p>`;
+  const undoneCount = Number(params.get("undone") ?? "");
+  if (Number.isInteger(undoneCount) && undoneCount > 0) {
+    return `<p class="banner ok" role="status">${escapeHtml(tx.t("flash.changeUndoneCount", { count: undoneCount }))}</p>`;
   }
   const undoError = params.get("undoError");
   if (undoError !== null && undoError.length > 0) {
@@ -486,38 +490,319 @@ function formatShortDate(day: string, date: DateFormat = defaultTranslator.date)
   return date.shortDate(day);
 }
 
-function changeActionLabel(action: string, tx: Translator): string {
-  if (action === "add") return tx.t("changes.added");
-  if (action === "remove") return tx.t("changes.deleted");
-  if (action === "revert") return tx.t("changes.reverted");
-  return tx.t("changes.moved");
+/** One batch's human headline: count + action + the day or range it touched. Never the raw coach log. */
+interface ChangeHeadline {
+  readonly text: string;
+  readonly action: "add" | "remove" | "update" | "revert" | "mixed";
+}
+
+/** The days a batch touched: the `toDay` when there is one, else the `fromDay`. */
+function changeDays(changeSet: ChangeSet): string[] {
+  const days = changeSet.entries
+    .map((entry) => entry.toDay ?? entry.fromDay)
+    .filter((day): day is string => day !== null && day.length === 10);
+  return [...new Set(days)].sort();
+}
+
+function changeRange(changeSet: ChangeSet, tx: Translator): string {
+  const days = changeDays(changeSet);
+  const first = days[0];
+  const last = days[days.length - 1];
+  if (first === undefined || last === undefined) return "";
+  return first === last ? tx.date.weekdayDate(first) : `${tx.date.shortDate(first)} – ${tx.date.shortDate(last)}`;
+}
+
+function changeAction(changeSet: ChangeSet): "add" | "remove" | "update" | "revert" | "mixed" {
+  const actions = new Set(changeSet.entries.map((entry) => entry.action));
+  if (actions.size !== 1) return "mixed";
+  const action = changeSet.entries[0]?.action;
+  return action === "add" || action === "remove" || action === "update" ? action : action === "revert" ? "revert" : "mixed";
+}
+
+/** What a revert batch reversed: an undo that deleted an added session reversed an add. */
+function revertAction(changeSet: ChangeSet): "add" | "remove" | "update" | "mixed" {
+  const effects = changeSet.entries.map((entry) => {
+    if (entry.after === null) return "add" as const;
+    if (entry.before === null) return "remove" as const;
+    return "update" as const;
+  });
+  const unique = new Set(effects);
+  return unique.size === 1 ? effects[0] ?? "mixed" : "mixed";
+}
+
+function changeHeadline(changeSet: ChangeSet, tx: Translator): ChangeHeadline {
+  const count = changeSet.entries.length;
+  const unit = count === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
+  const phrase = (action: "add" | "remove" | "update" | "mixed"): string => {
+    if (action === "add") return tx.t("changes.headline.added", { count, unit });
+    if (action === "remove") return tx.t("changes.headline.removed", { count, unit });
+    if (action === "update") return tx.t("changes.headline.updated", { count, unit });
+    return tx.t("changes.headline.mixed", { count });
+  };
+  const action = changeAction(changeSet);
+  let text: string;
+  if (action === "revert") {
+    const original = revertAction(changeSet);
+    text = original === "remove"
+      ? tx.t("changes.headline.restored", { count, unit })
+      : tx.t("changes.headline.undone", { phrase: phrase(original) });
+  } else {
+    text = phrase(action);
+  }
+  const range = changeRange(changeSet, tx);
+  return { text: range.length === 0 ? text : `${text} · ${range}`, action };
+}
+
+function changeDayDiff(day: string, today: string): number {
+  const from = Date.parse(`${day}T00:00:00.000Z`);
+  const to = Date.parse(`${today}T00:00:00.000Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
+  return Math.max(0, Math.round((to - from) / 86_400_000));
+}
+
+/** A timestamp in the runner's zone, with relative freshness for the last week. */
+function timeMeta(createdAt: string, today: string, timezone: string, tx: Translator): string {
+  const day = localDay(createdAt, timezone);
+  const diff = changeDayDiff(day, today);
+  if (diff === 0) return tx.t("changes.changedToday");
+  if (diff === 1) return tx.t("changes.changedYesterday");
+  if (diff <= 7) return tx.t("changes.changedDaysAgo", { date: tx.date.shortDate(day), count: diff });
+  return tx.t("changes.changedOn", { date: tx.date.shortDate(day) });
+}
+
+function changeMeta(changeSet: ChangeSet, today: string, timezone: string, tx: Translator): string {
+  return timeMeta(changeSet.createdAt, today, timezone, tx);
+}
+
+/** One entry as the runner reads it: what happened, to which session, and what actually moved. */
+function describeChangeEntry(entry: ChangeEntry, tx: Translator): { action: string; delta: string } {
+  if (entry.action === "add") return { action: tx.t("changes.added"), delta: "" };
+  if (entry.action === "remove") return { action: tx.t("changes.deleted"), delta: "" };
+  if (entry.action === "revert") {
+    return entry.after === null
+      ? { action: tx.t("changes.deleted"), delta: "" }
+      : { action: tx.t("changes.putBack"), delta: "" };
+  }
+  const moved = entry.fromDay !== null && entry.toDay !== null && entry.fromDay !== entry.toDay;
+  const deltas: string[] = [];
+  if (moved && entry.fromDay !== null) deltas.push(tx.t("changes.fromDay", { day: tx.date.shortDate(entry.fromDay) }));
+  const before = entry.before;
+  const after = entry.after;
+  if (before !== null && after !== null) {
+    if (before.title !== after.title) deltas.push(tx.t("changes.renamed"));
+    if (before.distanceKm !== after.distanceKm) {
+      const distance = (value: number | null): string => (value === null ? "–" : `${value} km`);
+      deltas.push(`${distance(before.distanceKm)} → ${distance(after.distanceKm)}`);
+    }
+    if (before.durationMin !== after.durationMin) {
+      const duration = (value: number | null): string => (value === null ? "–" : formatMinutes(value));
+      deltas.push(`${duration(before.durationMin)} → ${duration(after.durationMin)}`);
+    }
+    if (before.kind !== after.kind) deltas.push(`${sessionKindLabel(before.kind, tx)} → ${sessionKindLabel(after.kind, tx)}`);
+    if ((before.note ?? "") !== (after.note ?? "")) deltas.push(tx.t("changes.noteUpdated"));
+  }
+  return { action: moved ? tx.t("changes.moved") : tx.t("changes.updated"), delta: deltas.join(" · ") };
+}
+
+function changeEntryRow(entry: ChangeEntry, tx: Translator): string {
+  const day = entry.toDay ?? entry.fromDay;
+  const { action, delta } = describeChangeEntry(entry, tx);
+  const dayLabel = day === null ? "" : tx.date.weekdayDate(day);
+  return `<li class="change-entry"><span class="change-day">${escapeHtml(dayLabel)}</span><span class="change-what"><span class="change-act">${escapeHtml(action)}</span> <span class="change-title">${escapeHtml(entry.title)}</span>${delta.length === 0 ? "" : ` <span class="change-delta">${escapeHtml(delta)}</span>`} <span class="change-kind">${escapeHtml(sessionKindLabel(entry.kind, tx))}</span></span></li>`;
+}
+
+/** The question the runner actually asks: what changed on which day, not the raw coach log. */
+function discussMessageFor(changeSet: ChangeSet, tx: Translator): string {
+  const count = changeSet.entries.length;
+  const range = changeRange(changeSet, tx);
+  if (count === 1) {
+    const entry = changeSet.entries[0];
+    const day = entry === undefined ? null : entry.toDay ?? entry.fromDay;
+    if (entry !== undefined && day !== null) return tx.t("changes.discussOne", { title: entry.title, day: tx.date.weekdayDate(day) });
+  }
+  if (count > 1 && range.length > 0) {
+    return tx.t("changes.discussMany", { count, unit: tx.t("changes.unitOther"), when: range });
+  }
+  return tx.t("changes.discussGeneric");
 }
 
 /**
- * The runner-facing change history. The journal already existed but was reachable only by asking the coach; this card
- * makes each batch visible with an Undo form that reuses the same audited revert path.
+ * The runner-facing change history. Each batch is a human sentence, a short list of what moved, and an Undo whose
+ * label carries the blast radius. The raw coach summary stays in the store and the prompt; it is not UI copy.
  */
-function recentChangesCard(changeSets: readonly ChangeSet[], next: string, tx: Translator): string {
-  const date = tx.date;
-  const heading = `<h2>${escapeHtml(tx.t("changes.title"))}</h2>`;
+interface RecentChangesCardOptions {
+  readonly headingKey?: MessageKey;
+  /** Where the calendar card's "See all changes" footnote link points; omit on the all-changes page itself. */
+  readonly allHref?: string;
+}
+
+function recentChangesCard(
+  changeSets: readonly ChangeSet[],
+  next: string,
+  tx: Translator,
+  today: string,
+  timezone: string,
+  options: RecentChangesCardOptions = {},
+): string {
+  const heading = `<h2>${escapeHtml(tx.t(options.headingKey ?? "changes.title"))}</h2>`;
   if (changeSets.length === 0) {
     return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.empty"))}</p></section>`;
   }
-  const rows = changeSets.map((set) => {
+  const rows = changeSets.map((set, index) => {
     const undone = set.revertedAt !== null;
-    const entries = set.entries
-      .map((entry) => `${changeActionLabel(entry.action, tx)} ${entry.title}${entry.fromDay === null || entry.toDay === null ? "" : ` (${formatShortDate(entry.fromDay, date)} → ${formatShortDate(entry.toDay, date)})`}`)
-      .join(" · ");
-    // The visible question names the day and the batch so the coach discusses the exact change, never a guess.
-    const discussMessage = tx.t("changes.discussMessage", { date: formatShortDate(set.createdAt.slice(0, 10), date), summary: set.summary });
-    const discussButton = `<button type="button" class="coach-ask" title="${escapeHtml(tx.t("changes.discussTitle"))}" data-coach-message="${escapeHtml(discussMessage)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">${escapeHtml(tx.t("changes.discuss"))}</button>`;
+    const headline = changeHeadline(set, tx);
+    const count = set.entries.length;
+    const unit = count === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
+    const badge = undone ? ` <span class="change-badge">${escapeHtml(tx.t("changes.undoneBadge"))}</span>` : "";
+    const meta = `<span class="change-meta muted small">${escapeHtml(changeMeta(set, today, timezone, tx))}${badge}</span>`;
+    const sorted = [...set.entries].sort((left, right) => (left.toDay ?? left.fromDay ?? "").localeCompare(right.toDay ?? right.fromDay ?? ""));
+    const entryRows = sorted.map((entry) => changeEntryRow(entry, tx));
+    const visible = entryRows.slice(0, 3);
+    const hidden = entryRows.slice(3);
+    const list = visible.length === 0 ? "" : `<ul class="change-entries">${visible.join("")}</ul>`;
+    const more = hidden.length === 0
+      ? ""
+      : `<details class="change-more"><summary>${escapeHtml(tx.t("changes.showAll", { count: entryRows.length }))}</summary><ul class="change-entries">${hidden.join("")}</ul></details>`;
+    const helpId = `rc-change-help-${index}`;
+    const askWhy = `<button type="button" class="change-ask" title="${escapeHtml(tx.t("changes.discussTitle"))}" aria-label="${escapeHtml(`${tx.t("changes.askWhy")} — ${headline.text}`)}" aria-describedby="${helpId}" data-coach-message="${escapeHtml(discussMessageFor(set, tx))}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "discuss-change", changeSetId: set.changeSetId, source: "recent-changes" }))}">${escapeHtml(tx.t("changes.askWhy"))}</button><span class="sr-only" id="${helpId}">${escapeHtml(tx.t("changes.discussTitle"))}</span>`;
+    const isRevert = headline.action === "revert";
+    const undoLabel = isRevert
+      ? tx.t("changes.putItBack")
+      : count === 1
+        ? tx.t("changes.undoOne")
+        : tx.t("changes.undoCount", { count, unit });
     const undoForm = undone
-      ? `<div class="change-undo">${discussButton}</div>`
-      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo"><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit">${escapeHtml(tx.t("changes.undo"))}</button>${discussButton}</form>`;
-    const unit = set.entries.length === 1 ? tx.t("changes.unitOne") : tx.t("changes.unitOther");
-    return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(set.summary)}</strong><span class="muted small">${escapeHtml(formatShortDate(set.createdAt.slice(0, 10), date))} · ${set.entries.length} ${escapeHtml(unit)}${undone ? ` · ${escapeHtml(tx.t("changes.undone"))}` : ""}</span></div><p class="muted small">${escapeHtml(entries)}</p>${undoForm}</li>`;
+      ? ""
+      : `<form method="post" action="/calendar/changes/${encodeURIComponent(set.changeSetId)}/revert" class="change-undo-form" data-change-count="${count}"${isRevert ? ` data-change-putback="1"` : ""}><input type="hidden" name="next" value="${escapeHtml(next)}"><button class="btn ghost" type="submit" aria-label="${escapeHtml(`${undoLabel} — ${headline.text}`)}">${escapeHtml(undoLabel)}</button></form>`;
+    return `<li class="change-item${undone ? " undone" : ""}" data-change-set="${escapeHtml(set.changeSetId)}"><div class="change-head"><strong>${escapeHtml(headline.text)}</strong>${meta}</div>${list}${more}<div class="change-actions">${undoForm}${askWhy}</div></li>`;
   }).join("");
-  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}</p><ul class="change-list">${rows}</ul></section>`;
+  const seeAll = options.allHref === undefined
+    ? ""
+    : ` <a class="change-see-all" href="${escapeHtml(options.allHref)}">${escapeHtml(tx.t("changes.seeAll"))}</a>`;
+  return `<section class="card" id="recent-changes">${heading}<p class="muted small">${escapeHtml(tx.t("changes.footnote"))}${seeAll}</p><ul class="change-list">${rows}</ul></section>`;
+}
+
+/** The standalone all-changes page: schedule batches, runs and muscle events in one place. */
+type ChangesFilter = "all" | "schedule" | "activity" | "muscle";
+
+const CHANGES_FILTERS: readonly ChangesFilter[] = ["all", "schedule", "activity", "muscle"];
+
+function changesFilterHref(filter: ChangesFilter): string {
+  return filter === "all" ? "/changes" : `/changes?type=${filter}`;
+}
+
+interface ChangesCounts {
+  readonly all: number;
+  readonly schedule: number;
+  readonly activity: number;
+  readonly muscle: number;
+}
+
+function changesFilterBar(filter: ChangesFilter, counts: ChangesCounts, tx: Translator): string {
+  const labels: Record<ChangesFilter, MessageKey> = {
+    all: "changes.filterAll",
+    schedule: "changes.filterSchedule",
+    activity: "changes.filterActivity",
+    muscle: "changes.filterMuscle",
+  };
+  const links = CHANGES_FILTERS.map((key) => {
+    const active = key === filter;
+    return `<a class="filter-pill${active ? " active" : ""}" href="${changesFilterHref(key)}"${active ? ' aria-current="page"' : ""}>${escapeHtml(tx.t(labels[key]))} <span class="filter-count">${counts[key]}</span></a>`;
+  }).join("");
+  return `<nav class="filter-bar" aria-label="${escapeHtml(tx.t("changes.filterAria"))}">${links}</nav>`;
+}
+
+function eventHead(action: string, meta: string): string {
+  return `<div class="event-head"><strong>${escapeHtml(action)}</strong><span class="event-meta muted small">${escapeHtml(meta)}</span></div>`;
+}
+
+function activityEventRow(activity: Activity, today: string, timezone: string, tx: Translator): string {
+  const action = activity.source === "garmin" ? tx.t("changes.activitySynced") : tx.t("changes.activityLogged");
+  const meta = timeMeta(activity.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(activity.day);
+  const metrics = activityMetrics(activity);
+  const source = activitySourceLabel(activity, tx);
+  const title = activity.title.trim().length > 0 ? activity.title : day;
+  const href = `/activity/${encodeURIComponent(activity.activityId)}`;
+  const detail = `<a class="event-day" href="/day/${escapeHtml(activity.day)}">${escapeHtml(day)}</a> · <a class="event-link" href="${href}">${escapeHtml(title)}</a>${metrics.length === 0 ? "" : ` · ${escapeHtml(metrics)}`} <span class="chip source-${escapeHtml(activity.source)}">${escapeHtml(source)}</span>`;
+  const more = `<a class="chip" href="${href}" aria-label="${escapeHtml(`${tx.t("activity.detail")} — ${title} · ${day}`)}">${escapeHtml(tx.t("activity.detail"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${detail}</p><div class="event-actions">${more}</div></li>`;
+}
+
+function muscleCheckInRow(checkIn: MuscleCheckIn, today: string, timezone: string, tx: Translator): string {
+  const meta = timeMeta(checkIn.createdAt, today, timezone, tx);
+  const day = tx.date.weekdayDate(checkIn.day);
+  const worst = [...checkIn.muscles].sort((left, right) => right.soreness - left.soreness)[0];
+  const parts = [tx.t("changes.muscleForDay", { day }), tx.t("changes.muscleCount", { count: checkIn.muscles.length })];
+  if (worst !== undefined) {
+    const name = tx.t(`muscle.short.${worst.muscleId}` as MessageKey);
+    parts.push(tx.t("changes.muscleWorst", { name, level: worst.soreness }));
+    const conditions = worst.conditions.map((key) => tx.t(`muscle.condition.${key}.label` as MessageKey)).join(" · ");
+    if (conditions.length > 0) parts.push(`(${conditions})`);
+  }
+  const links = [`<a class="chip" href="/muscle?day=${encodeURIComponent(checkIn.day)}" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${day}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`];
+  if (checkIn.activityId !== null) {
+    links.push(`<a class="chip" href="/activity/${encodeURIComponent(checkIn.activityId)}" aria-label="${escapeHtml(`${tx.t("changes.fromRun")} — ${day}`)}">${escapeHtml(tx.t("changes.fromRun"))}</a>`);
+  }
+  return `<li class="event-item">${eventHead(tx.t("changes.muscleCheckedIn"), meta)}<p class="event-detail">${escapeHtml(parts.join(" · "))}</p><div class="event-actions">${links.join("")}</div></li>`;
+}
+
+function muscleControlRow(control: MuscleStatusControl, today: string, timezone: string, tx: Translator): string {
+  const name = tx.t(`muscle.short.${control.muscleId}` as MessageKey);
+  const resolved = control.resolvedDay !== null;
+  const action = tx.t(resolved ? "changes.muscleStatusResolved" : control.hold ? "changes.muscleStatusHeld" : "changes.muscleStatusReleased");
+  const detail = resolved
+    ? tx.t("changes.muscleStatusResolvedDetail", { name, day: tx.date.weekdayDate(control.resolvedDay ?? control.updatedAt.slice(0, 10)) })
+    : tx.t(control.hold ? "changes.muscleStatusHeldDetail" : "changes.muscleStatusReleasedDetail", { name });
+  const meta = timeMeta(control.updatedAt, today, timezone, tx);
+  const link = `<a class="chip" href="/muscle?focus=${encodeURIComponent(control.muscleId)}#check-in" aria-label="${escapeHtml(`${tx.t("changes.openMuscles")} — ${name}`)}">${escapeHtml(tx.t("changes.openMuscles"))}</a>`;
+  return `<li class="event-item">${eventHead(action, meta)}<p class="event-detail">${escapeHtml(detail)}</p><div class="event-actions">${link}</div></li>`;
+}
+
+interface ChangesPageInput {
+  readonly scheduleCard: string;
+  readonly scheduleCount: number;
+  readonly activities: readonly Activity[];
+  readonly checkIns: readonly MuscleCheckIn[];
+  readonly controls: readonly MuscleStatusControl[];
+  readonly filter: ChangesFilter;
+  readonly tx: Translator;
+  readonly today: string;
+  readonly timezone: string;
+}
+
+function renderChangesPage(input: ChangesPageInput): string {
+  const { scheduleCard, scheduleCount, activities, checkIns, controls, filter, tx, today, timezone } = input;
+  const counts: ChangesCounts = {
+    all: scheduleCount + activities.length + checkIns.length + controls.length,
+    schedule: scheduleCount,
+    activity: activities.length,
+    muscle: checkIns.length + controls.length,
+  };
+  const head = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("changes.allEyebrow"))}</p><h1>${escapeHtml(tx.t("changes.allTitle"))}</h1><p class="muted">${escapeHtml(tx.t("changes.allIntro"))}</p></header>`;
+  const filters = changesFilterBar(filter, counts, tx);
+  const summaryText = filter === "all"
+    ? tx.t("changes.allSummary", { count: counts.all })
+    : tx.t("changes.filterSummary", { shown: counts[filter], total: counts.all });
+  const summary = `<p class="changes-summary muted small">${escapeHtml(summaryText)}</p>`;
+  if (counts.all === 0) {
+    return `${head}${filters}${summary}<section class="card changes-empty-card"><p class="muted">${escapeHtml(tx.t("changes.allEmpty"))}</p></section>`;
+  }
+  const sections: string[] = [];
+  if (filter === "all" || filter === "schedule") sections.push(scheduleCard);
+  if (filter === "all" || filter === "activity") {
+    const rows = activities.map((activity) => activityEventRow(activity, today, timezone, tx)).join("");
+    sections.push(`<section class="card" id="activity-changes"><h2>${escapeHtml(tx.t("changes.activityTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.activityEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  if (filter === "all" || filter === "muscle") {
+    const events = [
+      ...checkIns.map((checkIn) => ({ at: checkIn.createdAt, row: muscleCheckInRow(checkIn, today, timezone, tx) })),
+      ...controls.map((control) => ({ at: control.updatedAt, row: muscleControlRow(control, today, timezone, tx) })),
+    ].sort((left, right) => right.at.localeCompare(left.at));
+    const rows = events.map((event) => event.row).join("");
+    sections.push(`<section class="card" id="muscle-changes"><h2>${escapeHtml(tx.t("changes.muscleTitle"))}</h2>${rows.length === 0 ? `<p class="muted small">${escapeHtml(tx.t("changes.muscleEmpty"))}</p>` : `<ul class="event-list">${rows}</ul>`}</section>`);
+  }
+  return `${head}${filters}${summary}${sections.join("")}<p class="muted small changes-footnote">${escapeHtml(tx.t("changes.allFootnote"))}</p>`;
 }
 
 type HistoryView = "week" | "month" | "year";
@@ -1557,6 +1842,7 @@ function renderAccountMenu(user: AuthUser, tx: Translator): string {
       <p class="account-id"><strong>${escapeHtml(user.displayName)}</strong><span>@${escapeHtml(user.username)}</span></p>
       <a class="account-item" href="/profile">${escapeHtml(tx.t("account.profile"))}</a>
       <a class="account-item" href="/coach-states">${escapeHtml(tx.t("account.coachStates"))}</a>
+      <a class="account-item" href="/changes">${escapeHtml(tx.t("account.changes"))}</a>
       ${renderSyncItem(tx)}
       <a class="account-item" href="/calendar?garmin=setup">${escapeHtml(tx.t("account.garminKey"))}</a>
       <a class="account-item" href="/export.json">${escapeHtml(tx.t("account.export"))}</a>
@@ -1904,6 +2190,7 @@ function navLabel(user: AuthUser | undefined, activeView: ViewName, tx: Translat
   if (activeView === "calendar") return tx.t("nav.plan");
   if (activeView === "history") return tx.t("nav.log");
   if (activeView === "muscle") return tx.t("nav.muscles");
+  if (activeView === "changes") return tx.t("changes.allTitle");
   return "";
 }
 
@@ -1933,7 +2220,9 @@ function renderViewSwitch(activeView: ViewName, tx: Translator): string {
   const plan = escapeHtml(tx.t("nav.plan"));
   const log = escapeHtml(tx.t("nav.log"));
   const muscle = escapeHtml(tx.t("nav.muscles"));
-  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}"><span class="view-thumb" aria-hidden="true"></span><a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
+  // The changes page is a fourth projection but has no tab of its own: keep the three tabs reachable, select none.
+  const thumb = activeView === "changes" ? "" : `<span class="view-thumb" aria-hidden="true"></span>`;
+  return `<nav class="view-switch" data-active="${activeView}" aria-label="${label}">${thumb}<a class="view-tab${planActive ? " active" : ""}" href="/calendar"${planActive ? ' aria-current="page"' : ""}>${plan}</a><a class="view-tab${logActive ? " active" : ""}" href="/history"${logActive ? ' aria-current="page"' : ""}>${log}</a><a class="view-tab${muscleActive ? " active" : ""}" href="/muscle"${muscleActive ? ' aria-current="page"' : ""}>${muscle}</a></nav>`;
 }
 
 function renderLanguageSwitch(tx: Translator, extraClass = ""): string {
@@ -2028,13 +2317,18 @@ function renderChatBubble(tx: Translator): string {
     </div>
     <div class="coach-tab-panel" id="coach-tabpanel-changes" role="tabpanel" aria-labelledby="coach-tab-changes" data-coach-panel="changes" hidden>
       <div class="coach-tab-body" id="coach-changes-list"></div>
-      <div class="coach-tab-foot"><a class="chip" href="/calendar#recent-changes">${E(tx.t("coach.changesCalendar"))}</a></div>
+      <div class="coach-tab-foot"><a class="chip" href="/changes">${E(tx.t("coach.changesAll"))}</a></div>
     </div>
   </section>
   <script>
   (() => {
     const ui = window.__I18N__ || {};
     const tr = (key, fallback) => (typeof ui[key] === 'string' ? ui[key] : fallback);
+    const trf = (key, fallback, vars) => {
+      const template = tr(key, fallback);
+      if (!vars) return template;
+      return template.replace(/\\{(\\w+)\\}/g, (whole, name) => (vars[name] === undefined ? whole : String(vars[name])));
+    };
     const pageLocale = document.body.dataset.locale || 'en';
     const bubble = document.getElementById('coach-bubble');
     const panel = document.getElementById('coach-panel');
@@ -2532,67 +2826,173 @@ function renderChatBubble(tx: Translator): string {
       }
       setCount('states', proposed.length, tr('statesBadgeTitle', 'proposed states'));
     };
-    const formatChangeDate = (value) => {
+    const formatChangeDate = (value, withWeekday = false) => {
       const day = typeof value === 'string' ? value.slice(0, 10) : '';
       if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(day)) return '';
+      const tag = pageLocale === 'en' ? 'en-GB' : pageLocale;
       try {
-        return new Date(day + 'T12:00:00Z').toLocaleDateString(pageLocale, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        const date = new Date(day + 'T12:00:00Z');
+        if (!withWeekday) return date.toLocaleDateString(tag, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        // English keeps the comma its long day labels use; Chinese uses the locale's own order.
+        if (pageLocale === 'en') {
+          return date.toLocaleDateString(tag, { weekday: 'short', timeZone: 'UTC' }) + ', ' + date.toLocaleDateString(tag, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        }
+        return date.toLocaleDateString(tag, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
       } catch {
         return day;
       }
     };
-    const changeEntryText = (entry) => {
-      const from = formatChangeDate(entry.fromDay);
-      const to = formatChangeDate(entry.toDay);
-      const moved = entry.action === 'update' && from.length > 0 && to.length > 0 && entry.fromDay !== entry.toDay;
-      const label = entry.action === 'remove'
-        ? tr('actionRemove', 'Delete')
-        : entry.action === 'add'
-          ? tr('actionAdd', 'Add')
-          : moved
-            ? tr('actionMoved', 'Moved')
-            : tr('actionUpdate', 'Update');
-      const title = typeof entry.title === 'string' && entry.title.trim().length > 0 ? entry.title.trim() : tr('sessionWord', 'session');
-      const when = moved ? ' (' + from + ' → ' + to + ')' : to.length > 0 ? ' (' + to + ')' : from.length > 0 ? ' (' + from + ')' : '';
-      return label + ' ' + title + when;
+    /** The runner's local day for an instant, so the panel and the page date a batch the same way. */
+    const localDayOf = (value) => {
+      const date = typeof value === 'string' ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) return '';
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: document.body.dataset.timezone || 'UTC',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(date);
+        const map = {};
+        for (const part of parts) if (part.type !== 'literal') map[part.type] = part.value;
+        return map.year + '-' + map.month + '-' + map.day;
+      } catch {
+        return date.toISOString().slice(0, 10);
+      }
     };
-    // The change set on the page is server-rendered; after an in-place undo its Undo form must disappear too, or the
-    // runner can press a button that is already spent.
+    const changeUnit = (count) => tr(count === 1 ? 'changes.unitOne' : 'changes.unitOther', count === 1 ? 'session' : 'sessions');
+    const changeRangeText = (entries) => {
+      const days = [...new Set(entries.map((entry) => (typeof entry.toDay === 'string' && entry.toDay.length === 10 ? entry.toDay : entry.fromDay)).filter((day) => typeof day === 'string' && day.length === 10))].sort();
+      if (days.length === 0) return '';
+      return days.length === 1 ? formatChangeDate(days[0], true) : formatChangeDate(days[0]) + ' – ' + formatChangeDate(days[days.length - 1]);
+    };
+    const changeHeadlineText = (change) => {
+      const entries = Array.isArray(change.entries) ? change.entries : [];
+      const count = entries.length;
+      const unit = changeUnit(count);
+      const range = changeRangeText(entries);
+      const actions = new Set(entries.map((entry) => entry.action));
+      let text;
+      if (actions.size === 1 && actions.has('add')) text = trf('changes.headline.added', '{count} {unit} added', { count, unit });
+      else if (actions.size === 1 && actions.has('remove')) text = trf('changes.headline.removed', '{count} {unit} removed', { count, unit });
+      else if (actions.size === 1 && actions.has('update')) text = trf('changes.headline.updated', '{count} {unit} updated', { count, unit });
+      else if (actions.size === 1 && actions.has('revert')) text = trf('changes.headline.revert', 'Undone · {count} {unit}', { count, unit });
+      else text = trf('changes.headline.mixed', '{count} changes', { count });
+      return range.length === 0 ? text : text + ' · ' + range;
+    };
+    const changeEntryText = (entry) => {
+      const day = formatChangeDate(entry.toDay || entry.fromDay, true);
+      const moved = entry.action === 'update' && typeof entry.fromDay === 'string' && typeof entry.toDay === 'string' && entry.fromDay !== entry.toDay;
+      const label = entry.action === 'remove'
+        ? tr('changes.deleted', 'Deleted')
+        : entry.action === 'add'
+          ? tr('changes.added', 'Added')
+          : entry.action === 'revert'
+            ? tr('changes.reverted', 'Reverted')
+            : moved
+              ? tr('changes.moved', 'Moved')
+              : tr('changes.updated', 'Updated');
+      const title = typeof entry.title === 'string' && entry.title.trim().length > 0 ? entry.title.trim() : tr('sessionWord', 'session');
+      return day.length > 0 ? day + ' · ' + label + ' ' + title : label + ' ' + title;
+    };
+    // The page card is server-rendered; an in-place undo removes only its form and leaves "Ask why" usable.
     const markRecentChangeUndone = (changeSetId) => {
       for (const item of document.querySelectorAll('#recent-changes .change-item')) {
         if (item.dataset.changeSet !== changeSetId) continue;
         item.classList.add('undone');
-        const undo = item.querySelector('.change-undo');
-        if (undo !== null) undo.remove();
-        const meta = item.querySelector('.change-head .muted');
-        if (meta !== null) meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+        const undoForm = item.querySelector('.change-undo-form');
+        if (undoForm !== null) undoForm.remove();
+        const meta = item.querySelector('.change-head .change-meta');
+        if (meta !== null && meta.querySelector('.change-badge') === null) {
+          const badge = document.createElement('span');
+          badge.className = 'change-badge';
+          badge.textContent = tr('changes.undoneBadge', 'Undone');
+          meta.append(' ', badge);
+        }
       }
     };
+    const undoToast = (count, putBack) => {
+      const unit = changeUnit(count);
+      return putBack
+        ? trf('js.changePutBackToast', 'Put back: {count} {unit}', { count, unit })
+        : trf('js.changeUndoToast', 'Undone: {count} {unit}', { count, unit });
+    };
+    // Progressive enhancement for the server-rendered card: the plain form still works without script.
+    const wireRecentChanges = () => {
+      for (const undoForm of document.querySelectorAll('#recent-changes .change-undo-form')) {
+        undoForm.addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const undoButton = undoForm.querySelector('button[type=submit]');
+          const count = Number(undoForm.dataset.changeCount || '1');
+          const putBack = undoForm.dataset.changePutback === '1';
+          if (undoButton !== null) undoButton.disabled = true;
+          try {
+            const response = await fetch(undoForm.action, {
+              method: 'POST',
+              headers: { 'content-type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ next: location.pathname + location.search }).toString(),
+              redirect: 'follow',
+            });
+            if (!response.ok) throw new Error('undo failed');
+            const item = undoForm.closest('.change-item');
+            markRecentChangeUndone(item === null ? '' : item.dataset.changeSet || '');
+            await refreshCalendar();
+            void loadConversation(true);
+            showToast(undoToast(count, putBack));
+          } catch {
+            if (undoButton !== null) undoButton.disabled = false;
+            addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
+          }
+        });
+      }
+    };
+    wireRecentChanges();
     const buildChangeCard = (change) => {
       const reverted = change.revertedAt !== null && change.revertedAt !== undefined;
+      const entries = Array.isArray(change.entries) ? change.entries : [];
+      const count = entries.length;
+      const unit = changeUnit(count);
+      const isRevert = entries.length > 0 && entries.every((entry) => entry.action === 'revert');
       const card = document.createElement('article');
       card.className = 'coach-change' + (reverted ? ' undone' : '');
       card.dataset.changeSet = change.changeSetId;
       const head = document.createElement('div');
       head.className = 'coach-change-head';
       const title = document.createElement('strong');
-      title.textContent = typeof change.summary === 'string' && change.summary.trim().length > 0 ? change.summary : tr('changeDefault', 'Coach change');
+      title.textContent = changeHeadlineText(change);
       const meta = document.createElement('span');
       meta.className = 'coach-change-meta';
-      const entries = Array.isArray(change.entries) ? change.entries : [];
-      const count = entries.length;
-      meta.textContent = formatChangeDate(change.createdAt) + ' · ' + count + ' ' + (count === 1 ? tr('sessionWord', 'session') : tr('sessionsWord', 'sessions')) + (reverted ? ' · ' + tr('changeUndone', 'Undone') : '');
+      const changedDay = localDayOf(change.createdAt);
+      meta.textContent = (changedDay.length === 0 ? '' : trf('changes.changedOn', 'Changed {date}', { date: formatChangeDate(changedDay) })) + (reverted ? ' · ' + tr('changes.undoneBadge', 'Undone') : '');
       head.append(title, meta);
       card.appendChild(head);
-      if (entries.length > 0) {
+      const sortedEntries = entries.slice().sort((left, right) => String(left.toDay || left.fromDay || '').localeCompare(String(right.toDay || right.fromDay || '')));
+      if (sortedEntries.length > 0) {
+        const visible = sortedEntries.slice(0, 3);
+        const hidden = sortedEntries.slice(3);
         const list = document.createElement('ul');
         list.className = 'coach-change-entries';
-        for (const entry of entries) {
+        for (const entry of visible) {
           const item = document.createElement('li');
           item.textContent = changeEntryText(entry);
           list.appendChild(item);
         }
         card.appendChild(list);
+        if (hidden.length > 0) {
+          const more = document.createElement('details');
+          more.className = 'coach-change-more';
+          const summary = document.createElement('summary');
+          summary.textContent = trf('changes.showAll', 'Show all {count}', { count: sortedEntries.length });
+          const hiddenList = document.createElement('ul');
+          hiddenList.className = 'coach-change-entries';
+          for (const entry of hidden) {
+            const item = document.createElement('li');
+            item.textContent = changeEntryText(entry);
+            hiddenList.appendChild(item);
+          }
+          more.append(summary, hiddenList);
+          card.appendChild(more);
+        }
       }
       const actions = document.createElement('div');
       actions.className = 'coach-change-actions';
@@ -2608,7 +3008,12 @@ function renderChatBubble(tx: Translator): string {
         const undoButton = document.createElement('button');
         undoButton.type = 'submit';
         undoButton.className = 'btn ghost';
-        undoButton.textContent = tr('changeUndo', 'Undo this change');
+        undoButton.textContent = isRevert
+          ? tr('changes.putItBack', 'Put it back')
+          : count === 1
+            ? tr('changes.undoOne', 'Undo 1 session')
+            : trf('changes.undoCount', 'Undo {count} {unit}', { count, unit });
+        undoButton.setAttribute('aria-label', undoButton.textContent + ' — ' + title.textContent);
         undoForm.append(nextInput, undoButton);
         // Undo in place: the audited revert runs, the grid refreshes, and the chat stays where it is. The plain form
         // still works without script and lands on Recent changes.
@@ -2625,11 +3030,11 @@ function renderChatBubble(tx: Translator): string {
             if (!response.ok) throw new Error('undo failed');
             card.classList.add('undone');
             undoForm.remove();
-            meta.textContent = meta.textContent + ' · ' + tr('changeUndone', 'Undone');
+            meta.textContent = meta.textContent + ' · ' + tr('changes.undoneBadge', 'Undone');
             markRecentChangeUndone(change.changeSetId);
             await refreshCalendar();
             void loadConversation(true);
-            showToast(tr('changeUndoToast', 'Change undone'));
+            showToast(undoToast(count, isRevert));
           } catch {
             undoButton.disabled = false;
             addGuardrail(tr('changeUndoFailed', 'Could not undo that change. Try again from Recent changes.'));
@@ -2639,10 +3044,17 @@ function renderChatBubble(tx: Translator): string {
       }
       const discuss = document.createElement('button');
       discuss.type = 'button';
-      discuss.className = 'btn ghost';
-      discuss.textContent = tr('changeDiscuss', 'Discuss this change');
+      discuss.className = 'coach-change-ask';
+      discuss.textContent = tr('changes.askWhy', 'Ask why');
+      discuss.setAttribute('aria-label', discuss.textContent + ' — ' + title.textContent);
       discuss.addEventListener('click', () => {
-        openCoach(tr('changeDiscussMessage', 'Can we talk through the change you just made?'), true, { kind: 'discuss-change', changeSetId: change.changeSetId, source: 'coach-dock' });
+        const range = changeRangeText(entries);
+        const message = entries.length === 0 || (entries.length > 1 && range.length === 0)
+          ? tr('changes.discussGeneric', 'Why did the plan change?')
+          : entries.length === 1
+            ? trf('changes.discussOne', 'Why did you change "{title}" on {day}?', { title: entries[0].title, day: formatChangeDate(entries[0].toDay || entries[0].fromDay, true) })
+            : trf('changes.discussMany', 'Why did you change {count} {unit} for {when}?', { count, unit, when: range });
+        openCoach(message, true, { kind: 'discuss-change', changeSetId: change.changeSetId, source: 'coach-dock' });
       });
       actions.appendChild(discuss);
       // Jump to the month the batch touched, so "what changed" and "where" are one tap apart.
@@ -2656,6 +3068,7 @@ function renderChatBubble(tx: Translator): string {
         link.className = 'chip';
         link.href = '/calendar?month=' + month;
         link.textContent = tr('changeShow', 'Show on calendar');
+        link.setAttribute('aria-label', link.textContent + ' — ' + title.textContent);
         actions.appendChild(link);
       }
       card.appendChild(actions);
@@ -4905,6 +5318,28 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
+      /**
+       * The standalone all-changes page: the schedule journal, logged/synced runs and muscle events in one place.
+       * It is a projection, not a new audit table: every row already exists in the store with its own timestamp.
+       */
+      if (url.pathname === "/changes") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "changes"));
+          return;
+        }
+        const typeParam = url.searchParams.get("type");
+        const filter: ChangesFilter = typeParam === "schedule" || typeParam === "activity" || typeParam === "muscle" ? typeParam : "all";
+        const timezone = safeTimeZone(user.timezone);
+        const changeSets = options.store.listChangeSets(user.userId, 20);
+        const activities = options.store.listActivities(user.userId, 30).slice().sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+        const checkIns = options.store.listMuscleCheckIns(user.userId, 20);
+        const controls = options.store.listMuscleStatusControls(user.userId).slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+        const scheduleCard = recentChangesCard(changeSets, "/changes", tx, today, timezone, { headingKey: "changes.scheduleTitle" });
+        const body = renderChangesPage({ scheduleCard, scheduleCount: changeSets.length, activities, checkIns, controls, filter, tx, today, timezone });
+        sendHtml(response, 200, pageLayout(tx.t("changes.allTitle"), body, user, "changes", flash));
+        return;
+      }
+
       if (url.pathname === "/chat" && method === "POST") {
         let body: unknown;
         try {
@@ -5565,7 +6000,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="dow">${date.weekdays().map((day) => `<span>${escapeHtml(day)}</span>`).join("")}</div>
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
-          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx)}
+          ${recentChangesCard(options.store.listChangeSets(user.userId, 5), `/calendar?month=${month}`, tx, today, user.timezone, { allHref: "/changes" })}
           ${garminPanel}`;
         sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;
@@ -5857,8 +6292,10 @@ export function createWeb(options: WebOptions): WebApp {
           return;
         }
         try {
-          applyRevert(options.store, user.userId, changeSet, now());
-          redirect(response, withParams(next, { undone: "1" }));
+          const result = applyRevert(options.store, user.userId, changeSet, now());
+          const restored = result.restored + result.deleted;
+          // Land on the card, not the top of the page: the runner pressed Undo to see the result.
+          redirect(response, `${withParams(next, { undone: String(restored) })}#recent-changes`);
         } catch {
           redirect(response, withParams(next, { undoError: "the calendar could not be restored" }));
         }

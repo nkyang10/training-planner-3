@@ -86,8 +86,15 @@ describe("createTranslator", () => {
   it("keeps the two catalogs key-identical", () => {
     const enKeys = Object.keys(createTranslator("en") === undefined ? {} : {});
     // The type contract (Record<MessageKey,string>) already guarantees parity; assert a representative new key exists.
-    expect(defaultTranslator.t("changes.undo")).toBe("Undo this change");
-    expect(translatorFor("zh-HK").t("changes.undo").length).toBeGreaterThan(0);
+    expect(defaultTranslator.t("changes.undoCount", { count: 2, unit: "sessions" })).toBe("Undo 2 sessions");
+    expect(translatorFor("zh-HK").t("changes.undoCount", { count: 2, unit: "項訓練" })).toBe("復原 2 項訓練");
+    expect(defaultTranslator.t("changes.headline.added", { count: 1, unit: "session" })).toBe("1 session added");
+    // The standalone all-changes page and its account-menu entry exist in both locales.
+    expect(defaultTranslator.t("changes.allTitle")).toBe("All changes");
+    expect(translatorFor("zh-HK").t("changes.allTitle")).toBe("所有變更");
+    expect(defaultTranslator.t("changes.filterSummary", { shown: 3, total: 10 })).toBe("Showing 3 of 10 changes");
+    expect(translatorFor("zh-HK").t("changes.filterSummary", { shown: 3, total: 10 })).toBe("顯示 10 項中的 3 項變更");
+    expect(defaultTranslator.t("account.changes")).toBe("All changes");
     expect(enKeys).toEqual([]);
   });
 });
@@ -110,6 +117,11 @@ describe("DateFormat", () => {
     const zh = translatorFor("zh-HK").date;
     expect(zh.shortDate("2026-03-09").length).toBeGreaterThan(0);
     expect(zh.dayLabel("2026-03-09").length).toBeGreaterThan(0);
+    // The change card's day column: a weekday plus a compact date, in the locale's regional order.
+    const weekday = defaultTranslator.date.weekdayDate("2026-11-21");
+    expect(weekday).toContain("Sat");
+    expect(weekday).toContain("21");
+    expect(zh.weekdayDate("2026-11-21").length).toBeGreaterThan(0);
   });
 });
 
@@ -120,6 +132,9 @@ describe("clientStrings", () => {
     expect(en["confirm"]).toBe("Confirm");
     expect(zh["confirm"]).not.toBe("Confirm");
     expect("calendar.heading" in en).toBe(false);
+    // The coach panel's change card shares the page card's copy, so changes.* is exposed under its full key.
+    expect(en["changes.title"]).toBe("Recent changes");
+    expect(zh["changes.title"]).not.toBe("Recent changes");
   });
 
   it("ships the re-prefill wait-line strings in both locales (LL-4)", () => {
