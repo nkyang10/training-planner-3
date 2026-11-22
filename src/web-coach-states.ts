@@ -7,7 +7,7 @@ import {
   sortCoachStates,
 } from "./coach-states";
 import { localDateTime } from "./time";
-import type { CoachDirectiveRecord, CoachPreferences, CoachStateEvent, CoachStateRecord, Memory, PromptSnapshot } from "./types";
+import type { CoachDirectiveRecord, CoachPreferences, CoachStateEvent, CoachStateRecord, PromptSnapshot } from "./types";
 import { defaultTranslator, type Translator } from "./i18n";
 import { auditMetric, errorBanner, escapeHtml, type ViewName } from "./web-html";
 
@@ -18,7 +18,6 @@ export function renderCoachAudit(
   user: AuthUser,
   directives: readonly CoachDirectiveRecord[],
   states: readonly CoachStateRecord[],
-  legacyModes: readonly Memory[],
   stateEvents: readonly CoachStateEvent[],
   deps: CoachStateRenderDeps,
   tx: Translator = defaultTranslator,
@@ -41,12 +40,6 @@ export function renderCoachAudit(
             return `<li><span class="chip">${escapeHtml(event.action)}</span> ${escapeHtml(tx.t(`coachState.label.${event.key}` as const))} · ${escapeHtml(event.fromStatus ?? "new")} → ${escapeHtml(event.toStatus)} · ${escapeHtml(tx.t(`coachState.source.${event.source}` as const))} · ${escapeHtml(localDateTime(event.createdAt, user.timezone))}</li>`;
           })
           .join("")}</ul>`;
-  const legacyHtml =
-    legacyModes.length === 0
-      ? ""
-      : `<section class="card"><h2>${tx.t("coachAudit.legacyHeading")}</h2><p class="muted small">${tx.t("coachAudit.legacyPre")}<code>mode:</code>${tx.t("coachAudit.legacyPost")}</p><ul class="state-history">${legacyModes
-          .map((memory) => `<li><span class="chip">mode</span> ${escapeHtml(memory.text)}</li>`)
-          .join("")}</ul></section>`;
   // The silent preference profile's transparency surface (LL-5): the runner never sees it; the owner can.
   const unset = tx.t("coachAudit.prefUnset");
   const prefValue = (value: string | null): string =>
@@ -115,7 +108,6 @@ export function renderCoachAudit(
     <section class="card"><h2>${tx.t("coachAudit.snapHeading")}</h2><p class="muted small">${tx.t("coachAudit.snapBody")}</p>${snapshotsHtml}</section>
     <section class="card"><h2>${tx.t("coachAudit.statesHeading")}</h2><p class="muted small">${tx.t("coachAudit.statesBodyPre")}<a href="/coach-states">${tx.t("coachAudit.manageStates")}</a>${tx.t("coachAudit.statesBodyPost")}</p>${stateList}</section>
     <section class="card"><h2>${tx.t("coachAudit.activityHeading")}</h2><p class="muted small">${tx.t("coachAudit.activityBody")}</p>${eventList}</section>
-    ${legacyHtml}
     <section class="card"><h2>${tx.t("coachAudit.directivesHeading")}</h2>${directiveList}</section>`,
     user,
     "none",

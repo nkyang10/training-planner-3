@@ -40,6 +40,7 @@ const SOURCES: readonly CoachSource[] = [
   "recent-changes",
   "states-page",
   "state-card",
+  "coach-dock",
   "muscle-tab",
 ];
 const LANGUAGES: readonly CoachLanguage[] = ["auto", "en", "zh-Hant"];

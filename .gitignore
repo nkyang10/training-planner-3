@@ -12,6 +12,8 @@ coverage/
 data/
 .env
 .env.*
+# The documented template is not a secret: it ships with the repository.
+!.env.example
 *.local
 *.sqlite
 *.sqlite-journal

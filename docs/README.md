@@ -1,54 +1,90 @@
-# Milebook documents
+# Milebook documentation
 
-Start with the [solution document](MILEBOOK-CALENDAR.md); it is the reference for the architecture, coach contract, calendar
-and training-log behavior. The [training-log plan](TRAINING-LOG-PLAN.md) goes deeper on the analysis slices, the
-[Garmin training-program note](GARMIN-TRAINING-PROGRAMS.md) answers what the Garmin API can and cannot provide, and the
-[feature backlog](FEATURES-FOR-REVIEW.md) lists what is still waiting for owner review.
+This is the maintained reference set for Milebook. Every page answers one question a maintainer actually asks, and is
+edited in the same pull request as the code it describes. There is no diary here: the PoC-era analysis, review records
+and iteration screenshots were removed from the release tree and remain recoverable from git history (last commit that
+contained them: `e79e11b`).
 
-*The working title **POC3** became **Milebook** on 2026-11-20; every document now uses the new name, and the solution
-document is `MILEBOOK-CALENDAR.md`.*
+## Start here
 
-| Document | What it answers |
+| Page | The question it answers |
 |---|---|
-| [MILEBOOK-CALENDAR.md](MILEBOOK-CALENDAR.md) | The standalone solution: problem, architecture, accounts/profiles, coach contract, CRUD/batch, change history/revert, suggestions, animation, run/session peek, paired run+workout rows, the integrated run+program peek, Garmin, API, runbook, limits |
-| [TRAINING-LOG-PLAN.md](TRAINING-LOG-PLAN.md) | Research, feature inventory and the implemented training-log slices: load/ramp, hard/easy, rich run metrics, per-kilometre splits, Garmin laps/intervals, HR zones, period best efforts/PRs, the metric-selectable trend graph, the Garmin activity-workout overlay (paired row, integrated run+program peek, calendar fill) and weekly coach review |
-| [GARMIN-TRAINING-PROGRAMS.md](GARMIN-TRAINING-PROGRAMS.md) | What the Garmin Personal API exposes (per-activity executed workout), what it does not (future scheduled workouts, Coach/adaptive plans), and what a full-plan import would require |
-| [FEATURES-FOR-REVIEW.md](FEATURES-FOR-REVIEW.md) | Remaining candidate features from PoC1/PoC2, prioritised for owner review; the implemented slice is marked done |
-| [analysis/13-layout-review.md](analysis/13-layout-review.md) | Page-by-page 排版 review (calendar, day, training log, activity, muscle, states, profile, auth) and three implemented passes: the coach dock (before/after measurements, tabs-vs-side-by-side options, the Chat/States/Changes IA), the same grammar on the log, states, activity and muscle pages; the P0 accessibility pass (launcher disclosure, inert focus management, 320 px capture); and the P1/P2 pass (load chip, URL-addressable tabs, states head action, segmented-control semantics, 1024 px dock-open columns, Muscles jump, analytics hook) |
-| [analysis/14-uiux-layout-research.md](analysis/14-uiux-layout-research.md) | Professional research review of the layout grammar: tabs vs side-by-side vs overlays, progressive disclosure, responsive breakpoints, WCAG 2.2/APG semantics, AI assistant guidance, a heuristic audit of Milebook, the P0/P1/P2 implementation notes and a proposed evaluation plan |
-| [adr/0001-server-validated-coach.md](adr/0001-server-validated-coach.md) | LLM proposes, server validates before writing |
-| [adr/0002-calendar-first-bubble.md](adr/0002-calendar-first-bubble.md) | Calendar is the product; the bubble is self-implemented, not an iframe |
-| [adr/0003-validation-feedback-loop.md](adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back to the model for one repair/clarification; turns are idempotent |
+| [PRODUCT.md](PRODUCT.md) | What is Milebook, who is it for, what is each screen for, and what is deliberately out of scope? |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | What runs where, what talks to what, and where are the trust boundaries? |
+| [DATA-MODEL.md](DATA-MODEL.md) | What is stored, what are the invariants, what is retained, how is it migrated and backed up? |
+| [HTTP-API.md](HTTP-API.md) | What routes exist, what do they take, what do they return, and who may call them? |
 
-## Design screenshots
+## The coach
 
-All screenshots use a fake demo runner (`Demo Runner`) and synthetic training data.
-
-| Screenshot | Shows |
+| Page | The question it answers |
 |---|---|
-| [Calendar rows](design/calendar-demo.png) | Typed plan/run rows and paired green/purple run+workout rows in the month grid; every row adds the amount its title omits, and the paired row opens one integrated run+program peek |
-| [Run peek](design/activity-peek-demo.png) | Clicking a run row, or anywhere on a paired run+workout row, opens one popup with metrics, plan match, the integrated training program, load/effect, fastest efforts and four actions; Ask coach sends the natural question with the run's day and metrics plus a hidden review directive |
-| [Session peek](design/session-peek-demo.png) | A planned-session row opens the same popup with the kind, planned distance/duration, completion outcome and matched run, plus View day, comment-only Ask coach, Open run and Training log week |
-| [Coaching states](design/coach-states-demo.png) | Active and proposed coaching states, the Refresh action, set-state form, resolved history and clinician/safety copy; active states also appear as calendar chips and chat-bubble cards |
-| [Coach state card](design/coach-state-bubble-demo.png) | A chat-bubble state card with evidence and Resolve, plus the race-week guardrail system line |
-| [Coach audit](design/coach-audit-demo.png) | The owner-only audit page: recent hidden directives, comment-only/blocked-write stats, active coaching states, the immutable State activity log and legacy `mode:` memories |
-| [Calendar CRUD animation](design/calendar-crud-demo.png) | A session pill flying into the bin while the deleted day pulses |
-| [Coach starter suggestions](design/coach-starter-demo.png) | Starter prompts on first open |
-| [Coach Could not apply card](design/coach-not-applied-demo.png) | Structured failure card above the suggestion rail |
-| [Coach delete in place](design/coach-delete-demo.png) | Delete applied in place |
-| [Training log month](design/training-log-month-demo.png) | Period selector, weekly volume, best efforts, the metric trend card and week rows |
-| [Training log week](design/training-log-week-demo.png) | Load card, daily volume, the metric-selectable trend graph and plan-match badges, plus the Garmin workout line |
-| [Training log cadence](design/training-log-cadence-demo.png) | The same week with the Cadence chip selected: the CSS-only metric switch shows the cadence panel without a reload |
-| [Training log year](design/training-log-year-demo.png) | Monthly volume, best efforts, the metric trend card and month rows |
-| [Activity detail](design/activity-detail-demo.png) | Rich metrics, fastest efforts, per-kilometre splits, laps, HR zones and the Garmin workout step card |
-| [Coach dock, before/after](design/layout-review/before-after-coach-dock.png) | The 380 px floating panel covering 26 % of the month card, beside the shipped 340 px dock that reflows the page |
-| [Coach dock tabs](design/layout-review/coach-dock-tabs.png) | Chat / States / Changes side by side: the conversation and composer, active + proposed states with Confirm/Resolve, and change sets with Undo, Discuss and Show on calendar |
-| [Coach sheet, before/after](design/layout-review/before-after-coach-mobile.png) | The old phone takeover with one 32 px “−”, beside the shipped sheet with the tab strip, a visible × and locked background scroll |
-| [Training log tabs](design/layout-review/history-tabs.png) | Before: load and trend first, the week below. After: Days / Review segmented tabs with the week as the default |
-| [Activity columns](design/layout-review/activity-columns.png) | Before: one long column with Ask coach last. After: head actions and two peer columns — program/metrics/splits beside muscles/zones/laps |
-| [Muscle columns](design/layout-review/muscle-columns.png) | Before: the status card pushes the 3D figure down. After: a 360 px status/readings rail beside the check-in figure |
-| [Coaching state tabs](design/layout-review/states-tabs.png) | Current (active + proposed) and Set a state side by side; History is the third tab |
-| [History load chip](design/layout-review/history-load-chip.png) | The week summary keeps a load signal visible: `Load: no data` above the Days / Review tabs links to Review and the load card |
-| [States head action](design/layout-review/states-set-action.png) | “Set a state” beside the summary plus `?tab=set#state-form-card` make the write job reachable without noticing the tab |
-| [1024 px columns with the coach open](design/layout-review/tablet-columns-coach.png) | At 1024 px the open coach stacks activity and muscle; with the coach closed the same pages keep two columns |
-| [320 px coach sheet](design/layout-review/phone-320-sheet.png) | The P0 accessibility capture at 320×844 CSS px: the sheet, tabs and close fit without horizontal overflow; main/footer/app bar are inert behind it |
+| [COACH-CONTRACT.md](COACH-CONTRACT.md) | What may the model propose, what does the server validate, and how is a turn repaired, replayed and audited? |
+| [COACHING-STATES.md](COACHING-STATES.md) | What durable context exists beyond one turn, how is it detected, and which guardrails does it enforce? |
+
+## Domains
+
+| Page | The question it answers |
+|---|---|
+| [TRAINING-LOG.md](TRAINING-LOG.md) | How are runs matched to plans, and how are volume, load, splits, laps, zones and best efforts computed? |
+| [MUSCLE-DOMAIN.md](MUSCLE-DOMAIN.md) | How does the body record work — catalog, check-in, deterministic reading, drills and coach suggestions? |
+| [GARMIN.md](GARMIN.md) | What does the Garmin Personal API give us, what does it refuse, and how is the workout overlay built? |
+
+## Interface
+
+| Page | The question it answers |
+|---|---|
+| [UI-GRAMMAR.md](UI-GRAMMAR.md) | What is the layout grammar, the breakpoints, the accessibility rules and the i18n contract? |
+| [ASSET-PROVENANCE.md](ASSET-PROVENANCE.md) | Where did every vendored asset come from, under what licence, and what attribution must ship with it? |
+
+## Operating it
+
+| Page | The question it answers |
+|---|---|
+| [OPERATIONS.md](OPERATIONS.md) | What are the settings, how do I run, deploy, back up, restore, roll back and debug it? |
+| [SECURITY.md](SECURITY.md) | Which controls are in place, and which gaps are still open? |
+| [LIMITS.md](LIMITS.md) | What can this product honestly not do, with what numbers, and what would lifting each limit take? |
+| [TESTING.md](TESTING.md) | What does the gate run, what does it cover, what does it miss, and how do I add a test? |
+
+## Shipping it
+
+| Page | The question it answers |
+|---|---|
+| [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) | What was wrong, what is fixed, what still blocks real users, and in what order should the rest close? |
+| [RELEASE.md](RELEASE.md) | What must be rearranged before production, how is a release cut, verified and rolled back? |
+| [ROADMAP.md](ROADMAP.md) | What comes after this release, and which decisions block it? |
+
+## Decisions
+
+| Record | Decision |
+|---|---|
+| [adr/0001](adr/0001-server-validated-coach.md) | The LLM proposes; the server validates before writing. |
+| [adr/0002](adr/0002-calendar-first-bubble.md) | The calendar is the product; the bubble is same-origin, not an iframe. |
+| [adr/0003](adr/0003-validation-feedback-loop.md) | Rejected proposals are fed back once; turns are idempotent. |
+| [adr/TEMPLATE.md](adr/TEMPLATE.md) | The shape of a new decision record. |
+
+Screenshots of the shipped product (synthetic demo runner, no production data) live in
+[assets/screenshots/](assets/screenshots/).
+
+## Rules for these pages
+
+1. **One question per page.** If a page needs "and also", it is two pages.
+2. **A status header on every reference page:**
+   `**Status:** current · **Owner:** <area> · **Updated:** YYYY-MM-DD · **Supersedes:** <old page or "—">`.
+   Update the date when you change the page.
+3. **Cite code by symbol, never by line number:** `(src/coach.ts · parseCoachTurn)`. Line numbers rot on the next
+   commit; `pnpm docs:check` verifies every anchor still resolves.
+4. **State facts once.** A test count, a CSS version, a port or a deployment state lives in the page that owns it —
+   never copy-pasted into several pages. Prefer "run `pnpm check`" to a number.
+5. **Write the current behaviour, not the history.** How something came to be is a pull request; what it does now is
+   this page.
+6. **No scratch paths, no absolute paths, no corruption.** `pnpm docs:check` fails on broken links, dead anchors,
+   GBK-mojibake characters, `U+FFFD`, literal double-question-mark runs in prose and references to the gitignored
+   scratch directory.
+7. **Delete a page when its subject is gone.** A stale page is worse than no page: it teaches the wrong thing.
+
+## Adding or retiring a page
+
+- Adding: create the page with the status header, add it to the index above with its question, add cross-links from the
+  pages that need it, and run `pnpm docs:check`.
+- Retiring: fold anything still true into the page that owns the subject, remove it from this index, delete the file,
+  and mention the retirement in the pull request. Git history is the archive; this tree is the reference.

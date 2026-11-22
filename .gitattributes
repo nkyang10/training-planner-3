@@ -1,0 +1,11 @@
+# Normalize text line endings for a repository that is checked out on Windows and built on Linux.
+* text=auto eol=lf
+
+# PowerShell tooling is Windows-only; keep it CRLF so it runs without a BOM surprise.
+*.ps1 text eol=crlf
+
+# Binary assets: never diff, never convert.
+*.png binary
+*.webp binary
+*.glb binary
+*.ico binary

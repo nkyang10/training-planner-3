@@ -1147,6 +1147,8 @@ const en = {
   "error.couldNotSaveProfile": "Could not save the profile",
   "error.notFound": "Not found",
   "error.serverError": "Something went wrong",
+  "error.serverErrorBody": "The page could not be completed. Try again in a moment; if it keeps happening, check the server log.",
+  "error.tooManyAttempts": "Too many attempts. Wait a few minutes and try again.",
   "authErr.invalidCredentials": "Invalid username or password.",
   "authErr.usernameTaken": "That username is already taken.",
   "authErr.invalidInput": "Please check the fields and try again.",
@@ -1367,9 +1369,6 @@ const en = {
   "coachAudit.noStatesPre": "No active states. Auto states appear from the calendar and training; coach or runner states appear on the ",
   "coachAudit.noStatesPost": " page.",
   "coachAudit.noEvents": "No state transitions yet.",
-  "coachAudit.legacyHeading": "Legacy mode memories",
-  "coachAudit.legacyPre": "Older ",
-  "coachAudit.legacyPost": " memories are still in the coach's facts. New durable context uses coaching states above.",
   "coachAudit.noDirectives": "No hidden directives yet. They appear when you use a coach action such as reviewing a run or a week.",
   "coachAudit.refActivity": "activity",
   "coachAudit.refDay": "day",
@@ -2499,6 +2498,8 @@ const zhHK: Messages = {
   "error.couldNotSaveProfile": "無法儲存個人資料",
   "error.notFound": "找不到頁面",
   "error.serverError": "發生錯誤",
+  "error.serverErrorBody": "這一頁未能完成。請稍後再試;如果持續發生,請查看伺服器記錄。",
+  "error.tooManyAttempts": "嘗試次數過多，請等幾分鐘再試。",
   "authErr.invalidCredentials": "使用者名稱或密碼不正確。",
   "authErr.usernameTaken": "此使用者名稱已被使用。",
   "authErr.invalidInput": "請檢查各欄位後再試一次。",
@@ -2718,9 +2719,6 @@ const zhHK: Messages = {
   "coachAudit.noStatesPre": "暫時沒有生效中的狀態。自動狀態會從日曆和訓練中出現;教練或跑者設定的狀態會從",
   "coachAudit.noStatesPost": "這一頁出現。",
   "coachAudit.noEvents": "暫時沒有狀態轉變。",
-  "coachAudit.legacyHeading": "舊模式記憶",
-  "coachAudit.legacyPre": "較舊的 ",
-  "coachAudit.legacyPost": " 記憶仍然留在教練的事實中。新的持久內容會使用上面的教練狀態。",
   "coachAudit.noDirectives": "暫時沒有隱藏指令。當你使用教練功能(例如檢視一次跑步或一個星期)就會出現。",
   "coachAudit.refActivity": "活動",
   "coachAudit.refDay": "日",
@@ -2910,11 +2908,6 @@ function matchAcceptLanguage(header: string | undefined): Locale | undefined {
 export function resolveLocale(cookieValue: string | undefined, acceptLanguage: string | undefined): Locale {
   if (isLocale(cookieValue)) return cookieValue;
   return matchAcceptLanguage(acceptLanguage) ?? DEFAULT_LOCALE;
-}
-
-/** Build a `Translator` directly from a resolved locale. */
-export function translatorFor(locale: Locale): Translator {
-  return createTranslator(locale);
 }
 
 /**

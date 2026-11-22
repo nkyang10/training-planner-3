@@ -235,6 +235,7 @@ export type CoachSource =
   | "recent-changes"
   | "states-page"
   | "state-card"
+  | "coach-dock"
   | "muscle-tab";
 
 export type CoachLanguage = "auto" | "en" | "zh-Hant";
