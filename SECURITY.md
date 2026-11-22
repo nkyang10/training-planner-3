@@ -12,7 +12,7 @@ high-impact even when the affected feature looks minor.
 
 ## Reporting a vulnerability
 
-Report privately to the repository owner. **Set the contact address here before publishing this repository.**
+Report privately to the repository owner: **<owner-email>** (set the real address before the repository is shared).
 Do not open a public issue, and do not include real runner data, session cookies or Garmin keys in a report.
 
 Include: affected route or module, reproduction steps against a local instance with a throwaway account, the impact

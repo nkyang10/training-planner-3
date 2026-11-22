@@ -7,7 +7,7 @@ Milebook has no build step, so the suite is the only executable spec. This page 
 
 | Command | Runs | Reads | Fails when |
 |---|---|---|---|
-| `pnpm lint` | `node tools/lint.mjs` (tools/lint.mjs) | 54 `.ts` files: 32 in `src/`, 22 in `test/` | console output outside `src/index.ts`, TODO/FIXME, the word `any`, two secret prefixes (§6) |
+| `pnpm lint` | `node tools/lint.mjs` (tools/lint.mjs) | every `.ts` file under `src/` and `test/` | console output outside `src/index.ts`, TODO/FIXME, the word `any`, two secret prefixes (§6) |
 | `pnpm typecheck` | `tsc -p tsconfig.json --noEmit` (tsconfig.json) | `src/**/*.ts`, `test/**/*.ts`, `tools/**/*.ts` | any `strict` + `noUncheckedIndexedAccess` error; nothing is emitted |
 | `pnpm test` | `vitest run` (vitest.config.ts) | `test/**/*.test.ts`, node environment, 15 s per test | any failing assertion or unhandled rejection |
 | `pnpm check` | `pnpm lint && pnpm typecheck && pnpm test` (package.json) | all of the above | the first failing step; `&&` stops the rest |
