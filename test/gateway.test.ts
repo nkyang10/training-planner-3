@@ -2031,7 +2031,7 @@ describe("muscle-condition suggestions in the gateway", () => {
     expect(handle.store.listMuscleStatusControls(USER)).toHaveLength(0);
   });
 
-  it("does not stack an identical suggestion that is still waiting, but a changed level is new", async () => {
+  it("does not stack an identical suggestion, and a changed level supersedes the older card (Q5)", async () => {
     const model = queueModel();
     const { handle, url } = await base(model.fetchImpl);
     model.answers.push(quietWithProposals([proposal()]));
@@ -2049,7 +2049,63 @@ describe("muscle-condition suggestions in the gateway", () => {
       messages: [{ role: "user", content: "Now it is 8/10" }],
     });
     expect(((await third.json()) as Completion).milebook.muscleProposals).toHaveLength(1);
-    expect(handle.store.listMuscleProposals(USER, "proposed", 5)).toHaveLength(2);
+    // Newest wins per muscle: one pending card, and the superseded row is dismissed, not deleted.
+    const proposed = handle.store.listMuscleProposals(USER, "proposed", 5);
+    expect(proposed).toHaveLength(1);
+    expect(proposed[0]?.soreness).toBe(8);
+    const dismissed = handle.store.listMuscleProposals(USER, "dismissed", 5);
+    expect(dismissed).toHaveLength(1);
+    expect(dismissed[0]?.soreness).toBe(6);
+    expect(dismissed[0]?.decidedAt).not.toBeNull();
+  });
+
+  it("keeps a validated same-day run on a report and strips a wrong-day or unknown one (F11)", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.appendActivity({
+      activityId: "garmin:today",
+      userId: USER,
+      day: TODAY,
+      title: "Morning tempo",
+      distanceKm: 8,
+      durationMin: 40,
+      paceSecPerKm: 300,
+      avgHr: 150,
+      source: "garmin",
+      createdAt: `${TODAY}T07:00:00.000Z`,
+    });
+    handle.store.appendActivity({
+      activityId: "garmin:yesterday",
+      userId: USER,
+      day: "2026-11-04",
+      title: "Easy 5",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: null,
+      source: "garmin",
+      createdAt: "2026-11-04T07:00:00.000Z",
+    });
+    model.answers.push(
+      quietWithProposals([
+        proposal({ activityId: "garmin:today" }),
+        proposal({ muscleId: "quads", activityId: "garmin:yesterday", evidence: ["quads 5/10 after the easy 5"] }),
+        proposal({ muscleId: "glutes", activityId: "garmin:ghost", evidence: ["glutes 4/10"] }),
+      ]),
+    );
+    const response = await post(url, {
+      model: "milebook-coach",
+      messages: [{ role: "user", content: "Calf 6/10, quads 5/10, glutes 4/10 after the runs" }],
+    });
+    const body = (await response.json()) as Completion;
+    expect(body.milebook.muscleProposals).toHaveLength(3);
+    const byMuscle = new Map(body.milebook.muscleProposals.map((row) => [row.muscleId, row]));
+    expect(byMuscle.get("calves")?.activityId).toBe("garmin:today");
+    expect(byMuscle.get("quads")?.activityId).toBeNull();
+    expect(byMuscle.get("glutes")?.activityId).toBeNull();
+    const stored = handle.store.listMuscleProposals(USER, "proposed", 5);
+    expect(stored.find((row) => row.muscleId === "calves")?.activityId).toBe("garmin:today");
+    expect(stored.find((row) => row.muscleId === "quads")?.activityId).toBeNull();
   });
 
   it("puts the pending suggestion in the next snapshot and refreshes the epoch once", async () => {

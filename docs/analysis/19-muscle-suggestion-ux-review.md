@@ -345,3 +345,9 @@ gateway in one process, queues scripted model answers, drives `/chat`, `/muscle`
 endpoint, and prints the exact reply, card payload, page card HTML, banners and error copy quoted above. The gate on
 the slice is **604/604** in 22 files (`pnpm check`), commit `b6a22f8`, stylesheet v31; the live :8093 process still
 serves the 2026-11-20 build.
+
+**Disposition (2026-11-22, later the same day).** Every finding F1-F16, the copy audit and the measurement events
+were planned and implemented in [20-muscle-suggestion-ux-plan.md](20-muscle-suggestion-ux-plan.md), which also records
+the decision on each open question of section 8; the simulated conversation was re-run there as the acceptance script.
+The one item not closed is F15's pixel capture (no browser in that environment) - mitigated by moving the card into
+the status rail - and section 6's assistive-tech evidence remains code-read, not device-tested.

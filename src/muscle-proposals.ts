@@ -36,7 +36,8 @@ export type MuscleProposalStatus = "proposed" | "confirmed" | "dismissed";
 
 /** How long a pending suggestion stays actionable: a stale proposal is not worth confirming. */
 export const MUSCLE_PROPOSAL_TTL_DAYS = 7;
-export const MAX_MUSCLE_PROPOSALS = 3;
+/** One card per confirmable record: six covers the realistic "my legs are trashed" turn. */
+export const MAX_MUSCLE_PROPOSALS = 6;
 export const MAX_MUSCLE_PROPOSAL_NOTE_CHARS = 200;
 export const MAX_MUSCLE_PROPOSAL_EVIDENCE = 3;
 export const MAX_MUSCLE_PROPOSAL_EVIDENCE_CHARS = 200;
@@ -56,6 +57,8 @@ export interface MuscleProposal {
   warmUp: MuscleWarmUp | null;
   /** report only: the runner's own note, at most 200 characters. */
   note: string | null;
+  /** report only: the run the feeling followed, when the coach named one the server could validate. */
+  activityId: string | null;
   /** The runner's own words, 1-3 short quotes; data, never instructions. */
   evidence: string[];
   confidence: number;
@@ -76,6 +79,8 @@ export interface MuscleProposalDraft {
   side: MuscleSide;
   warmUp: MuscleWarmUp | null;
   note: string | null;
+  /** Optional: the run the coach tied the feeling to; the server validates it before storing. */
+  activityId: string | null;
   evidence: string[];
   confidence: number;
 }
@@ -90,6 +95,8 @@ export interface MuscleProposalStore {
   listMuscleCheckIns(userId: string, limit?: number): MuscleCheckIn[];
   listMuscleStatusControls(userId: string): MuscleStatusControl[];
   upsertMuscleStatusControl(control: MuscleStatusControl): void;
+  /** The run a report proposal may link to, resolved from the store, never trusted from the model. */
+  getActivity(userId: string, activityId: string): { activityId: string; day: string; title: string } | undefined;
 }
 
 const PROPOSAL_KEYS = [
@@ -100,6 +107,7 @@ const PROPOSAL_KEYS = [
   "side",
   "warmUp",
   "note",
+  "activityId",
   "evidence",
   "confidence",
 ] as const;
@@ -144,6 +152,19 @@ function readWarmUp(value: unknown): MuscleWarmUp | null | undefined {
   return value === "eases" || value === "same" || value === "worse" ? value : undefined;
 }
 
+/**
+ * The run reference is optional and trusted nowhere: the format check here only keeps a plausible id, and the
+ * gateway resolves it against the store (owned, same day) before anything is stored. An unusable id is stripped by
+ * the caller, never rejected — a bad guess must not burn the whole suggestion.
+ */
+function readActivityId(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (text.length === 0 || text.length > 200) return undefined;
+  return text;
+}
+
 export type MuscleProposalDraftResult =
   | { ok: true; draft: MuscleProposalDraft }
   | { ok: false; path: string; message: string };
@@ -180,12 +201,16 @@ export function parseMuscleProposalDraft(raw: unknown): MuscleProposalDraftResul
     // rejected, so a verbose model answer still lands and a long note never costs a repair attempt.
     return {
       ok: true,
-      draft: { action, muscleId, soreness: null, conditions: [], side: "both", warmUp: null, note: null, evidence, confidence },
+      draft: { action, muscleId, soreness: null, conditions: [], side: "both", warmUp: null, note: null, activityId: null, evidence, confidence },
     };
   }
   const note = readNote(raw["note"]);
   if (note === undefined) {
     return { ok: false, path: "note", message: `note must be a string of at most ${MAX_MUSCLE_PROPOSAL_NOTE_CHARS} characters or null` };
+  }
+  const activityId = readActivityId(raw["activityId"]);
+  if (activityId === undefined) {
+    return { ok: false, path: "activityId", message: "activityId must be a short string or null" };
   }
   const soreness = raw["soreness"];
   if (typeof soreness !== "number" || !Number.isInteger(soreness) || soreness < 0 || soreness > 10) {
@@ -206,7 +231,7 @@ export function parseMuscleProposalDraft(raw: unknown): MuscleProposalDraftResul
   if (warmUp === undefined) return { ok: false, path: "warmUp", message: "warmUp must be eases, same, worse or null" };
   return {
     ok: true,
-    draft: { action, muscleId, soreness, conditions, side, warmUp, note, evidence, confidence },
+    draft: { action, muscleId, soreness, conditions, side, warmUp, note, activityId, evidence, confidence },
   };
 }
 
@@ -227,6 +252,7 @@ export function buildMuscleProposal(input: {
     side: input.draft.side,
     warmUp: input.draft.warmUp,
     note: input.draft.note,
+    activityId: input.draft.activityId,
     evidence: [...input.draft.evidence],
     confidence: input.draft.confidence,
     day: input.today,
@@ -246,7 +272,8 @@ export function muscleProposalLine(proposal: MuscleProposal): string {
       .join(", ");
     const side = proposal.side === "both" ? "" : `, ${proposal.side}`;
     const level = proposal.soreness === null ? "a level" : `${proposal.soreness}/10 ${sorenessLabel(proposal.soreness).toLowerCase()}`;
-    return `${name}: report ${level}${conditions.length === 0 ? "" : ` ${conditions}`}${side}`;
+    const run = proposal.activityId === null ? "" : " (about the linked run)";
+    return `${name}: report ${level}${conditions.length === 0 ? "" : ` ${conditions}`}${side}${run}`;
   }
   if (proposal.action === "hold") return `${name}: hold the level constant`;
   if (proposal.action === "release") return `${name}: let the level fade again`;
@@ -276,16 +303,58 @@ export function renderMuscleProposalsForPrompt(pending: readonly MuscleProposal[
   ].join("\n");
 }
 
-/** Pending, still-actionable proposals for one runner, newest first. Expired rows stay stored but are not offered. */
+export interface PendingMuscleProposals {
+  /** Offerable now: inside the window, and a status action has an active status to act on. */
+  offered: MuscleProposal[];
+  /** Pending rows outside the offer window; not rendered as cards, but the page says they exist. */
+  expired: number;
+  /** Pending hold/release/resolve rows whose status faded before the tap; the honest dead-end count. */
+  inactive: number;
+}
+
+/**
+ * The honest partition behind every surface: what can still be confirmed, and what cannot. A hold, release or
+ * resolve with no active status is not offered (its tap could only fail), and an out-of-window row is not offered
+ * either; both stay stored and are counted so the Muscle tab can say what happened instead of silently vanishing
+ * (F5/F14). The prompt block reads `offered` only, so the coach never re-proposes a dead end.
+ */
+export function partitionPendingMuscleProposals(
+  store: MuscleProposalStore,
+  userId: string,
+  today: string,
+): PendingMuscleProposals {
+  const cutoff = addDaysUtc(today, -MUSCLE_PROPOSAL_TTL_DAYS);
+  const rows = store.listMuscleProposals(userId, "proposed", 40);
+  const statuses = computeMuscleStatuses({
+    checkIns: store.listMuscleCheckIns(userId, 40),
+    controls: store.listMuscleStatusControls(userId),
+    today,
+  });
+  const active = new Set(statuses.map((status) => status.muscleId));
+  const offered: MuscleProposal[] = [];
+  let expired = 0;
+  let inactive = 0;
+  for (const proposal of rows) {
+    if (!ISO_DAY.test(proposal.day) || proposal.day < cutoff || proposal.day > today) {
+      expired += 1;
+      continue;
+    }
+    if (proposal.action !== "report" && !active.has(proposal.muscleId)) {
+      inactive += 1;
+      continue;
+    }
+    offered.push(proposal);
+  }
+  return { offered, expired, inactive };
+}
+
+/** Offerable pending suggestions for one runner, newest first; the wrapper every read surface uses. */
 export function listPendingMuscleProposals(
   store: MuscleProposalStore,
   userId: string,
   today: string,
 ): MuscleProposal[] {
-  const cutoff = addDaysUtc(today, -MUSCLE_PROPOSAL_TTL_DAYS);
-  return store
-    .listMuscleProposals(userId, "proposed", 40)
-    .filter((proposal) => proposal.day >= cutoff && proposal.day <= today);
+  return partitionPendingMuscleProposals(store, userId, today).offered;
 }
 
 export type MuscleProposalConfirmResult =
@@ -329,11 +398,20 @@ export function confirmMuscleProposal(input: {
       side: proposal.side,
       warmUp: proposal.warmUp,
     };
+    // The run link is re-resolved at confirm time — the store stays the authority, and a run deleted or moved
+    // between suggestion and tap downgrades to an unlinked report instead of failing the whole decision.
+    const run =
+      proposal.activityId === null
+        ? null
+        : (() => {
+            const activity = store.getActivity(userId, proposal.activityId);
+            return activity !== undefined && activity.day === proposal.day ? activity.activityId : null;
+          })();
     checkIn = {
       checkInId: `checkin:${randomUUID()}`,
       userId,
       day: proposal.day,
-      activityId: null,
+      activityId: run,
       muscles: [tag],
       note: proposal.note,
       createdAt: now,
@@ -372,5 +450,24 @@ export function dismissMuscleProposal(input: {
   const proposal = input.store.getMuscleProposal(input.userId, input.proposalId);
   if (proposal === undefined || proposal.status !== "proposed") return false;
   input.store.updateMuscleProposal({ ...proposal, status: "dismissed", updatedAt: input.now, decidedAt: input.now });
+  return true;
+}
+
+/**
+ * Undo a dismissal (F7): a mis-tap costs one tap, not a full re-entry. The row returns to pending while it is still
+ * inside the offer window; a stale dismissal is not resurrected, and the endpoint says "not-found" to the dock.
+ */
+export function restoreMuscleProposal(input: {
+  store: MuscleProposalStore;
+  userId: string;
+  proposalId: string;
+  today: string;
+  now: string;
+}): boolean {
+  const proposal = input.store.getMuscleProposal(input.userId, input.proposalId);
+  if (proposal === undefined || proposal.status !== "dismissed") return false;
+  const cutoff = addDaysUtc(input.today, -MUSCLE_PROPOSAL_TTL_DAYS);
+  if (!ISO_DAY.test(proposal.day) || proposal.day < cutoff || proposal.day > input.today) return false;
+  input.store.updateMuscleProposal({ ...proposal, status: "proposed", updatedAt: input.now, decidedAt: null });
   return true;
 }

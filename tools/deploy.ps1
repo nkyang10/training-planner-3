@@ -204,8 +204,8 @@ try {
         throw 'The deployed stylesheet does not contain the entry-page and daily-page styles.'
     }
     $loginText = [string]$login.Content
-    if ($loginText -notmatch 'app\.css\?v=31') {
-        throw 'The deployed login page does not reference app.css?v=31.'
+    if ($loginText -notmatch 'app\.css\?v=32') {
+        throw 'The deployed login page does not reference app.css?v=32.'
     }
     if ($loginText -notmatch 'Milebook') {
         throw 'The deployed login page does not carry the Milebook brand.'

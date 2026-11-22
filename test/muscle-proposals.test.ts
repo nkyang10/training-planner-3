@@ -12,7 +12,9 @@ import {
   listPendingMuscleProposals,
   muscleProposalLine,
   parseMuscleProposalDraft,
+  partitionPendingMuscleProposals,
   renderMuscleProposalsForPrompt,
+  restoreMuscleProposal,
   type MuscleProposal,
   type MuscleProposalDraft,
 } from "../src/muscle-proposals";
@@ -40,6 +42,7 @@ const draft = (overrides: Partial<MuscleProposalDraft> = {}): MuscleProposalDraf
   side: "right",
   warmUp: "eases",
   note: null,
+  activityId: null,
   evidence: ["my right calf is 6/10 and tight"],
   confidence: 0.8,
   ...overrides,
@@ -304,6 +307,164 @@ describe("dismissing a proposal", () => {
     expect(handle.store.listMuscleCheckIns(USER)).toHaveLength(0);
     expect(handle.store.listMuscleStatusControls(USER)).toHaveLength(0);
     expect(dismissMuscleProposal({ store: handle.store, userId: USER, proposalId: proposal.proposalId, now: NOW })).toBe(false);
+  });
+});
+
+describe("the honest partition behind every surface (F5/F14)", () => {
+  it("offers a report inside the window, and counts expired rows instead of showing them", () => {
+    const handle = openStore();
+    const fresh = seedProposal(handle);
+    const stale = seedProposal(handle, { day: "2026-11-01" });
+    const partition = partitionPendingMuscleProposals(handle.store, USER, TODAY);
+    expect(partition.offered.map((proposal) => proposal.proposalId)).toEqual([fresh.proposalId]);
+    expect(partition.expired).toBe(1);
+    expect(partition.offered.some((proposal) => proposal.proposalId === stale.proposalId)).toBe(false);
+    expect(listPendingMuscleProposals(handle.store, USER, TODAY)).toHaveLength(1);
+  });
+
+  it("does not offer a hold, release or resolve whose status faded, and counts it as inactive", () => {
+    const handle = openStore();
+    const report = seedProposal(handle);
+    const hold = seedProposal(handle, {
+      overrides: { action: "hold", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    const partition = partitionPendingMuscleProposals(handle.store, USER, TODAY);
+    expect(partition.offered.map((proposal) => proposal.proposalId)).toEqual([report.proposalId]);
+    expect(partition.inactive).toBe(1);
+    // A status behind the hold makes it offerable again.
+    seedCheckIn(handle, "calves", 7);
+    expect(partitionPendingMuscleProposals(handle.store, USER, TODAY).offered).toHaveLength(2);
+    expect(partitionPendingMuscleProposals(handle.store, USER, TODAY).inactive).toBe(0);
+  });
+
+  it("counts an out-of-window hold as expired, not inactive", () => {
+    const handle = openStore();
+    seedProposal(handle, {
+      day: "2026-11-01",
+      overrides: { action: "hold", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
+    });
+    const partition = partitionPendingMuscleProposals(handle.store, USER, TODAY);
+    expect(partition.offered).toHaveLength(0);
+    expect(partition.expired).toBe(1);
+    expect(partition.inactive).toBe(0);
+  });
+});
+
+describe("the run link on a report (F11)", () => {
+  it("accepts a plausible activity id and rejects a non-string one", () => {
+    expect(parseMuscleProposalDraft({ ...draft(), activityId: "garmin:9" })).toMatchObject({
+      ok: true,
+      draft: { activityId: "garmin:9" },
+    });
+    expect(parseMuscleProposalDraft({ ...draft(), activityId: 42 })).toMatchObject({
+      ok: false,
+      path: "activityId",
+    });
+    expect(parseMuscleProposalDraft({ ...draft(), activityId: "x".repeat(201) })).toMatchObject({
+      ok: false,
+      path: "activityId",
+    });
+  });
+
+  it("normalizes the run away from hold, release and resolve", () => {
+    for (const action of ["hold", "release", "resolve"] as const) {
+      const parsed = parseMuscleProposalDraft({ ...draft(), action, activityId: "garmin:9" });
+      expect(parsed).toMatchObject({ ok: true, draft: { activityId: null } });
+    }
+  });
+
+  it("links the confirmed check-in to a same-day run and strips a wrong-day or missing one", () => {
+    const handle = openStore();
+    handle.store.appendActivity({
+      activityId: "garmin:today",
+      userId: USER,
+      day: TODAY,
+      title: "Morning tempo",
+      distanceKm: 8,
+      durationMin: 40,
+      paceSecPerKm: 300,
+      avgHr: 150,
+      source: "garmin",
+      createdAt: NOW,
+    });
+    handle.store.appendActivity({
+      activityId: "garmin:yesterday",
+      userId: USER,
+      day: "2026-11-04",
+      title: "Easy 5",
+      distanceKm: 5,
+      durationMin: 30,
+      paceSecPerKm: 360,
+      avgHr: null,
+      source: "garmin",
+      createdAt: NOW,
+    });
+    const linked = seedProposal(handle, { overrides: { activityId: "garmin:today" } });
+    const linkedResult = confirmMuscleProposal({
+      store: handle.store,
+      userId: USER,
+      proposalId: linked.proposalId,
+      today: TODAY,
+      now: NOW,
+    });
+    expect(linkedResult.ok).toBe(true);
+    expect(linkedResult.ok && linkedResult.checkIn?.activityId).toBe("garmin:today");
+    // A run from another day downgrades to an unlinked report instead of failing the decision.
+    const moved = seedProposal(handle, { overrides: { activityId: "garmin:yesterday" } });
+    const movedResult = confirmMuscleProposal({
+      store: handle.store,
+      userId: USER,
+      proposalId: moved.proposalId,
+      today: TODAY,
+      now: NOW,
+    });
+    expect(movedResult.ok).toBe(true);
+    expect(movedResult.ok && movedResult.checkIn?.activityId).toBeNull();
+    const ghost = seedProposal(handle, { overrides: { activityId: "garmin:ghost" } });
+    const ghostResult = confirmMuscleProposal({
+      store: handle.store,
+      userId: USER,
+      proposalId: ghost.proposalId,
+      today: TODAY,
+      now: NOW,
+    });
+    expect(ghostResult.ok).toBe(true);
+    expect(ghostResult.ok && ghostResult.checkIn?.activityId).toBeNull();
+  });
+});
+
+describe("undoing a dismissal (F7)", () => {
+  it("restores a dismissed proposal inside its window and keeps the journal honest", () => {
+    const handle = openStore();
+    const proposal = seedProposal(handle);
+    dismissMuscleProposal({ store: handle.store, userId: USER, proposalId: proposal.proposalId, now: NOW });
+    expect(handle.store.getMuscleProposal(USER, proposal.proposalId)?.status).toBe("dismissed");
+    expect(
+      restoreMuscleProposal({ store: handle.store, userId: USER, proposalId: proposal.proposalId, today: TODAY, now: NOW }),
+    ).toBe(true);
+    const restored = handle.store.getMuscleProposal(USER, proposal.proposalId);
+    expect(restored).toMatchObject({ status: "proposed", decidedAt: null });
+    // Back to pending: the runner can confirm it after the undo.
+    expect(
+      confirmMuscleProposal({ store: handle.store, userId: USER, proposalId: proposal.proposalId, today: TODAY, now: NOW }).ok,
+    ).toBe(true);
+  });
+
+  it("refuses to resurrect a stale dismissal, a confirmed row or a foreign id", () => {
+    const handle = openStore();
+    const stale = seedProposal(handle, { day: "2026-11-01" });
+    dismissMuscleProposal({ store: handle.store, userId: USER, proposalId: stale.proposalId, now: NOW });
+    expect(
+      restoreMuscleProposal({ store: handle.store, userId: USER, proposalId: stale.proposalId, today: TODAY, now: NOW }),
+    ).toBe(false);
+    const pending = seedProposal(handle);
+    expect(
+      restoreMuscleProposal({ store: handle.store, userId: USER, proposalId: pending.proposalId, today: TODAY, now: NOW }),
+    ).toBe(false);
+    const foreign = seedProposal(handle, { status: "dismissed" });
+    expect(
+      restoreMuscleProposal({ store: handle.store, userId: "someone-else", proposalId: foreign.proposalId, today: TODAY, now: NOW }),
+    ).toBe(false);
   });
 });
 

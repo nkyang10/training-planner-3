@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createAuth, type Auth, type AuthUser } from "../src/auth";
 import { createStore, type StoreHandle } from "../src/store";
-import { buildMuscleProposal, type MuscleProposalDraft } from "../src/muscle-proposals";
+import { buildMuscleProposal, type MuscleProposal, type MuscleProposalDraft } from "../src/muscle-proposals";
 import type { SessionKind, Store } from "../src/types";
 import { createWeb } from "../src/web";
 
@@ -867,6 +867,7 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     side: "right",
     warmUp: "eases",
     note: "calf felt tight after the tempo",
+    activityId: null,
     evidence: ["my right calf is 6/10 and tight"],
     confidence: 0.8,
     ...overrides,
@@ -875,7 +876,7 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
   const seedProposal = (
     handle: StoreHandle,
     userId: string,
-    input: { day?: string; overrides?: Partial<MuscleProposalDraft> } = {},
+    input: { day?: string; overrides?: Partial<MuscleProposalDraft>; status?: MuscleProposal["status"] } = {},
   ): ReturnType<typeof buildMuscleProposal> => {
     const proposal = buildMuscleProposal({
       userId,
@@ -883,8 +884,10 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
       today: input.day ?? TODAY,
       now: `${TODAY}T08:00:00.000Z`,
     });
-    handle.store.appendMuscleProposal(proposal);
-    return proposal;
+    // A status override writes the row as already decided, for the foreign/decided rejection paths.
+    const stored: MuscleProposal = input.status === undefined ? proposal : { ...proposal, status: input.status };
+    handle.store.appendMuscleProposal(stored);
+    return stored;
   };
 
   const postProposal = (
@@ -900,23 +903,62 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
       redirect: "manual",
     });
 
-  it("renders a pending suggestion with the runner's quote and the two decisions", async () => {
+  it("renders a pending suggestion in the record's own vocabulary, inside the status rail", async () => {
     const { base, cookie, handle, user } = await start();
     const proposal = seedProposal(handle, user.userId);
     const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
     expect(html).toContain("Coach suggestions");
     expect(html).toContain("Nothing is written until you confirm it");
-    expect(html).toContain("Report Calves: 6/10 clear doms · Tight / stiff · Right");
+    // F1: a noun phrase with the deterministic reading, never an imperative with a soreness bucket.
+    expect(html).toContain("Calves · 6/10 · Tight / stiff · Right");
+    expect(html).toContain('class="chip muscle-level level-watch">Watch</span>');
+    // F10/F4: the age and the day it is about.
+    expect(html).toContain("Suggested Thu, 5 Nov 2026 · about today");
     expect(html).toContain("You said: “my right calf is 6/10 and tight”");
     expect(html).toContain("Your note: “calf felt tight after the tempo”");
     const encodedId = encodeURIComponent(proposal.proposalId);
     expect(html).toContain(`action="/muscle/proposals/${encodedId}/confirm"`);
     expect(html).toContain(`formaction="/muscle/proposals/${encodedId}/dismiss"`);
-    // A fresh page with nothing pending shows no suggestion card at all.
+    // F2: the Adjust path, and J: the measurement events.
+    expect(html).toContain(`href="/muscle?proposal=${encodedId}#check-in"`);
+    expect(html).toContain("Adjust in the form");
+    expect(html).toContain('data-track="muscle-suggestion-confirmed" data-track-value="report"');
+    expect(html).toContain('data-track="muscle-suggestion-dismissed" data-track-value="report"');
+    expect(html).toContain('data-track="muscle-suggestion-adjust" data-track-value="report"');
+    // F15/K: the card sits inside the status rail, so the figure and the status card keep their place.
+    const slot = html.indexOf('class="muscle-status-slot"');
+    const card = html.indexOf('id="muscle-suggestions"');
+    const status = html.indexOf('id="muscle-status"');
+    expect(slot).toBeGreaterThanOrEqual(0);
+    expect(card).toBeGreaterThan(slot);
+    expect(status).toBeGreaterThan(card);
+    // A fresh page with nothing pending shows no suggestion card at all (the dock's deferral fallback string
+    // still names "Coach suggestions", so the assertion targets the page card itself).
     const empty = await start();
     expect(await (await fetch(`${empty.base}/muscle`, { headers: { cookie: empty.cookie } })).text()).not.toContain(
-      "Coach suggestions",
+      'id="muscle-suggestions"',
     );
+  });
+
+  it("prefills the form from the coach's reading through the Adjust link (F2)", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    const html = await (
+      await fetch(`${base}/muscle?proposal=${encodeURIComponent(proposal.proposalId)}#check-in`, { headers: { cookie } })
+    ).text();
+    expect(html).toContain("Adjusting the coach's suggestion for <strong>Calves</strong>");
+    // The no-script quick set carries the proposal's values: level, tags, side, warm-up and note.
+    expect(html).toMatch(/<option value="6" selected>6 · /);
+    expect(html).toContain('name="conditions" value="tight" checked');
+    expect(html).toContain('<option value="right" selected>Right</option>');
+    expect(html).toContain('<option value="eases" selected>Eases</option>');
+    expect(html).toContain('value="calf felt tight after the tempo"');
+    expect(html).toContain('value="calves" checked');
+    // The script seed carries the same values for the figure path.
+    expect(html).toContain('const PREFILL_TAG');
+    expect(html).toContain('tag.soreness = PREFILL_TAG.soreness');
+    // The suggestion itself is untouched: it still waits for its own decision.
+    expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("proposed");
   });
 
   it("confirms a report into a check-in and a fading status", async () => {
@@ -942,23 +984,76 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("confirmed");
     const html = await (await fetch(`${base}/muscle?saved=proposal`, { headers: { cookie } })).text();
     expect(html).toContain("Suggestion confirmed — your muscle record is updated");
-    expect(html).not.toContain("Coach suggestions");
+    expect(html).not.toContain('id="muscle-suggestions"');
     expect(html).toContain("Calves");
     expect(html).toContain("6/10");
   });
 
-  it("dismisses a suggestion without touching the record", async () => {
+  it("dismisses a suggestion without touching the record, and the banner offers Undo (F7)", async () => {
     const { base, cookie, handle, user } = await start();
     const proposal = seedProposal(handle, user.userId);
     const response = await postProposal(base, cookie, proposal.proposalId, "dismiss");
     expect(response.status).toBe(303);
-    expect(response.headers.get("location")).toBe("/muscle?saved=dismissed");
+    expect(response.headers.get("location")).toBe(
+      `/muscle?saved=dismissed&proposal=${encodeURIComponent(proposal.proposalId)}`,
+    );
     expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)?.status).toBe("dismissed");
     expect(handle.store.listMuscleCheckIns(user.userId)).toHaveLength(0);
     expect(handle.store.listMuscleStatusControls(user.userId)).toHaveLength(0);
-    const html = await (await fetch(`${base}/muscle?saved=dismissed`, { headers: { cookie } })).text();
+    const html = await (
+      await fetch(`${base}/muscle?saved=dismissed&proposal=${encodeURIComponent(proposal.proposalId)}`, {
+        headers: { cookie },
+      })
+    ).text();
     expect(html).toContain("Suggestion dismissed. Nothing about your muscles changed");
-    expect(html).not.toContain("Coach suggestions");
+    expect(html).toContain(
+      `action="/muscle/proposals/${encodeURIComponent(proposal.proposalId)}/restore"`,
+    );
+    expect(html).toContain(">Undo</button>");
+    // A mis-tap costs one tap: the restore returns the row to pending, and the record is still untouched.
+    const restored = await fetch(`${base}/muscle/proposals/${encodeURIComponent(proposal.proposalId)}/restore`, {
+      method: "POST",
+      headers: { cookie },
+      redirect: "manual",
+    });
+    expect(restored.status).toBe(303);
+    expect(restored.headers.get("location")).toBe("/muscle");
+    expect(handle.store.getMuscleProposal(user.userId, proposal.proposalId)).toMatchObject({
+      status: "proposed",
+      decidedAt: null,
+    });
+    const backHtml = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    expect(backHtml).toContain("Coach suggestions");
+  });
+
+  it("answers the dock's restore call and refuses a stale or foreign one", async () => {
+    const { base, cookie, handle, user } = await start();
+    const proposal = seedProposal(handle, user.userId);
+    await postProposal(base, cookie, proposal.proposalId, "dismiss", true);
+    const restored = await fetch(`${base}/muscle/proposals/${encodeURIComponent(proposal.proposalId)}/restore`, {
+      method: "POST",
+      headers: { cookie, accept: "application/json" },
+      redirect: "manual",
+    });
+    expect(restored.status).toBe(200);
+    expect(await restored.json()).toMatchObject({ ok: true, decision: "restore" });
+    // A stale dismissal is not resurrected, and a foreign id is not found.
+    const stale = seedProposal(handle, user.userId, { day: "2026-10-01" });
+    await postProposal(base, cookie, stale.proposalId, "dismiss", true);
+    const staleRestore = await fetch(`${base}/muscle/proposals/${encodeURIComponent(stale.proposalId)}/restore`, {
+      method: "POST",
+      headers: { cookie, accept: "application/json" },
+      redirect: "manual",
+    });
+    expect(staleRestore.status).toBe(404);
+    const foreign = seedProposal(handle, user.userId, { status: "dismissed" });
+    const other = await start();
+    const foreignRestore = await fetch(`${base}/muscle/proposals/${encodeURIComponent(foreign.proposalId)}/restore`, {
+      method: "POST",
+      headers: { cookie: other.cookie, accept: "application/json" },
+      redirect: "manual",
+    });
+    expect([303, 401, 404]).toContain(foreignRestore.status);
   });
 
   it("confirms hold, release and all-better on an active status", async () => {
@@ -984,22 +1079,27 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     expect(cleared).toContain("All perfect");
   });
 
-  it("refuses an expired suggestion and a status action with nothing to change", async () => {
+  it("counts expired and dead-end rows on the page instead of offering a failing card (F5/F14)", async () => {
     const { base, cookie, handle, user } = await start();
     const expired = seedProposal(handle, user.userId, { day: "2026-10-01" });
-    const expiredResponse = await postProposal(base, cookie, expired.proposalId, "confirm");
-    expect(expiredResponse.status).toBe(303);
-    expect(expiredResponse.headers.get("location")).toBe("/muscle?error=proposal-expired");
-    const expiredHtml = await (await fetch(`${base}/muscle?error=proposal-expired`, { headers: { cookie } })).text();
-    expect(expiredHtml).toContain("That suggestion has expired");
     const orphan = seedProposal(handle, user.userId, {
       overrides: { action: "resolve", soreness: null, conditions: [], side: "both", warmUp: null, note: null },
     });
+    const html = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    // Neither row becomes a card; both are named so nothing silently vanishes.
+    expect(html).toContain("One coach suggestion expired — check in again if it still applies");
+    expect(html).toContain("One coach suggestion no longer applies — that soreness has faded");
+    expect(html).not.toContain(`data-proposal-id="${expired.proposalId}"`);
+    expect(html).not.toContain(`data-proposal-id="${orphan.proposalId}"`);
+    // A direct confirm of either still fails honestly, with the plain-language copy.
+    const expiredResponse = await postProposal(base, cookie, expired.proposalId, "confirm");
+    expect(expiredResponse.headers.get("location")).toBe("/muscle?error=proposal-expired");
+    const expiredHtml = await (await fetch(`${base}/muscle?error=proposal-expired`, { headers: { cookie } })).text();
+    expect(expiredHtml).toContain("That suggestion has expired");
     const orphanResponse = await postProposal(base, cookie, orphan.proposalId, "confirm");
-    expect(orphanResponse.status).toBe(303);
     expect(orphanResponse.headers.get("location")).toBe("/muscle?error=proposal-status");
     const orphanHtml = await (await fetch(`${base}/muscle?error=proposal-status`, { headers: { cookie } })).text();
-    expect(orphanHtml).toContain("no longer has an active status");
+    expect(orphanHtml).toContain("That soreness has already faded. Check in again if it is back.");
     expect(handle.store.listMuscleCheckIns(user.userId)).toHaveLength(0);
     expect(handle.store.getMuscleProposal(user.userId, orphan.proposalId)?.status).toBe("proposed");
   });
@@ -1019,21 +1119,67 @@ describe("coach muscle suggestions on the page and the decision endpoint", () =>
     expect(await again.json()).toMatchObject({ ok: false, detail: "not-pending" });
   });
 
-  it("lists pending suggestions in the coach dock history", async () => {
+  it("lists pending suggestions in the coach dock history with the record's own vocabulary", async () => {
     const { base, cookie, handle, user } = await start();
     const proposal = seedProposal(handle, user.userId);
     const history = (await (await fetch(`${base}/chat/history`, { headers: { cookie } })).json()) as {
-      muscleProposals: Array<{ proposalId: string; line: string; evidence: string[]; status: string }>;
+      muscleProposals: Array<{
+        proposalId: string;
+        line: string;
+        reading: string;
+        readingLabel: string;
+        suggestedLabel: string;
+        evidence: string[];
+        status: string;
+      }>;
     };
     expect(history.muscleProposals).toHaveLength(1);
     expect(history.muscleProposals[0]).toMatchObject({
       proposalId: proposal.proposalId,
-      line: "Report Calves: 6/10 clear doms · Tight / stiff · Right",
+      line: "Calves · 6/10 · Tight / stiff · Right",
+      reading: "watch",
+      readingLabel: "Watch",
+      suggestedLabel: "Suggested Thu, 5 Nov 2026 · about today",
       evidence: ["my right calf is 6/10 and tight"],
       status: "proposed",
     });
     await postProposal(base, cookie, proposal.proposalId, "dismiss", true);
     const after = (await (await fetch(`${base}/chat/history`, { headers: { cookie } })).json()) as { muscleProposals: unknown[] };
     expect(after.muscleProposals).toHaveLength(0);
+  });
+
+  it("renders the same suggestion in Cantonese with the audited copy", async () => {
+    const { base, cookie, handle, user } = await start();
+    seedProposal(handle, user.userId);
+    const html = await (
+      await fetch(`${base}/muscle`, { headers: { cookie: `${cookie}; milebook_lang=zh-HK` } })
+    ).text();
+    expect(html).toContain("教練建議");
+    expect(html).toContain("小腿 · 6/10 · 緊繃／僵硬 · 右側");
+    expect(html).toContain('class="chip muscle-level level-watch">需留意</span>');
+    expect(html).toContain("建議於 Thu, 5 Nov 2026 · 關於今天");
+    expect(html).toContain("喺表單調整");
+  });
+
+  it("gives the dock one owner per record: the page card on the Muscle tab, the dock elsewhere (F3/F4/F6/F8)", async () => {
+    const { base, cookie, handle, user } = await start();
+    seedProposal(handle, user.userId);
+    const muscleHtml = await (await fetch(`${base}/muscle`, { headers: { cookie } })).text();
+    // The page announces its view so the dock can defer its standing queue here.
+    expect(muscleHtml).toContain('data-active-view="muscle"');
+    expect(muscleHtml).toContain("onMusclePage");
+    expect(muscleHtml).toContain("muscleOnThisPage");
+    // The dock owns the decision on every other page, with the a11y and badge plumbing this slice adds.
+    const calendarHtml = await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    expect(calendarHtml).toContain('data-active-view="calendar"');
+    expect(calendarHtml).toContain('data-coach-count="chat"');
+    expect(calendarHtml).toContain("updateMusclePendingCount");
+    expect(calendarHtml).toContain("coach-pending-badge");
+    expect(calendarHtml).toContain("refreshMuscleAttention");
+    expect(calendarHtml).toContain("muscleViewRecord");
+    expect(calendarHtml).toContain("firstConfirm.focus()");
+    expect(calendarHtml).toContain("aria-labelledby");
+    expect(calendarHtml).toContain("muscleAlreadyDecided");
+    expect(calendarHtml).toContain("track('muscle-suggestion-shown'");
   });
 });

@@ -980,17 +980,33 @@ describe("muscle-condition suggestions", () => {
     expect(parse([proposal({ confidence: 0.1 })])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
   });
 
-  it("rejects the same muscle twice, more than three items and a non-array", () => {
+  it("rejects the same muscle twice, more than six items and a non-array", () => {
     expect(parse([proposal(), proposal()])).toMatchObject({ ok: false, code: "duplicate-muscle-proposal" });
     expect(parse("calves")).toMatchObject({ ok: false, code: "invalid-muscle-proposals" });
     expect(
       parse(
-        Array.from({ length: 4 }, (_value, index) =>
-          proposal({ muscleId: ["calves", "quads", "glutes", "hamstrings"][index] }),
+        Array.from({ length: 7 }, (_value, index) =>
+          proposal({
+            muscleId: ["calves", "quads", "glutes", "hamstrings", "adductors", "abductors", "tibialis"][index],
+          }),
         ),
       ),
     ).toMatchObject({ ok: false, code: "invalid-muscle-proposals" });
     expect(parse([42])).toMatchObject({ ok: false, code: "invalid-muscle-proposal" });
+  });
+
+  it("accepts six suggestions in one turn — a full-body grumble is not silently truncated", () => {
+    const ids = ["calves", "quads", "glutes", "hamstrings", "adductors", "abductors"];
+    const result = parseCoachTurn(
+      {
+        reply: "Legs are trashed - the Muscle tab is the one-tap place for the rest.",
+        suggestions: ["Plan an easy week"],
+        muscleProposals: ids.map((muscleId) => proposal({ muscleId })),
+      },
+      TODAY,
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.turn.muscleProposals).toHaveLength(6);
   });
 
   it("names the field path in the validation issue", () => {
@@ -1009,12 +1025,14 @@ describe("muscle-condition suggestions", () => {
     expect(properties).toHaveProperty("muscleProposals");
     const proposals = properties.muscleProposals;
     expect(proposals.type).toBe("array");
-    expect(proposals.maxItems).toBe(3);
+    expect(proposals.maxItems).toBe(6);
     expect(proposals.items.properties.action.enum).toEqual(["report", "hold", "release", "resolve"]);
     expect(proposals.items.properties.muscleId.enum).toContain("calves");
     expect(proposals.items.properties.muscleId.enum).toContain("hamstrings");
     expect(proposals.items.properties.conditions.items.enum).toContain("sharp_pain");
     expect(proposals.items.required).toContain("evidence");
+    expect(proposals.items.required).toContain("activityId");
+    expect(proposals.items.properties.activityId.type).toEqual(["string", "null"]);
   });
 
   it("teaches the confirm-first rule and the no-diagnosis limit in the system prompt", () => {

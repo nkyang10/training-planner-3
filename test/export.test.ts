@@ -48,6 +48,7 @@ const muscleProposal: MuscleProposal = {
   side: "left",
   warmUp: "eases",
   note: null,
+  activityId: null,
   evidence: ["my calf is tight"],
   confidence: 0.8,
   day: "2026-11-05",

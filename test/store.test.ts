@@ -1174,6 +1174,7 @@ describe("muscle proposals", () => {
     side: "left",
     warmUp: null,
     note: null,
+    activityId: null,
     evidence: ["my calf is tight"],
     confidence: 0.8,
     day: createdAt.slice(0, 10),

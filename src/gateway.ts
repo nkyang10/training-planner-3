@@ -705,19 +705,45 @@ function applyParsedTurn(
 
     // Muscle-condition suggestions are recorded as pending rows, never as a check-in or a control: the runner's
     // one-tap confirm is the only path from a suggestion to the body's record. A suggestion identical to one that is
-    // still waiting (same action, muscle, level and tags) is skipped, so a model that repeats itself does not stack
-    // duplicate cards; a changed level is a new suggestion.
+    // still waiting (same action, muscle, level, tags and run) is skipped, so a model that repeats itself does not
+    // stack duplicate cards; a changed level supersedes the older pending card for that muscle, because two live
+    // cards for one muscle invite two confirms of contradictory records.
     const recordMuscleProposals = (): void => {
       const pending = listPendingMuscleProposals(options.store, userId, today);
-      const keyOf = (proposal: { action: string; muscleId: string; soreness: number | null; conditions: readonly string[] }): string =>
-        `${proposal.action}|${proposal.muscleId}|${proposal.soreness ?? ""}|${[...proposal.conditions].sort().join("+")}`;
+      const keyOf = (proposal: {
+        action: string;
+        muscleId: string;
+        soreness: number | null;
+        conditions: readonly string[];
+        activityId: string | null;
+      }): string =>
+        `${proposal.action}|${proposal.muscleId}|${proposal.soreness ?? ""}|${[...proposal.conditions].sort().join("+")}|${proposal.activityId ?? ""}`;
       const waiting = new Set(pending.map((proposal) => keyOf(proposal)));
       const created: MuscleProposal[] = [];
       for (const draft of turn.muscleProposals) {
-        const key = keyOf(draft);
+        // The run reference is resolved, never trusted: a foreign, missing or wrong-day id is stripped so a
+        // hallucinated activityId downgrades to an unlinked report instead of poisoning the suggestion.
+        const activityId =
+          draft.action === "report" && draft.activityId !== null
+            ? (() => {
+                const activity = options.store.getActivity(userId, draft.activityId);
+                return activity !== undefined && activity.day === today ? activity.activityId : null;
+              })()
+            : null;
+        const key = keyOf({ ...draft, activityId });
         if (waiting.has(key)) continue;
         waiting.add(key);
-        const proposal = buildMuscleProposal({ userId, draft, today, now: at });
+        const proposal = buildMuscleProposal({
+          userId,
+          draft: { ...draft, activityId },
+          today,
+          now: at,
+        });
+        // Newest wins per muscle: the superseded rows are dismissed, not deleted, so the journal stays honest.
+        for (const older of pending) {
+          if (older.muscleId !== proposal.muscleId || older.status !== "proposed") continue;
+          options.store.updateMuscleProposal({ ...older, status: "dismissed", updatedAt: at, decidedAt: at });
+        }
         options.store.appendMuscleProposal(proposal);
         created.push(proposal);
       }

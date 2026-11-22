@@ -63,8 +63,15 @@ export interface MusclePageInput {
   /** True right after the runner dismissed a coach suggestion. */
   proposalDismissed: boolean;
   errorCode: string | null;
-  /** Coach suggestions still waiting for the runner's one tap. */
+  /** Coach suggestions still waiting for the runner's one tap (offerable only: in-window, actionable). */
   pendingProposals: readonly MuscleProposal[];
+  /** Pending rows that expired or whose status faded — not offered, but the page says they exist. */
+  pendingExpired: number;
+  pendingInactive: number;
+  /** The proposal a ?proposal= Adjust link named, when it is still pending: the form opens on its values. */
+  prefillProposal: MuscleProposal | null;
+  /** The dismissed row whose banner offers Undo, when the redirect carried it. */
+  dismissedProposalId: string | null;
   /** The check-in the readings show: the viewed day's, else the latest. */
   dayCheckIn: MuscleCheckIn | null;
   history: readonly MuscleCheckIn[];
@@ -305,14 +312,27 @@ function statusSection(statuses: readonly MuscleStatus[], tx: Translator = defau
 
 /**
  * One coach suggestion in the runner's words, ready for the page or the coach dock. The line is built here so the
- * server and the client render the same sentence; the evidence stays a list of the runner's own quotes.
+ * server and the client render the same sentence: a noun phrase in the record's own vocabulary (name · level ·
+ * tags · the deterministic reading), never an instruction, plus the age, the current status context and the run it
+ * would link to. Evidence stays a list of the runner's own quotes.
  */
 export interface MuscleProposalView {
   proposalId: string;
   action: MuscleProposal["action"];
   muscleId: string;
   name: string;
+  /** Noun-phrase headline: "Calves · 6/10 · tight, right", "Hamstrings · hold at 4/10", "Calves · all better". */
   line: string;
+  /** The deterministic reading for a report (ok..urgent), or null for status actions. */
+  reading: MuscleTagLevel | null;
+  readingLabel: string | null;
+  /** "Suggested Thu, 5 Nov 2026 · about today" — when it landed and the day it is about. */
+  suggestedLabel: string;
+  /** "Now: 6/10 · fading since Thu" when the muscle has a live status; null otherwise. */
+  contextLabel: string | null;
+  /** The run a report would link to, when the server could validate one; both fields or neither. */
+  runLabel: string | null;
+  runHref: string | null;
   evidence: string[];
   note: string | null;
   day: string;
@@ -325,35 +345,78 @@ function sideLabel(side: MuscleSide, tx: Translator = defaultTranslator): string
   return tx.t("muscle.sideBoth");
 }
 
-export function muscleProposalView(proposal: MuscleProposal, tx: Translator = defaultTranslator): MuscleProposalView {
+/** Everything the view builder may need beyond the proposal itself; every field is optional. */
+export interface MuscleProposalViewInput {
+  proposal: MuscleProposal;
+  /** The runner's live statuses, so a hold can name the level it holds and the card can show the Now: context. */
+  statuses?: readonly MuscleStatus[];
+  /** The local today, so the meta line can say "about today". */
+  today?: string;
+  /** The run a report links to, resolved by the caller from the store; ignored when it does not match. */
+  run?: { activityId: string; title: string };
+}
+
+export function muscleProposalView(
+  input: MuscleProposalViewInput,
+  tx: Translator = defaultTranslator,
+): MuscleProposalView {
+  const proposal = input.proposal;
   const name = txMuscleName(proposal.muscleId, tx);
+  const status = (input.statuses ?? []).find((row) => row.muscleId === proposal.muscleId) ?? null;
   let line: string;
+  let reading: MuscleTagLevel | null = null;
+  let readingLabel: string | null = null;
   if (proposal.action === "report") {
     const level = proposal.soreness ?? 0;
-    const parts = [
-      tx.t("muscle.proposalReport", {
-        name,
-        level: String(level),
-        label: txSorenessLabel(level, tx).toLowerCase(),
-      }),
-    ];
-    const conditions = proposal.conditions.map((condition) => tx.t(`muscle.condition.${condition}.label` as MessageKey));
-    if (conditions.length > 0) parts.push(conditions.join(" · "));
-    if (proposal.side !== "both") parts.push(sideLabel(proposal.side, tx));
-    line = parts.join(" · ");
+    line = [
+      tx.t("muscle.proposalReport", { name, level: String(level) }),
+      ...proposal.conditions.map((condition) => tx.t(`muscle.condition.${condition}.label` as MessageKey)),
+      ...(proposal.side === "both" ? [] : [sideLabel(proposal.side, tx)]),
+    ].join(" · ");
+    reading = readMuscleTag({
+      muscleId: proposal.muscleId,
+      soreness: level,
+      conditions: [...proposal.conditions],
+      side: proposal.side,
+      warmUp: proposal.warmUp,
+    }).level;
+    readingLabel = tx.t(LEVEL_CHIP_KEY[reading]);
   } else if (proposal.action === "hold") {
-    line = tx.t("muscle.proposalHold", { name });
+    line =
+      status === null
+        ? tx.t("muscle.proposalHoldPlain", { name })
+        : tx.t("muscle.proposalHold", { name, level: String(status.current) });
   } else if (proposal.action === "release") {
     line = tx.t("muscle.proposalRelease", { name });
   } else {
     line = tx.t("muscle.proposalResolve", { name });
   }
+  const suggestedLabel =
+    tx.t("muscle.proposalSuggested", { day: formatDayLabel(proposal.day) }) +
+    (input.today !== undefined && proposal.day === input.today ? tx.t("muscle.proposalAboutToday") : "");
+  const contextLabel =
+    status === null
+      ? null
+      : tx.t("muscle.proposalNow", {
+          level: String(status.current),
+          mode: status.hold
+            ? tx.t("muscle.proposalNowHeld")
+            : tx.t("muscle.proposalNowFading", { day: formatDayLabel(status.startDay) }),
+        });
+  const runMatches =
+    proposal.activityId !== null && input.run !== undefined && input.run.activityId === proposal.activityId;
   return {
     proposalId: proposal.proposalId,
     action: proposal.action,
     muscleId: proposal.muscleId,
     name,
     line,
+    reading,
+    readingLabel,
+    suggestedLabel,
+    contextLabel,
+    runLabel: runMatches ? tx.t("muscle.proposalRunLink", { title: input.run?.title ?? "" }) : null,
+    runHref: runMatches ? `/activity/${encodeURIComponent(proposal.activityId ?? "")}` : null,
     evidence: [...proposal.evidence],
     note: proposal.note,
     day: proposal.day,
@@ -361,35 +424,71 @@ export function muscleProposalView(proposal: MuscleProposal, tx: Translator = de
   };
 }
 
-/** One pending suggestion: what the coach noticed, the runner's own quote, and the Confirm / Dismiss pair. */
-function proposalCardHtml(proposal: MuscleProposal, tx: Translator = defaultTranslator): string {
-  const view = muscleProposalView(proposal, tx);
+/** One pending suggestion: what the coach noticed, the runner's own quote, the record's own vocabulary, and the three decisions. */
+function proposalCardHtml(proposal: MuscleProposal, statuses: readonly MuscleStatus[], today: string, tx: Translator = defaultTranslator): string {
+  const view = muscleProposalView({ proposal, statuses, today }, tx);
   const quotes = view.evidence.map((quote) => `“${quote}”`).join(" · ");
   const evidence = `<p class="muted small">${escapeHtml(tx.t("muscle.proposalEvidence", { quotes }))}</p>`;
   const note = view.note === null
     ? ""
     : `<p class="muted small">${escapeHtml(tx.t("muscle.proposalNote", { note: view.note }))}</p>`;
+  const readingChip = view.reading === null || view.readingLabel === null
+    ? ""
+    : `<span class="chip muscle-level ${LEVEL_CHIP[view.reading].className}">${escapeHtml(view.readingLabel)}</span>`;
+  const contextLine = view.contextLabel === null
+    ? ""
+    : `<p class="muted small">${escapeHtml(view.contextLabel)}</p>`;
+  const runLine = view.runLabel === null || view.runHref === null
+    ? ""
+    : `<p class="muted small">· <a href="${escapeHtml(view.runHref)}">${escapeHtml(view.runLabel)}</a></p>`;
   const base = `/muscle/proposals/${encodeURIComponent(view.proposalId)}`;
   return `<li class="muscle-proposal" data-proposal-id="${escapeHtml(view.proposalId)}">
-    <div class="muscle-proposal-head"><span class="chip muscle-proposal-chip">${escapeHtml(tx.t("muscle.proposalChip"))}</span><strong>${escapeHtml(view.line)}</strong></div>
-    ${evidence}${note}
-    <form method="post" action="${base}/confirm" class="proposal-actions">
-      <button class="btn" type="submit">${escapeHtml(tx.t("muscle.proposalConfirm"))}</button>
-      <button class="btn ghost" type="submit" formaction="${base}/dismiss">${escapeHtml(tx.t("muscle.proposalDismiss"))}</button>
-    </form>
+    <div class="muscle-proposal-head"><span class="chip muscle-proposal-chip">${escapeHtml(tx.t("muscle.proposalChip"))}</span><strong>${escapeHtml(view.line)}</strong>${readingChip}</div>
+    <p class="muted small muscle-proposal-meta">${escapeHtml(view.suggestedLabel)}</p>
+    ${evidence}${note}${contextLine}${runLine}
+    <div class="proposal-actions">
+      <form method="post" action="${base}/confirm" class="proposal-action-form">
+        <button class="btn" type="submit" data-track="muscle-suggestion-confirmed" data-track-value="${escapeHtml(view.action)}">${escapeHtml(tx.t("muscle.proposalConfirm"))}</button>
+        <button class="btn ghost" type="submit" formaction="${base}/dismiss" data-track="muscle-suggestion-dismissed" data-track-value="${escapeHtml(view.action)}">${escapeHtml(tx.t("muscle.proposalDismiss"))}</button>
+      </form>
+      <a class="chip proposal-adjust" href="/muscle?proposal=${encodeURIComponent(view.proposalId)}#check-in" data-track="muscle-suggestion-adjust" data-track-value="${escapeHtml(view.action)}">${escapeHtml(tx.t("muscle.proposalAdjust"))}</a>
+    </div>
   </li>`;
 }
 
 /**
  * The coach-suggestion card: the model may notice a change in the runner's words, but nothing about the body is
  * written until the runner taps Confirm. The card is server-rendered, so it works without script and survives a
- * refresh; the coach dock renders the same view for the turn that created it.
+ * refresh; the coach dock renders the same view for the turn that created it. It lives inside the status rail so a
+ * pending decision never pushes the figure or the status card below where they already sit.
  */
-function proposalsSection(proposals: readonly MuscleProposal[], tx: Translator = defaultTranslator): string {
-  if (proposals.length === 0) return "";
+function proposalsSection(input: {
+  proposals: readonly MuscleProposal[];
+  statuses: readonly MuscleStatus[];
+  today: string;
+  expired: number;
+  inactive: number;
+  tx?: Translator;
+}): string {
+  const tx = input.tx ?? defaultTranslator;
+  if (input.proposals.length === 0 && input.expired === 0 && input.inactive === 0) return "";
+  const cards = input.proposals
+    .map((proposal) => proposalCardHtml(proposal, input.statuses, input.today, tx))
+    .join("");
+  const notes = [
+    input.expired > 0 ? `<p class="muted small">${escapeHtml(tx.t("muscle.proposalExpiredNote", { count: input.expired }))}</p>` : "",
+    input.inactive > 0 ? `<p class="muted small">${escapeHtml(tx.t("muscle.proposalInactiveNote", { count: input.inactive }))}</p>` : "",
+  ].join("");
+  if (cards.length === 0) {
+    return `<section class="card muscle-proposal-card" id="muscle-suggestions">
+      <div class="splits-head"><h2>${escapeHtml(tx.t("muscle.proposalHeading"))}</h2></div>
+      ${notes}
+    </section>`;
+  }
   return `<section class="card muscle-proposal-card" id="muscle-suggestions">
     <div class="splits-head"><h2>${escapeHtml(tx.t("muscle.proposalHeading"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.proposalIntro"))}</p></div>
-    <ul class="muscle-proposal-list">${proposals.map((proposal) => proposalCardHtml(proposal, tx)).join("")}</ul>
+    <ul class="muscle-proposal-list">${cards}</ul>
+    ${notes}
   </section>`;
 }
 
@@ -529,17 +628,23 @@ function muscleListSection(prefillIds: readonly string[], tx: Translator = defau
 }
 
 function formSection(input: MusclePageInput, tx: Translator = defaultTranslator): string {
+  const prefill = input.prefillProposal;
   const activityOptions = input.activityOptions.map(
     (option) => `<option value="${escapeHtml(option.activityId)}"${option.activityId === input.prefillActivityId ? " selected" : ""}>${escapeHtml(option.label)}</option>`,
   ).join("");
   const anchors = SORENESS_ANCHORS.map((anchor) => `${anchor.value} ${txSorenessLabel(anchor.value, tx)}`).join(" · ");
   const conditionBoxes = MUSCLE_CONDITIONS
-    .map((condition) => `<label class="quick-condition"><input type="checkbox" class="quick-condition-input" name="conditions" value="${condition.key}"> ${tx.t(`muscle.condition.${condition.key}.label` as MessageKey)}</label>`)
+    .map((condition) => `<label class="quick-condition"><input type="checkbox" class="quick-condition-input" name="conditions" value="${condition.key}"${prefill !== null && prefill.conditions.includes(condition.key) ? " checked" : ""}> ${tx.t(`muscle.condition.${condition.key}.label` as MessageKey)}</label>`)
     .join("");
-  const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === 5 ? " selected" : ""}>${value} · ${txSorenessLabel(value, tx)}</option>`).join("");
-  const focusNote = input.focusMuscleId === null
-    ? ""
-    : `<p class="ok" role="status">${tx.t("muscle.focusNote", { name: escapeHtml(txMuscleName(input.focusMuscleId, tx)) })}</p>`;
+  const prefillLevel = prefill === null ? 5 : prefill.soreness ?? 5;
+  const sorenessOptions = Array.from({ length: 11 }, (_, value) => `<option value="${value}"${value === prefillLevel ? " selected" : ""}>${value} · ${txSorenessLabel(value, tx)}</option>`).join("");
+  const prefillSide = prefill === null ? "both" : prefill.side;
+  const prefillWarmUp = prefill === null || prefill.warmUp === null ? "" : prefill.warmUp;
+  const focusNote = prefill !== null
+    ? `<p class="ok" role="status">${tx.t("muscle.proposalAdjustNote", { name: escapeHtml(txMuscleName(prefill.muscleId, tx)) })}</p>`
+    : input.focusMuscleId === null
+      ? ""
+      : `<p class="ok" role="status">${tx.t("muscle.focusNote", { name: escapeHtml(txMuscleName(input.focusMuscleId, tx)) })}</p>`;
   const prefillNote = input.prefillActivityId === null
     ? ""
     : `<p class="ok" role="status">${tx.t("muscle.prefillNote")}</p>`;
@@ -597,16 +702,16 @@ function formSection(input: MusclePageInput, tx: Translator = defaultTranslator)
           <select id="quick-soreness" name="soreness">${sorenessOptions}</select>
           <span class="muscle-quick-conditions">${conditionBoxes}</span>
           <label for="quick-side">${escapeHtml(tx.t("muscle.labelSide"))}</label>
-          <select id="quick-side" name="side"><option value="both" selected>${escapeHtml(tx.t("muscle.sideBoth"))}</option><option value="left">${escapeHtml(tx.t("muscle.sideLeft"))}</option><option value="right">${escapeHtml(tx.t("muscle.sideRight"))}</option></select>
+          <select id="quick-side" name="side"><option value="both"${prefillSide === "both" ? " selected" : ""}>${escapeHtml(tx.t("muscle.sideBoth"))}</option><option value="left"${prefillSide === "left" ? " selected" : ""}>${escapeHtml(tx.t("muscle.sideLeft"))}</option><option value="right"${prefillSide === "right" ? " selected" : ""}>${escapeHtml(tx.t("muscle.sideRight"))}</option></select>
           <label for="quick-warmup">${escapeHtml(tx.t("muscle.labelWarmup"))}</label>
-          <select id="quick-warmup" name="warmUp"><option value="" selected>—</option><option value="eases">${escapeHtml(tx.t("muscle.warmEases"))}</option><option value="same">${escapeHtml(tx.t("muscle.warmSame"))}</option><option value="worse">${escapeHtml(tx.t("muscle.warmWorse"))}</option></select>
+          <select id="quick-warmup" name="warmUp"><option value=""${prefillWarmUp === "" ? " selected" : ""}>—</option><option value="eases"${prefillWarmUp === "eases" ? " selected" : ""}>${escapeHtml(tx.t("muscle.warmEases"))}</option><option value="same"${prefillWarmUp === "same" ? " selected" : ""}>${escapeHtml(tx.t("muscle.warmSame"))}</option><option value="worse"${prefillWarmUp === "worse" ? " selected" : ""}>${escapeHtml(tx.t("muscle.warmWorse"))}</option></select>
           <button type="button" class="btn ghost" id="quick-apply">${escapeHtml(tx.t("muscle.applySelected"))}</button>
         </div>
         <p class="muted small">${escapeHtml(anchors)}</p>
         <label class="quick-hold" for="quick-hold"><input type="checkbox" id="quick-hold" name="hold" value="1"> <strong>${escapeHtml(tx.t("muscle.holdLabel"))}</strong> <span class="muted small">${escapeHtml(tx.t("muscle.holdHint"))}</span></label>
       </fieldset>
       <label for="muscle-note">${escapeHtml(tx.t("muscle.noteLabel"))} <span class="muted small">${escapeHtml(tx.t("muscle.optional"))}</span></label>
-      <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="${tx.t("muscle.notePlaceholder")}">
+      <input id="muscle-note" name="note" maxlength="200" autocomplete="off" placeholder="${tx.t("muscle.notePlaceholder")}"${prefill !== null && prefill.note !== null ? ` value="${escapeHtml(prefill.note)}"` : ""}>
       <input type="hidden" name="musclesJson" id="muscle-json" value="">
       <div class="review-actions"><button class="btn" type="submit" data-track="muscle-checkin" data-track-value="save">${escapeHtml(tx.t("muscle.saveButton"))}</button><button type="button" class="btn ghost" id="muscle-clear">${escapeHtml(tx.t("muscle.clearButton"))}</button></div>
     </form>
@@ -675,6 +780,17 @@ function muscleScript(input: MusclePageInput, tx: Translator = defaultTranslator
     const TRAINING = ${jsonForScript(training)};
     const ALL_ACTIVITIES = ${jsonForScript(allActivities)};
     const SELECTED_FIRST = ${jsonForScript(input.prefillMuscleIds)};
+    const PREFILL_TAG = ${jsonForScript(
+      input.prefillProposal === null
+        ? null
+        : {
+            muscleId: input.prefillProposal.muscleId,
+            soreness: input.prefillProposal.soreness ?? 0,
+            conditions: [...input.prefillProposal.conditions],
+            side: input.prefillProposal.side,
+            warmUp: input.prefillProposal.warmUp,
+          },
+    )};
     const catalog = new Map(MUSCLES.map((muscle) => [muscle.id, muscle]));
     const state = new Map();
     let activeId = null;
@@ -957,6 +1073,17 @@ function muscleScript(input: MusclePageInput, tx: Translator = defaultTranslator
 
     for (const id of SELECTED_FIRST) select(id);
     if (SELECTED_FIRST.length > 0) activeId = SELECTED_FIRST[0];
+    // A ?proposal= Adjust link opens the editor on the coach's reading so the runner corrects it in place
+    // instead of confirming a misparse or re-entering everything after a dismiss.
+    if (PREFILL_TAG !== null && state.has(PREFILL_TAG.muscleId)) {
+      const tag = state.get(PREFILL_TAG.muscleId);
+      tag.soreness = PREFILL_TAG.soreness;
+      tag.conditions = [...PREFILL_TAG.conditions];
+      tag.side = PREFILL_TAG.side;
+      tag.warmUp = PREFILL_TAG.warmUp;
+      activeId = PREFILL_TAG.muscleId;
+      syncRegion(PREFILL_TAG.muscleId);
+    }
     renderEditor();
     renderTray();
     refillActivities();
@@ -980,7 +1107,11 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
     ? `<p class="banner ok" role="status">${tx.t("muscle.proposalSavedBanner")}</p>`
     : "";
   const proposalDismissedBanner = input.proposalDismissed
-    ? `<p class="banner" role="status">${tx.t("muscle.proposalDismissedBanner")}</p>`
+    ? `<p class="banner" role="status">${tx.t("muscle.proposalDismissedBanner")}${
+        input.dismissedProposalId === null
+          ? ""
+          : ` <form method="post" action="/muscle/proposals/${encodeURIComponent(input.dismissedProposalId)}/restore" class="banner-undo"><button class="chip" type="submit">${tx.t("muscle.proposalUndo")}</button></form>`
+      }</p>`
     : "";
   const errorBanner = input.errorCode === null ? "" : `<p class="banner error" role="alert">${escapeHtml(errorTextFor(input.errorCode, tx) ?? tx.t("muscle.errDefault"))}</p>`;
   const count = input.statuses.length;
@@ -1004,6 +1135,14 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
   const readingSections = input.dayCheckIn === null
     ? `<section class="card"><h2>${escapeHtml(tx.t("muscle.latestCheckIn"))}</h2><p class="muted small">${escapeHtml(tx.t("muscle.readingsEmptyProse"))}</p></section>`
     : `${careSection(input.dayCheckIn, tx)}${readingsSection(input.dayCheckIn, tx)}${drillSection(input.dayCheckIn, tx)}`;
+  const proposals = proposalsSection({
+    proposals: input.pendingProposals,
+    statuses: input.statuses,
+    today: input.today,
+    expired: input.pendingExpired,
+    inactive: input.pendingInactive,
+    tx,
+  });
   const body = `<header class="page-head"><p class="eyebrow">${escapeHtml(tx.t("nav.muscles"))}</p>
     <h1>${escapeHtml(tx.t("muscle.pageTitle"))}</h1>
     <p class="muted">${escapeHtml(tx.t("muscle.pageIntro"))}</p>
@@ -1014,9 +1153,8 @@ export function renderMusclePage(input: MusclePageInput, deps: MusclePageDeps, t
     ${proposalSavedBanner}
     ${proposalDismissedBanner}
     ${errorBanner}
-    ${proposalsSection(input.pendingProposals, tx)}
     <div class="muscle-layout">
-      <div class="muscle-status-slot">${statusSection(input.statuses, tx)}</div>
+      <div class="muscle-status-slot">${proposals}${statusSection(input.statuses, tx)}</div>
       <div class="muscle-form-slot">${formSection(input, tx)}</div>
       <div class="muscle-readings-slot">${readingSections}</div>
     </div>

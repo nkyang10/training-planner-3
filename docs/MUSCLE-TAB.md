@@ -30,7 +30,7 @@ The muscle loop closes that gap with the same philosophy as the rest of the app:
 | `/muscle` | The Muscle tab: the reusable **3D muscle plugin** (figure tab + list tab), the live **Muscle status** card with one-tap controls, check-in form, heat, latest diagnosis, drills, coach knowledge, history |
 | `POST /muscle/checkin` | Stores one check-in (validated server-side); the optional **Keep until I change it** box holds the reported levels |
 | `POST /muscle/status` | The one-tap status controls: `hold` / `release` / `resolve` for one muscle, `resolve-all` for everything |
-| `POST /muscle/proposals/<id>/confirm`, `POST /muscle/proposals/<id>/dismiss` | The decision on one coach suggestion. Confirm writes the same check-in or control the runner's own form/one-tap would have written; Dismiss changes nothing. Answers JSON to the coach dock (Accept header) and redirects to `/muscle?saved=proposal` / `?saved=dismissed` for a no-script form |
+| `POST /muscle/proposals/<id>/confirm`, `POST /muscle/proposals/<id>/dismiss`, `POST /muscle/proposals/<id>/restore` | The decisions on one coach suggestion. Confirm writes the same check-in or control the runner's own form/one-tap would have written; Dismiss changes nothing and its banner offers Undo (restore flips a fresh dismissal back to pending); answers JSON to the coach dock (Accept header) and redirects to the Muscle tab for a no-script form. `?proposal=<id>` on the Muscle tab is the Adjust path: the form opens on the coach's reading |
 | `GET /muscle/attention.json` | The badge feed: `{ count, items }` for the app-bar badge script |
 | `/activity/<id>` | A **Muscles worked** card running the same 3D plugin in link mode (primary movers ember, helpers light, click a muscle to report it) with the live status of those muscles, the report already linked to the run, and the "Check in these muscles" deep link that auto-selects the run |
 | Run review card (new run synced / run logged) | A "Log muscle feel · 回報肌肉" link into `/muscle?activity=<id>` |
@@ -264,35 +264,53 @@ The runner talks about their body in the chat; the Muscle tab should not be the 
 coach may therefore *notice* a condition in the runner's words and *suggest* the matching record — but the write stays
 the runner's decision, exactly like a sensitive coaching state.
 
-- **Turn channel.** The turn contract gains `muscleProposals` (at most three, one per muscle): `action` is `report`,
+- **Turn channel.** The turn contract gains `muscleProposals` (at most six, one per muscle): `action` is `report`,
   `hold`, `release` or `resolve`; a report carries the level the runner gave (integer 0-10), condition tags, side, the
-  warm-up answer and an optional note; every suggestion carries 1-3 short quotes of the runner's own words as
-  `evidence` and a confidence of 0.5-1. The tool schema enumerates the 20 muscle ids, the condition keys and the four
-  actions, so a suggestion cannot name a muscle that does not exist.
+  warm-up answer, an optional note and an optional `activityId` (the run the feeling followed); every suggestion
+  carries 1-3 short quotes of the runner's own words as `evidence` and a confidence of 0.5-1. The tool schema
+  enumerates the 20 muscle ids, the condition keys and the four actions, so a suggestion cannot name a muscle that
+  does not exist. When the runner names more sore muscles than the cap, the rules require the reply to say the Muscle
+  tab is the one-tap place for the rest, never a silent truncation.
 - **Nothing is written on the turn.** The gateway stores each suggestion as a pending row and returns it in the turn
   meta. No check-in and no control row is touched; the same is true on a comment-only `review-muscles` turn, where a
-  suggestion is still only a suggestion.
-- **One card, one tap.** The suggestion renders on the Muscle tab (server-rendered, no script) and in the coach dock
-  (a chat card built from the turn meta and from `/chat/history`, so it survives a refresh). It shows the proposed
-  record, the runner's quote and note, with **Confirm** / **Dismiss**. Confirm runs the same write path as the runner's
-  own form: `report` appends the check-in and resets the control to fading, `hold`/`release` flip the hold flag,
-  `resolve` claims the muscle better from today. Dismiss changes nothing. Both decisions are one POST; the dock gets
-  JSON, the no-script form gets a redirect back to the Muscle tab.
-- **Honest failures.** A suggestion older than 7 days is expired; a hold, release or resolve with no active status
-  left fails with `proposal-status`; a foreign or already-decided id is `not-found`/`not-pending`. Nothing is applied
-  partially, and a failed decision leaves the suggestion pending.
-- **The coach knows what is pending.** The newest context snapshot carries the pending list (and the epoch gains a
-  `muscle-suggestion-changed` reason), so the next turn does not repeat a suggestion the runner has not answered and
-  never claims one was saved. The prompt rules say: report only what the runner said, never invent or round a level,
-  never propose a report for a muscle the runner did not mention, and never lower a level or resolve a muscle whose
-  words carry sharp pain, swelling or numbness — that stays the care-first path and the `pain_injury` state.
+  suggestion is still only a suggestion. A newer suggestion for the same muscle supersedes the older pending one
+  (the superseded row is dismissed, not deleted), and a suggestion identical to one still waiting is skipped, so the
+  log never stacks duplicate or contradictory cards.
+- **One card, one tap, in the record's own vocabulary.** The suggestion renders on the Muscle tab (server-rendered,
+  no script, inside the status rail so the figure keeps its place) and in the coach dock (a chat card built from the
+  turn meta and from `/chat/history`, so it survives a refresh). The headline is a noun phrase — "Calves · 6/10 ·
+  Tight / stiff · Right" — with the deterministic reading as a chip, the meta line says when it was suggested and
+  which day it is about, a live status shows as "Now: 6/10 · fading since …", and a validated run shows as a link.
+  **Confirm** runs the same write path as the runner's own form; **Dismiss** changes nothing and offers **Undo**
+  (`POST …/restore` flips a fresh dismissal back to pending); **Adjust** opens the check-in form prefilled with the
+  coach's reading — level, tags, side, warm-up, note and run — so a misparse is one edit, not a re-entry. On the
+  Muscle tab the dock defers to the page card, so one record never has two live Confirms; the launcher badge and the
+  Chat tab count pending decisions; after a confirm the dock links to the Muscle tab and refreshes the app-bar
+  attention badge, and the first Confirm receives keyboard focus.
+- **Honest failures, filtered before the tap.** A hold, release or resolve with no active status left, and any
+  suggestion older than 7 days, are never offered as cards — the page names them instead ("One coach suggestion
+  expired — check in again if it still applies", "One coach suggestion no longer applies — that soreness has
+  faded"), so nothing silently vanishes and nothing can fail on tap. A direct POST still answers honestly: expired,
+  `proposal-status` ("That soreness has already faded"), `not-found`/`not-pending`. Nothing is applied partially,
+  and a failed decision leaves the suggestion pending.
+- **The coach knows what is pending.** The newest context snapshot carries the offerable pending list (and the epoch
+  gains a `muscle-suggestion-changed` reason), so the next turn does not repeat a suggestion the runner has not
+  answered and never claims one was saved. The prompt rules say: report only what the runner said, never invent or
+  round a level, never propose a report for a muscle the runner did not mention, tie the day to the local today
+  unless the runner names another, name a run only when the facts point to exactly one, and never lower a level or
+  resolve a muscle whose words carry sharp pain, swelling or numbness — that stays the care-first path and the
+  `pain_injury` state.
 - **Safety line.** A suggestion is not a diagnosis, and a confirmed report is still the runner's report. The app never
   suggests a lower level, a resolve or a "nothing wrong" reading to explain a symptom away.
-- **Code.** `src/muscle-proposals.ts` (types, draft validation, confirm/dismiss, prompt rendering), the
-  `muscle_proposals` table in `src/store.ts`, the `muscleProposals` channel in `src/coach.ts` and `src/gateway.ts`, the
-  decision endpoint and dock card in `src/web.ts`, and the card plus localized line in `src/web-muscle.ts`. Tests:
-  `test/muscle-proposals.test.ts` plus the coach, gateway, store, muscle-web, web and export suites; the full gate is
-  green.
+- **Measured, not guessed.** The privacy-safe `milebook:track` hook carries `muscle-suggestion-shown` /
+  `-confirmed` / `-dismissed` / `-adjust` / `-failed` with enum-only values (surface, action, reason); the evidence
+  basis and hypotheses are in [the UX review](analysis/19-muscle-suggestion-ux-review.md) and the decisions and
+  workstreams in [its plan and record](analysis/20-muscle-suggestion-ux-plan.md).
+- **Code.** `src/muscle-proposals.ts` (types, draft validation, partition, confirm/dismiss/restore, prompt
+  rendering), the `muscle_proposals` table in `src/store.ts`, the `muscleProposals` channel in `src/coach.ts` and
+  `src/gateway.ts` (supersede, run validation), the decision endpoints, badges and dock card in `src/web.ts`, and
+  the card plus localized view in `src/web-muscle.ts`. Tests: `test/muscle-proposals.test.ts` plus the coach,
+  gateway, store, muscle-web, web and export suites; the full gate is green (618/618).
 
 ## 9. Research basis
 
@@ -355,9 +373,10 @@ the runner's decision, exactly like a sensitive coaching state.
   inside the figure's bounds, uses only the shape kinds the viewer builds, and the trunk lathe closes upward.
 - `test/store.test.ts`: append/list/get scoping by user; status controls upsert/replace, scoping and persistence;
   the proposal journal's status filter, owner scoping, decision update, persistence and row cap.
-- `test/muscle-proposals.test.ts`: draft validation (report fields, level bounds, evidence, confidence, normalized
-  status actions), the pending window, confirm for report/hold/release/resolve (including no-active-status and
-  expired), dismiss, and the prompt block with its tail summary.
+- `test/muscle-proposals.test.ts`: draft validation (report fields, level bounds, evidence, confidence, the optional
+  run link, normalized status actions), the honest partition (offerable / expired / inactive), confirm for
+  report/hold/release/resolve (including no-active-status, expired and the run-link downgrade), dismiss, restore
+  (fresh only), and the prompt block with its tail summary.
 - `test/web-muscle.test.ts`: `/muscle` renders the tabbed plugin (tab strip, viewer container, import map,
   controls, the checkbox list tab, the no-script hint, empty and seeded states), the vendored three.js builds
   serve with the right type, `POST /muscle/checkin` accept/reject paths, `?activity=` prefill with the run
@@ -365,14 +384,19 @@ the runner's decision, exactly like a sensitive coaching state.
   the status card with its one-tap forms, `POST /muscle/status` (hold, release, resolve, resolve-all, rejects),
   `/muscle/attention.json`, the badge script, the calendar chip (sore count and care labels, dropped when
   perfect), the activity detail's worked plugin in link mode (worked tints, deep-link base, list tab, status
-  chips, linked report), per-runner privacy, export bundle inclusion.
+  chips, linked report), per-runner privacy, export bundle inclusion, and the suggestion surfaces: the record's own
+  card vocabulary and reading chip en/zh, the age and day meta line, the status-rail placement, the Adjust prefill
+  (quick set + script seed), the dismiss banner with Undo, the restore endpoint (fresh, stale, foreign), the expired
+  and inactive notes instead of dead-end cards, the dock deferral and badges, and the track attributes.
 - `test/directives.test.ts`: `review-muscles` parsing and directive build (comment-only, source, muscleId
   reference).
-- `test/coach.test.ts`: prompt facts block and referenced-muscle context; the `muscleProposals` schema, parsing
-  and validation, the confirm-first prompt rules, the pending block in the snapshot and the epoch reason.
+- `test/coach.test.ts`: prompt facts block and referenced-muscle context; the `muscleProposals` schema (six cap,
+  run link), parsing and validation, the confirm-first prompt rules, the pending block in the snapshot and the epoch
+  reason.
 - `test/gateway.test.ts`: the gateway renders today's computed status into every prompt, omits the block while every
   muscle is perfect, records suggestions as pending rows without writing a check-in, dedupes an identical waiting
-  suggestion, and puts the pending list in the next snapshot.
+  suggestion, supersedes an older pending card for the same muscle, validates or strips the run link, and puts the
+  pending list in the next snapshot.
 - Headless Chrome (fixture pipeline, not part of the suite): loads the served page and reports from inside it
   that the import map resolved, the modules loaded, the viewer reached `viewerReady=1` with a live canvas and
   WebGL context, then captures the demo screenshot.

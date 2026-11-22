@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="#status"><img alt="Tests: 604 passing" src="https://img.shields.io/badge/tests-604%20passing-1f7a4d"></a>
+  <a href="#status"><img alt="Tests: 618 passing" src="https://img.shields.io/badge/tests-618%20passing-1f7a4d"></a>
   <a href="#status"><img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d"></a>
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
   <img alt="TypeScript 5.x" src="https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&amp;logoColor=white">
@@ -62,7 +62,7 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Start the calendar web process and the coach gateway. |
-| `pnpm test` | Run the Vitest suite (604 tests in 22 files). |
+| `pnpm test` | Run the Vitest suite (618 tests in 22 files). |
 | `pnpm typecheck` | Type-check `src`, `test` and `tools` with `tsc --noEmit`. |
 | `pnpm lint` | Dependency-free gate: no console output outside `src/index.ts`, no TODO/FIXME, no `any` or secrets in `src`/`test`. |
 | `pnpm check` | Run lint, typecheck and the full suite in one gate (also used by CI). |
@@ -152,11 +152,15 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
   calf is 6/10 and tight after today's run", "the hamstring is fine now", "keep that on the list until I say
   otherwise" — but it never writes the body's record itself. It emits a typed `muscleProposals` suggestion (report,
   hold, release or resolve) with the runner's own quotes as evidence; one **Confirm** writes exactly what the
-  runner's own check-in or one-tap control would have written, and **Dismiss** leaves the record untouched. Pending
-  cards are durable rows: they render on the Muscle tab without script and in the coach dock's chat, survive a
-  refresh, expire after 7 days, and ride into the next prompt so the coach never repeats one or claims it was saved.
-  A report is still the runner's report, never a diagnosis; sharp pain, swelling or numbness still route to the
-  pain/injury state and a clinician instead of a suggestion.
+  runner's own check-in or one-tap control would have written, **Dismiss** leaves the record untouched (with an
+  **Undo**), and **Adjust** opens the check-in form prefilled with the coach's reading for a one-edit correction.
+  The card speaks the record's own vocabulary — the name, the level, the tags, the deterministic reading — and says
+  when it was suggested and which day it is about. Pending cards are durable rows: they render on the Muscle tab
+  without script (inside the status rail) and in the coach dock's chat, survive a refresh, expire after 7 days, and
+  ride into the next prompt so the coach never repeats one or claims it was saved; expired or no-longer-actionable
+  rows are counted on the page instead of silently vanishing. A newer suggestion for the same muscle supersedes the
+  older pending one. A report is still the runner's report, never a diagnosis; sharp pain, swelling or numbness still
+  route to the pain/injury state and a clinician instead of a suggestion.
 
 ### ?? Activity detail
 
@@ -171,7 +175,7 @@ See the [environment reference](docs/MILEBOOK-CALENDAR.md#environment-reference)
 
 - Self-implemented same-origin bubble; restores the recent conversation after refresh.
 - **Coach dock (2026-11-20):** on wide screens the coach is a **docked column beside the page** (the content reflows, nothing is covered); below 1200 px it is a drawer or a phone sheet with a visible close. The panel is grouped into **Chat / States / Changes** — the conversation and composer, every active/proposed coaching state with Confirm / Discuss / Resolve, and the five latest change sets with **Undo in place**. States badges count proposals; Changes badges count unseen batches. Measurements and the page-by-page review are in [the layout review](docs/analysis/13-layout-review.md).
-- **Muscle suggestions, confirmed (2026-11-22):** the turn contract gains a `muscleProposals` channel (at most three, one per muscle) beside `stateProposals`; the gateway stores each as a pending row and returns it in the turn meta, so the dock renders a **Muscle suggestion** card with the runner's quote, the proposed level and Confirm / Dismiss. The decision endpoint (`POST /muscle/proposals/<id>/confirm|dismiss`) is the only path from a suggestion to a check-in or a hold/release/resolve; it answers JSON to the dock and redirects to the Muscle tab for a no-script form. The newest context block carries the pending list (a `muscle-suggestion-changed` epoch reason), so the coach knows what is waiting on the runner.
+- **Muscle suggestions, confirmed (2026-11-22, UX pass the same day):** the turn contract gains a `muscleProposals` channel (at most six, one per muscle) beside `stateProposals`; the gateway stores each as a pending row and returns it in the turn meta, so the dock renders a **Muscle suggestion** card in the record's own vocabulary — "Calves · 6/10 · Tight / stiff · Right" with the deterministic reading chip, the age, the runner's quote and Confirm / Dismiss / **Adjust**. The decision endpoint (`POST /muscle/proposals/<id>/confirm|dismiss|restore`) is the only path from a suggestion to a check-in or a hold/release/resolve; it answers JSON to the dock and redirects to the Muscle tab for a no-script form. Dismiss has **Undo**; Adjust opens the check-in form prefilled with the coach's reading; the launcher badge and the Chat tab count pending decisions; on the Muscle tab the dock defers to the page card, so one record never has two live Confirms; a validated same-day run can ride with a report; expired and dead-end rows are counted on the page instead of silently vanishing. The newest context block carries the pending list (a `muscle-suggestion-changed` epoch reason), so the coach knows what is waiting on the runner. The review behind this pass and what shipped from it: [the UX review](docs/analysis/19-muscle-suggestion-ux-review.md) and [the plan and record](docs/analysis/20-muscle-suggestion-ux-plan.md).
 - **Same grammar on four pages (2026-11-20):** the training log is **Days / Review** tabs with the week first (2,198 → 1,547 px); coaching states are **Current / Set a state / History** tabs (1,722 → 1,231 px); the activity detail pairs program/metrics/splits beside muscles/zones/laps and puts **Ask coach in the head** (2,233 → 1,647 px); the muscle page sets a **status/readings rail beside the 3D check-in figure** from 1024 px. The shared `.seg-tabs` control is radio inputs + sibling CSS, so it works without JavaScript; arrow keys move the group natively.
 - **Layout research (2026-11-20):** the evidence behind tabs vs side-by-side vs overlays — WCAG 2.2/APG semantics, Material/Apple/Fluent/Carbon/GOV.UK guidance, NN/g and human-AI research — plus a heuristic audit and an evaluation plan, is in [the UI/UX layout research](docs/analysis/14-uiux-layout-research.md).
 - **P0 accessibility pass (2026-11-20):** the coach launcher now exposes `aria-expanded`/`aria-controls` and the panel is a named region. Below 1200 px the open panel sets `inert` on the page main and footer; at ≤720 px it also inerts the app bar (the sheet covers it), with resize sync and Escape/close returning focus to the launcher. A 320 px capture shows **0 horizontal overflow**. The dock at ≥1200 px leaves the page focusable.
@@ -286,7 +290,7 @@ One SQLite file, two processes:
 | Path | What lives there |
 |---|---|
 | `src/` | Web server, gateway, coach contract, store, Garmin sync, training-log math. |
-| `test/` | 604 Vitest tests across 22 files. |
+| `test/` | 618 Vitest tests across 22 files. |
 | `docs/` | Solution doc, training-log plan, feature backlog, ADRs and design screenshots. |
 | `tools/` | Dependency-free lint gate and the live deploy script. |
 
@@ -328,16 +332,22 @@ restart cannot silently drop the coach's model credentials. Logs are `data/mileb
 
 | Gate | State |
 |---|---|
-| Tests | **604 / 604** in 22 files |
+| Tests | **618 / 618** in 22 files |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Node 24 |
 | Live deployment | calendar **:8093**, gateway **:8092** (redeployed 2026-11-20 with the daily-pages slice — the training log's one period summary line and the day page's native log disclosure — via the `\Milebook-Live-Deploy` scheduled task: gateway health 200, `/login` serves `app.css?v=30`, 560/560 green. **Live-verified 20/20:** the day disclosure, the removed subline, the period summary, and a real manual-run POST (5 km / 30 min) that appeared on the day and in the history line; the temporary account was removed. Earlier the same day: the entry slice (today-first hero, one primary action, row key), the coach-interaction slice (peer voice, epoch-gated cached prefill, silent preference profile), the en/zh-HK localization, the coach dock, the four-page regroup and the P0/P1/P2 layout passes; earlier the same week: the real BodyParts3D muscle figure on the Muscles tab, with hover/click/orbit/pause on the real meshes and the procedural sculpt as fallback) |
 
 **Latest slice (2026-11-22, branch `dsh-coach-ability-muscle`):** coach-managed muscle condition — the
-`muscleProposals` turn channel, the `muscle_proposals` journal, the confirm/dismiss endpoint and the pending cards on
-the Muscle tab and in the dock; `pnpm check` **604/604**, stylesheet **v31**. Not deployed to the live :8093 process,
-which still serves the 2026-11-20 build (`app.css?v=30`).
+`muscleProposals` turn channel, the `muscle_proposals` journal, the confirm/dismiss/restore endpoints and the pending
+cards on the Muscle tab and in the dock — followed the same day by the UX pass from
+[the review](docs/analysis/19-muscle-suggestion-ux-review.md) and
+[its plan](docs/analysis/20-muscle-suggestion-ux-plan.md): the record's own card vocabulary with the deterministic
+reading, the age and the day, the Adjust prefill, Dismiss Undo, the launcher/Chat pending badges, one owner per
+record (the dock defers on the Muscle tab), dead-end and expired rows filtered and counted, a validated same-day run
+link, the cap raised to six with honest remainder copy, per-muscle superseding, keyboard focus on the decision, and
+`muscle-suggestion-*` events on the privacy-safe track hook. `pnpm check` **618/618**, stylesheet **v32**. Not
+deployed to the live :8093 process, which still serves the 2026-11-20 build (`app.css?v=30`).
 
 **Live-verified calendar rows (2026-11-18):** the live :8093 process serves `app.css?v=17` with `.cal-items`, `.cal-meta`,
 `.cal-pair-run`, `.peek-program` and `.peek-step-head`; a real busy day with three same-titled runs and one paired workout

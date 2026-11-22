@@ -394,7 +394,8 @@ describe("authentication pages", () => {
     expect(html).toContain(`value="${DISPLAY_NAME}"`);
     expect(html).toContain('action="/profile"');
     expect(html).not.toContain("view-switch");
-    expect(html).not.toContain("view-tab");
+    // No app-bar tab strip here, but the dock's attention refresh still names the Muscles tab it looks for.
+    expect(html).not.toContain('class="view-tab"');
     expect(html).toContain('href="/coach-states"');
     expect(html).not.toContain('href="/coach-audit"');
     expect(html).not.toContain("hidden directives");
@@ -2889,7 +2890,7 @@ describe("in-calendar coach bubble", () => {
   it("localizes the dock tabs, footers and close control in Chinese", async () => {
     const { base, cookie } = await start();
     const html = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: `${cookie}; milebook_lang=zh-HK` } })).text();
-    expect(html).toContain(">對話</button>");
+    expect(html).toContain('>對話<span class="coach-tab-count" data-coach-count="chat" hidden></span></button>');
     expect(html).toContain(">狀態<");
     expect(html).toContain(">變更<");
     expect(html).toContain('aria-label="關閉教練面板"');
@@ -3933,7 +3934,7 @@ describe("page titles", () => {
     for (const path of ["/profile", "/coach-states", "/coach-audit", "/missing-page"]) {
       const html = await (await fetch(`${base}${path}`, { headers: { cookie } })).text();
       expect(html).not.toContain("view-switch");
-      expect(html).not.toContain("view-tab");
+      expect(html).not.toContain('class="view-tab"');
     }
 
     const login = await (await fetch(`${base}/login`)).text();
@@ -4215,6 +4216,7 @@ describe("honest demo slice", () => {
       side: "both",
       warmUp: null,
       note: null,
+      activityId: null,
       evidence: ["calves are 5/10"],
       confidence: 0.7,
       day: TODAY,
