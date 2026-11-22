@@ -1,6 +1,6 @@
 # Muscle-suggestion UX: deeper plan and implementation record
 
-**Status:** the deeper plan drawn from [19-muscle-suggestion-ux-review.md](19-muscle-suggestion-ux-review.md), then
+**Status:** the deeper plan drawn from [24-muscle-suggestion-ux-review.md](24-muscle-suggestion-ux-review.md), then
 implemented in this slice. **Date:** 2026-11-22. **Scope:** every finding F1-F16, the copy audit, the measurement
 plan, and a decision on each of the six open product questions. **Gate:** `pnpm check` green after the slice; the exact
 count is in section 5.

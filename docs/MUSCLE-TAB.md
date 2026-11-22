@@ -310,8 +310,8 @@ the runner's decision, exactly like a sensitive coaching state.
   the preview of the record the runner confirms, the same way the calendar pill shows data.
 - **Measured, not guessed.** The privacy-safe `milebook:track` hook carries `muscle-suggestion-shown` /
   `-confirmed` / `-dismissed` / `-adjust` / `-failed` with enum-only values (surface, action, reason); the evidence
-  basis and hypotheses are in [the UX review](analysis/19-muscle-suggestion-ux-review.md) and the decisions and
-  workstreams in [its plan and record](analysis/20-muscle-suggestion-ux-plan.md).
+  basis and hypotheses are in [the UX review](analysis/24-muscle-suggestion-ux-review.md) and the decisions and
+  workstreams in [its plan and record](analysis/25-muscle-suggestion-ux-plan.md).
 - **Code.** `src/muscle-proposals.ts` (types, draft validation, partition, confirm/dismiss/restore, prompt
   rendering), the `muscle_proposals` table in `src/store.ts`, the `muscleProposals` channel in `src/coach.ts` and
   `src/gateway.ts` (supersede, run validation), the decision endpoints, badges and dock card in `src/web.ts`, and

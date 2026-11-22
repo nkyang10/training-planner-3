@@ -15,7 +15,7 @@ Read `00-EXECUTIVE-SUMMARY.md` first. It is the one-page decision document: what
 structural gaps, the top ten improvements and the three slices. `07-implementation-plan.md` records which slice-1 items
 were actually built and verified, and `10-implementation-record.md` is the coach-relationship-slice record: what was
 actually built for the consultant-friend coach and the honest load signal, with what verification. The other documents
-are the evidence behind them. `19-muscle-suggestion-ux-review.md` is a later, self-contained UX review of the
+are the evidence behind them. `24-muscle-suggestion-ux-review.md` is a later, self-contained UX review of the
 coach-managed muscle-condition slice (2026-11-22); it is not part of the 00-06 package.
 
 | Document | Question it answers | Evidence base | Lines |
@@ -41,8 +41,8 @@ coach-managed muscle-condition slice (2026-11-22); it is not part of the 00-06 p
 | [16-coach-interaction-implementation-record.md](16-coach-interaction-implementation-record.md) | What actually shipped from the coach-interaction plan - the peer voice, the epoch-gated cached prefill, the explained re-prefill, the silent preference profile - with which D19-D22 decisions, in which files, and with what verification? | the implementation slice's workstream + `pnpm check` 556/556 + the upgraded byte-stability probe (full prefix reused byte-identically on no-change turns) + the live deploy and two real Chinese model turns (99/68-char replies, prefill reasons end to end, learned zh-Hant on the audit page, temp account removed) | 126 |
 | [17-entry-review.md](17-entry-review.md) | Why does the post-login calendar feel like a control panel, what is actually needed on the first screen, and what shipped? | seeded headless-Chrome captures at 1164/390 (zh-HK) + DOM geometry probes before/after + the 560/560 gate + a 19-check live probe with one real plan turn (111-char reply, 6 sessions booked, temp account removed) | 109 |
 | [18-daily-pages-review.md](18-daily-pages-review.md) | What do the training log and the day page ask of a runner, and what shipped from applying the entry method to them? | seeded headless-Chrome captures at 1164/390 (Asia/Taipei, Nov 2026) + DOM probes (head, summary, disclosure, block positions, doc height) + the 560/560 gate + a 20-check live probe with a real manual-run POST (5 km / 30 min) | 113 |
-| [19-muscle-suggestion-ux-review.md](19-muscle-suggestion-ux-review.md) | How does the coach-managed muscle-condition flow feel end to end - what does the runner see from "my calf is 6/10" to the confirmed record, where does it confuse, and what should be fixed before exposure? | a scripted-model simulation through the real web shell, gateway, store and decision endpoint (10 sessions: report, follow-up, all-better, hold, dismiss/recover, red flag, zh-HK, duplicate surfaces, expiry, dead end) with exact captured copy + code-level a11y/mobile checks (F1-F16, copy audit, measurement plan) | 347 |
-| [20-muscle-suggestion-ux-plan.md](20-muscle-suggestion-ux-plan.md) | What was decided about the six open product questions, which workstreams close F1-F16, and what actually shipped from the plan - with which acceptance evidence? | the decisions and workstreams of sections 1-2 + `pnpm check` 618/618 + the re-run simulated conversation (new card vocabulary, hold level, Now-context, zh copy, dead-ends filtered, undo path) | 73 |
+| [24-muscle-suggestion-ux-review.md](24-muscle-suggestion-ux-review.md) | How does the coach-managed muscle-condition flow feel end to end - what does the runner see from "my calf is 6/10" to the confirmed record, where does it confuse, and what should be fixed before exposure? | a scripted-model simulation through the real web shell, gateway, store and decision endpoint (10 sessions: report, follow-up, all-better, hold, dismiss/recover, red flag, zh-HK, duplicate surfaces, expiry, dead end) with exact captured copy + code-level a11y/mobile checks (F1-F16, copy audit, measurement plan) | 347 |
+| [25-muscle-suggestion-ux-plan.md](25-muscle-suggestion-ux-plan.md) | What was decided about the six open product questions, which workstreams close F1-F16, and what actually shipped from the plan - with which acceptance evidence? | the decisions and workstreams of sections 1-2 + `pnpm check` 618/618 + the re-run simulated conversation (new card vocabulary, hold level, Now-context, zh copy, dead-ends filtered, undo path) | 73 |
 
 **Review status.** The adversarial reviewer (06) opened 33 code anchors (29 confirmed, 3 wrong or overstated, 1
 misleading range), 10 cited URLs (8 substantive, 2 JS shells) and recomputed id traceability. It applied 8 surgical
@@ -92,8 +92,8 @@ loading-line copy in section 4.6. No document contains mojibake or replacement c
 | `F-01..F-22` | Reviewer findings | 06 |
 | `CI-01..CI-09` | Coach-interaction findings from the LLM-architect review (prompt rebuild, cache busts, reply voice, loading line, language heuristic, silent profile, what already works, snapshot freshness) | 15 |
 | `LL-1..LL-6` | Coach-interaction implementation slices (style contract, prompt restructure, epochs/snapshots, loading line, silent preferences, memory hygiene) | 15 |
-| `F1-F16` | Muscle-suggestion UX findings (headline copy, adjust path, duplicate surfaces, pending age, dead ends, next steps, a11y, layout, copy) | 19 |
-| `SIM-1..SIM-10` | Simulated muscle-suggestion conversation sessions (separate from 01's journey stages) | 19 |
+| `F1-F16` | Muscle-suggestion UX findings (headline copy, adjust path, duplicate surfaces, pending age, dead ends, next steps, a11y, layout, copy) | 24 |
+| `SIM-1..SIM-10` | Simulated muscle-suggestion conversation sessions (separate from 01's journey stages) | 24 |
 
 Note: 02 and 03 each use an `S` prefix for their own source ledgers. The numbering is independent. Cite them as
 "02 S17" and "03 S17" to avoid ambiguity.
