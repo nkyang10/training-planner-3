@@ -7,7 +7,8 @@
 #   4. Start the app from the current checkout and record the commit, the pid and the stylesheet version.
 #   5. Verify /health, /login and the stylesheet against the version the source actually declares.
 #
-# Secrets are read from data/milebook-auth.secret and MILEBOOK_MODEL_API_KEY (or data/milebook-model.secret).
+# Secrets are read from data/milebook-auth.secret, MILEBOOK_MODEL_API_KEY (or data/milebook-model.secret) and
+# MILEBOOK_GARMIN_KEY (or data/milebook-garmin.secret, the optional at-rest key for Garmin credentials).
 # Every MILEBOOK_* setting may also come from the environment; the parameters below only override it.
 param(
     [int]$WebPort = 0,
@@ -15,6 +16,7 @@ param(
     [string]$Database = '',
     [string]$SecretFile = 'data/milebook-auth.secret',
     [string]$ModelKeyFile = 'data/milebook-model.secret',
+    [string]$GarminKeyFile = 'data/milebook-garmin.secret',
     [string]$ModelBaseUrl = '',
     [string]$ModelName = '',
     [int]$MaxAttempts = 2,
@@ -61,6 +63,25 @@ $modelNameValue = if ($ModelName) { $ModelName } elseif ($env:MILEBOOK_MODEL_NAM
 if (-not $modelNameValue) { throw 'Model name missing: set MILEBOOK_MODEL_NAME.' }
 
 $cookieSecureValue = if ($CookieSecure -or $env:MILEBOOK_COOKIE_SECURE -eq 'true') { 'true' } else { 'false' }
+
+# At-rest key for Garmin credentials. Optional: without it the app keeps keys plaintext and says so at boot.
+$garminKeyValue = if ($env:MILEBOOK_GARMIN_KEY) {
+    $env:MILEBOOK_GARMIN_KEY.Trim()
+} elseif (Test-Path (Join-Path $root $GarminKeyFile)) {
+    Read-Secret (Join-Path $root $GarminKeyFile) 'Garmin at-rest key'
+} else {
+    ''
+}
+if ($garminKeyValue) {
+    try {
+        $garminKeyBytes = [Convert]::FromBase64String($garminKeyValue)
+    } catch {
+        throw 'MILEBOOK_GARMIN_KEY is not valid base64; generate one with: node -e "console.log(require(''node:crypto'').randomBytes(32).toString(''base64''))"'
+    }
+    if ($garminKeyBytes.Length -ne 32) { throw "MILEBOOK_GARMIN_KEY must decode to 32 bytes (got $($garminKeyBytes.Length))" }
+} else {
+    Write-Host 'WARNING: no Garmin at-rest key; Garmin API keys will be stored as plaintext. Set MILEBOOK_GARMIN_KEY or data/milebook-garmin.secret.' -ForegroundColor Yellow
+}
 
 # The stylesheet version is read from the source, never duplicated here: a deploy gate that hardcodes it fails the
 # moment the app bumps the constant (that bug shipped once already).
@@ -145,6 +166,11 @@ $env:MILEBOOK_MODEL_API_KEY = $modelKey
 $env:MILEBOOK_MODEL_NAME = $modelNameValue
 $env:MILEBOOK_MAX_ATTEMPTS = [string]$maxAttemptsValue
 $env:MILEBOOK_COOKIE_SECURE = $cookieSecureValue
+if ($garminKeyValue) {
+    $env:MILEBOOK_GARMIN_KEY = $garminKeyValue
+} else {
+    Remove-Item Env:MILEBOOK_GARMIN_KEY -ErrorAction SilentlyContinue
+}
 
 $startedAt = Get-Date
 $process = Start-Process -FilePath 'node.exe' `

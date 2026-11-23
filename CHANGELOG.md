@@ -12,9 +12,34 @@ it described a product that no longer exists in this shape. This changelog start
 
 - TLS termination, cookie `Secure` and HSTS verified on the live host.
 - Content-Security-Policy after extracting the inline client scripts.
-- Schema migrations with `PRAGMA user_version`.
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
+
+## [1.3.0] — 2026-11-23
+
+Data-layer hardening: versioned migrations and Garmin keys sealed at rest.
+
+### Added
+
+- **Versioned schema migrations.** `src/migrations.ts` holds ordered steps, each applied in its own `BEGIN IMMEDIATE`
+  and recorded in `PRAGMA user_version`. A database created before versioning reports 0 and runs the two idempotent
+  steps once on first boot; a failing step rolls back and leaves the previous version, with a message naming the step.
+  The boot log prints `schema N -> M (step; step)` only when something ran.
+- **Garmin keys sealed at rest.** With `MILEBOOK_GARMIN_KEY` (32 bytes base64) the key is stored as an authenticated
+  AES-256-GCM envelope (`enc:v1:<iv>:<tag>:<data>`), legacy plaintext rows are sealed on the first boot, and a value
+  the current key cannot open reads as "no key" so the runner re-enters it instead of every page failing. The deploy
+  validates the key before starting and warns when it is absent.
+
+### Changed
+
+- The deploy accepts `-GarminKeyFile` (default `data/milebook-garmin.secret`) and refuses a key that is not 32 bytes.
+- `createStore` takes optional `StoreOptions`; `StoreHandle` reports what the migration runner applied.
+
+### Notes
+
+- Without `MILEBOOK_GARMIN_KEY` the store behaves exactly as before and the boot log warns; the database file and its
+  backups stay readable, which is the accepted single-tenant risk.
+
 
 ## [1.2.0] — 2026-11-23
 

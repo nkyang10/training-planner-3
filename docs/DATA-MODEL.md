@@ -210,16 +210,30 @@ Check-in uniqueness, stated honestly: there is **no** unique key on `(user_id, d
 
 ## 6. Migrations
 
-Evolution is ad hoc and hand-written. Boot order: open the file, set the three pragmas, run `SCHEMA`, run both migrations, start listening `(src/store.ts · SqliteStore.constructor)`. Because `SCHEMA` only uses `CREATE TABLE IF NOT EXISTS`, an existing table keeps its old column set — every column added after a database exists needs its own function.
+Evolution is ordered and versioned. Boot order: open the file, set the three pragmas, run `SCHEMA`, run the migration
+list, seal any legacy plaintext Garmin key, then start listening `(src/store.ts · SqliteStore.constructor)`.
 
-| Migration | What it does | Guard | Anchor |
-|---|---|---|---|
-| `migrateActivitiesTable` | rebuilds `activities` with `PRIMARY KEY (user_id, activity_id)`: create `activities_new`, `INSERT OR IGNORE … SELECT`, drop, rename, recreate the index, inside `BEGIN`/`COMMIT` | returns early unless `sqlite_master.sql` lacks the composite key | `(src/store.ts · migrateActivitiesTable)` |
-| `migrateCoachTurnsDirectiveHash` | `ALTER TABLE coach_turns ADD COLUMN directive_hash TEXT` | returns early when `PRAGMA table_info(coach_turns)` already lists it | `(src/store.ts · migrateCoachTurnsDirectiveHash)` |
+| Step | Version | What it does | Idempotent because | Anchor |
+|---|---|---|---|---|
+| activities composite key | 1 | rebuilds `activities` with `PRIMARY KEY (user_id, activity_id)`: create `activities_new`, `INSERT OR IGNORE … SELECT`, drop, rename, recreate the index | returns early when the table's SQL already carries the composite key | `(src/migrations.ts · activitiesCompositeKey)` |
+| coach_turns directive hash | 2 | `ALTER TABLE coach_turns ADD COLUMN directive_hash TEXT` | returns early when `PRAGMA table_info` already lists it | `(src/migrations.ts · coachTurnsDirectiveHash)` |
 
-On an existing production database the DDL pass is a no-op, the activities rebuild is either skipped or runs as one transaction that preserves every row (`INSERT OR IGNORE` drops only ids that would collide under the new key), and the coach-turn column is added in place. A failed rebuild rolls back and rethrows, so the process exits before it listens — a broken migration cannot serve traffic `(src/index.ts · handle)`. The rebuild is covered by a test that opens a legacy file and reads both runners back `(test/store.test.ts · migrates an old activity_id primary key to per-user ids)`.
+`PRAGMA user_version` records the last applied version `(src/migrations.ts · schemaVersion)`. A database created before
+versioning reports 0 and therefore runs both steps once, which is safe because each step is idempotent. The runner owns
+one `BEGIN IMMEDIATE` per step, so a failing step rolls back and leaves the file at the previous version, with a message
+that names the step `(src/migrations.ts · runMigrations)`.
 
-**Top data-layer gap:** no `PRAGMA user_version`, no ordered migration list, no record of which migration ran when, and no backup taken before one. The file cannot say which schema generation it is, so a downgrade or a half-applied hand-edit looks exactly like a clean database. Every future column repeats the pattern: add it to `SCHEMA`, write another `table_info`-guarded function, call it from the constructor, add a test. Track with [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) and [OPERATIONS.md](OPERATIONS.md).
+Rules for the next step: never edit or renumber a shipped one; append the next version; keep it synchronous and local;
+and add a test that opens a legacy file and asserts both the new shape and the preserved rows
+`(test/migrations.test.ts)`.
+
+**Secrets at rest.** Password hashes are scrypt strings. The Garmin API key is sealed with AES-256-GCM (fresh 96-bit
+nonce per value, self-describing `enc:v1:` envelope) when the deployment sets `MILEBOOK_GARMIN_KEY`, and legacy plaintext
+rows are sealed during the first boot after the key appears `(src/secrets.ts · createSecretBox)`,
+`(src/store.ts · sealStoredGarminKeys)`. Without the variable the key stays plaintext and the boot log says so.
+
+**The file states its own generation.** A boot with pending steps logs `schema N -> M (step; step)`; a boot with none
+logs nothing, which is the normal case.
 
 ## 7. Export and erasure
 

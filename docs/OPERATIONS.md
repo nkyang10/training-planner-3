@@ -28,7 +28,7 @@ One `node` process (`src/index.ts`) starts two `http` servers over one SQLite fi
 
 ## 2. Configuration reference
 
-Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Fourteen variables, all `MILEBOOK_*`.
+Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Fifteen variables, all `MILEBOOK_*`.
 
 | Variable | Required | Default | Effect | Failure mode |
 |---|---|---|---|---|
@@ -42,6 +42,7 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Four
 | `MILEBOOK_MODEL_NAME` | **yes** | — | `model` field of every model call | process exits |
 | `MILEBOOK_MODEL_ID` | no | `milebook-coach` | id advertised on `/v1/models` and in payloads | cosmetic only |
 | `MILEBOOK_MAX_ATTEMPTS` | no | `2` | initial call plus repairs; floored at 1 | non-numeric → 2 |
+| `MILEBOOK_GARMIN_KEY` | no | — | 32 bytes base64; seals Garmin API keys at rest and re-seals legacy plaintext rows on boot `(src/secrets.ts · parseSecretKey)` | invalid length → exits; unset → keys stay plaintext and the boot log warns |
 | `MILEBOOK_AUTO_STATES` | no | `true` | deterministic coaching-state detection; `false` keeps manual/chat states | any value but `true`/`1` reads false |
 | `MILEBOOK_DEFAULT_USER` | no | `system` | identity for a gateway request with no `x-milebook-user` header | never fails; a headerless turn lands under an id with no account |
 | `MILEBOOK_INTERNAL_TOKEN` | no | random 32 bytes per start | shared web→gateway secret | a restart rotates it; set it only to pin the value |
@@ -91,9 +92,11 @@ node --import tsx src/index.ts
   (the `Test-IsThisApp` pattern) with redirectable stdio and a recordable pid — pnpm would add a wrapper in between.
 - **Working directory matters twice:** `.env` is read relative to it `(src/index.ts · loadDotEnv)` and the default database
   path is relative (`sqlite:data/milebook.sqlite`).
-- **The schema is applied at boot.** The constructor runs `CREATE TABLE IF NOT EXISTS` for every table plus two in-place
-  migrations `(src/store.ts · migrateActivitiesTable)`, `(src/store.ts · migrateCoachTurnsDirectiveHash)`. No migrate
-  command, no down-migration.
+- **The schema is applied at boot, in order.** `CREATE TABLE IF NOT EXISTS` for every table, then the versioned
+  migration list, each step in its own transaction and recorded in `PRAGMA user_version`
+  `(src/migrations.ts · runMigrations)`; a boot with pending steps logs `schema N -> M (step; step)`, a boot with
+  none logs nothing. There is no migrate command and no down-migration: rolling code back past a schema change
+  needs a restore.
 - **Environment and ports.** The deploy exports nine variables itself (DB, both ports, gateway URL, model base/key/name,
   max attempts, cookie secure, auth secret) and inherits the rest; it resolves `8093` (web) and `8092` (gateway) when
   neither a parameter nor `MILEBOOK_*_PORT` is set, so the live process never uses the app's 8091/8090 defaults.
@@ -102,7 +105,7 @@ node --import tsx src/index.ts
 
 | # | Step | Detail |
 |---|---|---|
-| 1 | Resolve settings | parameter → environment → default; secrets from `data/milebook-auth.secret` and `data/milebook-model.secret`; the DB spec must start with `sqlite:` and the file must already exist |
+| 1 | Resolve settings | parameter → environment → default; secrets from `data/milebook-auth.secret` and `data/milebook-model.secret`, plus the optional `data/milebook-garmin.secret`; the DB spec must start with `sqlite:` and the file must already exist |
 | 2 | Read the stylesheet version | regex `APP_CSS_VERSION\s*=\s*(\d+)` over `src/web.ts` — never hardcoded (a hardcoded gate shipped broken once) |
 | 3 | Back up | `node tools/backup-db.mjs <db> data/backups <BackupKeep>`; a non-zero exit aborts before anything is stopped; `-SkipBackup` skips it |
 | 4 | Refuse to kill | listeners on the two resolved ports are stopped only when `Test-IsThisApp` proves the command line names `src/index.ts` or the recorded pid is in the ancestry (12 levels); otherwise it throws and touches nothing |
@@ -112,7 +115,7 @@ node --import tsx src/index.ts
 | 8 | Verify | gateway `/health`, web `/health` (must report `"gateway":"ok"`), web `/login`, web `/static/app.css`; `/login` must contain `app.css?v=<APP_CSS_VERSION>` (read from `src/web.ts`, currently 33) and `Milebook`; the stylesheet body must be at least 10 000 characters; exit 0. On failure: 40-line tails of both live logs and exit 1 |
 
 **Parameters** (default): `-WebPort` (0 → 8093), `-GatewayPort` (0 → 8092), `-Database` ('' → env),
-`-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-ModelBaseUrl` ('' → env),
+`-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-GarminKeyFile` (`data/milebook-garmin.secret`), `-ModelBaseUrl` ('' → env),
 `-ModelName` ('' → env), `-MaxAttempts` (2, exported), `-TimeoutSeconds` (60), `-BackupKeep` (14), `-CookieSecure` (off),
 `-SkipBackup` (off).
 
@@ -157,7 +160,7 @@ an existing target is refused (exit 3). It prints the size in MiB, keeps the new
 | 6 | Record the backup name, the reason and the outcome in the ops notes |
 
 Restoring is the only data rollback: migrations are forward-only, so rolling code back past a schema change needs the
-matching backup. Backups contain every secret in the database — password hashes and plaintext Garmin keys — so
+matching backup. Backups contain every secret in the database - password hashes and, when no at-rest key is configured, plaintext Garmin keys - so
 `data/backups` deserves the same care as the database `(docs/SECURITY.md)`.
 
 **Monthly drill (30–45 min).** Restore the newest backup into a scratch file and start it on spare ports with a throwaway

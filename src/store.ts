@@ -1,4 +1,7 @@
 import { createRequire } from "node:module";
+
+import { runMigrations, type MigrationResult } from "./migrations";
+import { isSealedSecret, type SecretBox } from "./secrets";
 import type {
   Activity,
   ActivityWorkout,
@@ -48,7 +51,12 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as {
   DatabaseSync: new (path: string) => SqliteDatabase;
 };
 
-export interface StoreHandle { store: Store; close(): void; }
+export interface StoreHandle {
+  store: Store;
+  close(): void;
+  /** What the schema migrations did on this boot; empty when the file was already current. */
+  migrations: MigrationResult;
+}
 
 /**
  * SQLite-backed store. Every row keeps the full record as a JSON payload and
@@ -389,49 +397,6 @@ function usernameTaken(username: string): Error {
   return new Error(`username already taken: ${username}`);
 }
 
-/**
- * Older Milebook databases keyed activities by activity_id alone, so one runner's row blocked another runner from storing
- * the same Garmin activity. Rebuild that table with the composite (user_id, activity_id) key, preserving every row.
- */
-function migrateActivitiesTable(db: SqliteDatabase): void {
-  const row = db
-    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'activities'")
-    .get();
-  if (row === undefined) return;
-  const sql = String(row["sql"] ?? "");
-  if (sql.includes("PRIMARY KEY (user_id, activity_id)")) return;
-
-  db.exec("BEGIN");
-  try {
-    db.exec(`CREATE TABLE activities_new (
-      activity_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      day TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      payload TEXT NOT NULL,
-      PRIMARY KEY (user_id, activity_id)
-    )`);
-    db.exec(`INSERT OR IGNORE INTO activities_new (activity_id, user_id, day, created_at, payload)
-      SELECT activity_id, user_id, day, created_at, payload FROM activities`);
-    db.exec("DROP TABLE activities");
-    db.exec("ALTER TABLE activities_new RENAME TO activities");
-    db.exec("CREATE INDEX IF NOT EXISTS activities_user_day ON activities (user_id, day)");
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-/**
- * Older databases predate the hidden-directive hash on coach turns. Add the column in place so an existing live
- * database keeps its turn history and idempotency records.
- */
-function migrateCoachTurnsDirectiveHash(db: SqliteDatabase): void {
-  const columns = db.prepare("PRAGMA table_info(coach_turns)").all();
-  if (columns.some((column) => column["name"] === "directive_hash")) return;
-  db.exec("ALTER TABLE coach_turns ADD COLUMN directive_hash TEXT");
-}
 
 /** Every table keyed by `user_id`, in erasure order. `users` is handled separately and last. */
 const ERASURE_TABLES = [
@@ -455,12 +420,22 @@ const ERASURE_TABLES = [
   "sync_state",
 ] as const;
 
+/** Options a deployment passes once at boot; both are optional so tests and the gateway keep the plain behaviour. */
+export interface StoreOptions {
+  /** Present when `MILEBOOK_GARMIN_KEY` is configured; seals Garmin API keys at rest. */
+  readonly secretBox?: SecretBox;
+}
+
 class SqliteStore implements Store {
   private readonly db: SqliteDatabase;
+  private readonly secretBox: SecretBox | undefined;
+  /** What the migration runner applied on this boot, exposed so the entry point can log it. */
+  readonly migrations: MigrationResult;
   private closed = false;
 
-  constructor(location: string) {
+  constructor(location: string, options: StoreOptions = {}) {
     this.db = new DatabaseSync(location);
+    this.secretBox = options.secretBox;
     /**
      * Write-ahead logging keeps a reader from blocking the writer and makes each commit a single sequential write,
      * which is what the single-process server needs; `synchronous = NORMAL` is the documented WAL pairing and keeps
@@ -471,8 +446,10 @@ class SqliteStore implements Store {
     this.db.exec("PRAGMA synchronous = NORMAL");
     this.db.exec("PRAGMA busy_timeout = 5000");
     this.db.exec(SCHEMA);
-    migrateActivitiesTable(this.db);
-    migrateCoachTurnsDirectiveHash(this.db);
+    // Ordered, versioned steps; the runner owns each transaction, so a failure leaves the file at the previous version.
+    this.migrations = runMigrations(this.db, this.secretBox === undefined ? {} : { secretBox: this.secretBox });
+    // With an at-rest key configured, legacy plaintext Garmin keys are sealed on boot rather than on first read.
+    this.sealStoredGarminKeys();
   }
 
   getUser(userId: string): UserProfile | undefined {
@@ -709,17 +686,40 @@ class SqliteStore implements Store {
   recordSync(userId: string, at: string): void {
     this.db.prepare(UPSERT_SYNC_STATE).run(userId, at);
   }
-
   getGarminKey(userId: string): GarminKey | undefined {
-    const row = this.db
-      .prepare("SELECT api_key, saved_at FROM garmin_keys WHERE user_id = ?")
-      .get(userId);
+    const row = this.db.prepare("SELECT api_key, saved_at FROM garmin_keys WHERE user_id = ?").get(userId);
     if (row === undefined) return undefined;
-    return { userId, apiKey: String(row["api_key"]), savedAt: String(row["saved_at"]) };
+    const stored = String(row["api_key"]);
+    const savedAt = String(row["saved_at"]);
+    if (!isSealedSecret(stored)) return { userId, apiKey: stored, savedAt };
+    // A sealed value this key cannot open means the deployment key changed; treat it as "no key" so the runner
+    // re-enters it instead of failing every calendar page.
+    const apiKey = this.secretBox?.open(stored);
+    return apiKey === undefined ? undefined : { userId, apiKey, savedAt };
   }
 
   saveGarminKey(key: GarminKey): void {
-    this.db.prepare(UPSERT_GARMIN_KEY).run(key.userId, key.savedAt, key.apiKey);
+    const stored = this.secretBox === undefined ? key.apiKey : this.secretBox.seal(key.apiKey);
+    this.db.prepare(UPSERT_GARMIN_KEY).run(key.userId, key.savedAt, stored);
+  }
+
+  /**
+   * Seals every legacy plaintext key once, on boot, when a box is configured. Rows are rewritten one at a time, so a
+   * failure leaves the earlier rows sealed and the later ones plaintext, and the next boot continues from there.
+   */
+  sealStoredGarminKeys(): number {
+    if (this.secretBox === undefined) return 0;
+    const rows = this.db.prepare("SELECT user_id, api_key, saved_at FROM garmin_keys").all();
+    let sealed = 0;
+    for (const row of rows) {
+      const stored = String(row["api_key"]);
+      if (isSealedSecret(stored)) continue;
+      this.db
+        .prepare(UPSERT_GARMIN_KEY)
+        .run(String(row["user_id"]), String(row["saved_at"]), this.secretBox.seal(stored));
+      sealed += 1;
+    }
+    return sealed;
   }
 
   deleteGarminKey(userId: string): boolean {
@@ -1186,7 +1186,7 @@ class SqliteStore implements Store {
   }
 }
 
-export function createStore(spec: string): StoreHandle {
-  const store = new SqliteStore(resolveLocation(spec));
-  return { store, close: () => store.close() };
+export function createStore(spec: string, options: StoreOptions = {}): StoreHandle {
+  const store = new SqliteStore(resolveLocation(spec), options);
+  return { store, close: () => store.close(), migrations: store.migrations };
 }

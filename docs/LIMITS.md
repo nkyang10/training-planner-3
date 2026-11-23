@@ -49,7 +49,7 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Sync window | last 90 days | `(src/garmin-sync.ts · createGarminSync)` | Older runs never arrive |
 | Workout enrichment | 3 per sync, 2 attempts; 6 per calendar render, 2.5 s budget, 60 s throttle | `(src/garmin-sync.ts · DEFAULT_WORKOUT_FETCH_LIMIT)`, `(src/garmin-sync.ts · DEFAULT_MAX_WORKOUT_ATTEMPTS)`, `(src/web.ts · CALENDAR_WORKOUT_BUDGET)`, `(src/web.ts · CALENDAR_WORKOUT_TIME_MS)`, `(src/web.ts · CALENDAR_WORKOUT_THROTTLE_MS)` | Best effort; never fails the sync |
 | Future plan import | impossible with a Personal API key | `(src/garmin.ts · createGarminClient)` | Needs a Garmin SSO web session and a terms decision |
-| Key storage | plaintext in SQLite | `(src/store.ts · saveGarminKey)` | Accepted risk on a single-tenant host ([PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) PR-26) |
+| Key storage | sealed AES-256-GCM when `MILEBOOK_GARMIN_KEY` is set, plaintext otherwise | `(src/secrets.ts · createSecretBox)`, `(src/store.ts · saveGarminKey)` | Without the variable the key is protected by file permissions only; a copied database is unreadable with it |
 | Auto sync on page load | at most once per 10 minutes | `(src/web.ts · createWeb)` | A manual sync is never throttled |
 
 ## 5. Muscles and states
@@ -98,7 +98,6 @@ either in [ROADMAP.md](ROADMAP.md) or explicitly rejected there.
 | Garmin future plan | A Garmin SSO web session, a terms review, and a scheduled-workout import path |
 | No streaming | Consume the gateway's existing SSE chunks in the bubble; keep the reply cap |
 | No CSP | Extract the inline client scripts, then nonce or hash them ([PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) PR-23) |
-| Plaintext Garmin key | AES-256-GCM with a key from the environment, per-row nonce |
 
 ## 9. Honesty rule
 
