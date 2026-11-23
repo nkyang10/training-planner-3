@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -4859,6 +4860,32 @@ describe("production hardening", () => {
       expect(response.headers.get("x-frame-options"), path).toBe("DENY");
       expect(response.headers.get("cross-origin-opener-policy"), path).toBe("same-origin");
       expect(response.headers.get("permissions-policy"), path).toContain("camera=()");
+    }
+  });
+
+  it("serves a hash-based CSP whose hashes match every inline script", async () => {
+    const { base, cookie } = await start();
+    const response = await fetch(`${base}/calendar`, { headers: { cookie } });
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    const csp = response.headers.get("content-security-policy") ?? "";
+
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    expect(csp).toContain("base-uri 'none'");
+    expect(csp).toContain("object-src 'none'");
+    // Inline styles are needed by the markup; inline scripts are not allowed without a hash.
+    expect(csp).toContain("style-src 'self' 'unsafe-inline'");
+    expect(csp).not.toContain("script-src 'self' 'unsafe-inline'");
+
+    const bodies = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map((match) => match[1] ?? "")
+      .filter((body) => body.length > 0);
+    expect(bodies.length).toBeGreaterThan(0);
+    for (const body of bodies) {
+      const hash = createHash("sha256").update(body, "utf8").digest("base64");
+      expect(csp).toContain(`'sha256-${hash}'`);
     }
   });
 

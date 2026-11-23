@@ -183,8 +183,44 @@ function jsonForScript(value: unknown): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+const INLINE_SCRIPT = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+
+/**
+ * A hash-based Content-Security-Policy for one rendered page.
+ *
+ * The pages carry their client code as inline `<script>` blocks, so a policy of `'self'` alone would block the app. The
+ * hashes are computed from the exact bodies this response is about to send, which is the only way they can be trusted to
+ * match; `style-src` still allows inline styles because the markup sets a few `style` attributes, and `img-src` allows
+ * `data:` for the CSS-embedded icon. There are no inline event handlers, no `eval`, no workers and no third-party
+ * origins, so nothing else is needed.
+ */
+function contentSecurityPolicy(html: string): string {
+  const hashes: string[] = [];
+  for (const match of html.matchAll(INLINE_SCRIPT)) {
+    const body = match[1] ?? "";
+    if (body.length === 0) continue;
+    hashes.push(`'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`);
+  }
+  return [
+    "default-src 'self'",
+    `script-src ${["'self'", ...hashes].join(" ")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self'",
+    "connect-src 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+  ].join("; ");
+}
+
 function sendHtml(response: ServerResponse, status: number, html: string): void {
-  response.writeHead(status, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+  response.writeHead(status, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "content-security-policy": contentSecurityPolicy(html),
+  });
   response.end(html);
 }
 

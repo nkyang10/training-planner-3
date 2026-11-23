@@ -97,7 +97,6 @@ either in [ROADMAP.md](ROADMAP.md) or explicitly rejected there.
 | Garmin 90 days / 100 activities | Pagination support in the API; the client already caps per call |
 | Garmin future plan | A Garmin SSO web session, a terms review, and a scheduled-workout import path |
 | No streaming | Consume the gateway's existing SSE chunks in the bubble; keep the reply cap |
-| No CSP | Extract the inline client scripts, then nonce or hash them ([PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) PR-23) |
 
 ## 9. Honesty rule
 
