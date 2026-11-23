@@ -210,11 +210,12 @@ stylesheet version read from `APP_CSS_VERSION` in `src/web.ts`. Full runbook, ba
 | Gate | State |
 |---|---|
 | Tests | 680 passing in 26 files (`pnpm test`) |
+| Smoke | `pnpm smoke` against a running instance (health, CSP, cookie flags, signup, gated pages, coach, erasure) |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | Docs gate | pass (`pnpm docs:check`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Linux and Windows, Node 24 |
-| Release | **1.7.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
+| Release | **1.7.1** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
 
 ## License
 

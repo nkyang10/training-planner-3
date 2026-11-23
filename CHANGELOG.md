@@ -14,6 +14,28 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.7.1] — 2026-11-23
+
+A post-deploy smoke check, and the deploy trap that cost an outage during this session.
+
+### Added
+
+- **`tools/smoke.mjs` (`pnpm smoke`)** verifies a running instance the way an operator would: `/health` fields, the
+  stylesheet version the source declares, the CSP hashes recomputed from the markup actually served, the
+  `Secure`/`HttpOnly` cookie, signup, six gated pages, one coach turn, and account erasure — the throwaway account
+  deletes itself, so the database is left as it was. Exit `0`/`1`/`2`; `--allow-coach-failure` turns a dead model into
+  a warning.
+- **The deploy runs it as step 9.** A coach that cannot answer is a warning, fatal with `-RequireCoach`; any other
+  failed check aborts the deploy, and the deploy line records `smoke=ok|coach-down`.
+
+### Fixed
+
+- **Documented the pipeline trap that took the live site down.** `pnpm deploy:live | Select-Object` never returns: the
+  long-running child keeps an inherited pipe open, so the caller waits forever while the deploy has already finished —
+  and killing that caller kills the new process. The contract now says to redirect to a file (`*> data/deploy-run.log`),
+  and the deploy header repeats it.
+
+
 ## [1.7.0] — 2026-11-23
 
 Tunnel-ready: loopback binding and timeouts that fit under an edge limit.
