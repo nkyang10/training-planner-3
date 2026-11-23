@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import { createAuth } from "./auth";
 import { createGateway } from "./gateway";
 import { createStore } from "./store";
+import { createSecretBox, parseSecretKey } from "./secrets";
 import { createWeb } from "./web";
 
 /**
@@ -95,7 +96,22 @@ if (databaseSpec.startsWith("sqlite:") && !existsSync(databaseSpec.slice("sqlite
   console.log(`milebook: creating a new database at ${databaseSpec.slice("sqlite:".length)}`);
 }
 
-const handle = createStore(databaseSpec);
+/**
+ * At-rest sealing for Garmin keys. Without a key the store keeps plaintext and the boot log says so; with one, every
+ * legacy row is sealed during store construction, so a stale plaintext key never survives a restart.
+ */
+const garminKeyRaw = readEnv("GARMIN_KEY");
+const secretBox = garminKeyRaw === undefined ? undefined : createSecretBox(parseSecretKey(garminKeyRaw));
+if (secretBox === undefined) {
+  console.warn("milebook: MILEBOOK_GARMIN_KEY is not set; Garmin API keys are stored as plaintext in the database");
+}
+
+const handle = createStore(databaseSpec, secretBox === undefined ? {} : { secretBox });
+if (handle.migrations.applied.length > 0) {
+  console.log(
+    `milebook: schema ${handle.migrations.from} -> ${handle.migrations.to} (${handle.migrations.applied.join("; ")})`,
+  );
+}
 const auth = createAuth({ store: handle.store, secret: authSecret, secureCookies: cookieSecure });
 
 const gateway = createGateway({

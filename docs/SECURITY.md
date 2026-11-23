@@ -65,11 +65,14 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Auth secret | environment or `data/milebook-auth.secret` | never logged; rotation invalidates every session |
 | Model API key | environment or `data/milebook-model.secret` | sent only to the configured endpoint |
 | Internal token | generated per start, or `MILEBOOK_INTERNAL_TOKEN` | in-process only |
-| Garmin personal key | **plaintext** in `garmin_keys` (**accepted risk for a single-tenant host**) | masked to last 4 characters in the UI, never returned by export |
+| Garmin personal key | sealed with AES-256-GCM (fresh 96-bit nonce, authenticated) when `MILEBOOK_GARMIN_KEY` is set; plaintext otherwise, and the boot log warns (**open** in that case) | masked to last 4 characters in the UI, never returned by export; legacy plaintext rows are sealed on the first boot after the key appears |
 | Password hash | scrypt string in `users.payload` | never returned by any route |
 
 `.gitignore` covers `data/`, `.env*`, `*.sqlite`, `*.db` and logs; the lint gate fails on Garmin-style and
-OpenAI-style key patterns. The Garmin key is protected by database-file permissions only — encrypting it at rest needs a
+OpenAI-style key patterns. The Garmin key is protected by database-file permissions and, when `MILEBOOK_GARMIN_KEY`
+is configured, by an authenticated envelope that a copied database file cannot open without the key
+`(src/secrets.ts · createSecretBox)`. The key itself lives in the environment or `data/milebook-garmin.secret`,
+never in the repository.
 KMS and is tracked in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md).
 
 ## 6. Transport and hosting

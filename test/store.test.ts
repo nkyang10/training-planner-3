@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -6,6 +7,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createStore, type StoreHandle } from "../src/store";
+import { createSecretBox } from "../src/secrets";
 import type {
   Activity,
   ActivityWorkout,
@@ -654,6 +656,71 @@ describe("persistence of Garmin connection data", () => {
       while (handles.length > 0) {
         handles.pop()?.close();
       }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("sealed Garmin keys", () => {
+  it("seals a key at rest, reads it back, and survives a restart", () => {
+    const dir = mkdtempSync(join(tmpdir(), "milebook-sealed-keys-"));
+    const dbPath = join(dir, "sealed.db");
+    const box = createSecretBox(randomBytes(32));
+    try {
+      const handle = createStore(`sqlite:${dbPath}`, { secretBox: box });
+      handle.store.saveGarminKey(garminKey("u1", "garmin-plain-key", "2026-11-01T08:00:00.000Z"));
+      expect(handle.store.getGarminKey("u1")).toEqual(garminKey("u1", "garmin-plain-key", "2026-11-01T08:00:00.000Z"));
+      handle.close();
+
+      // The file itself holds no plaintext.
+      const audit = new DatabaseSync(dbPath);
+      const row = audit.prepare("SELECT api_key FROM garmin_keys WHERE user_id = ?").get("u1") as { api_key: string };
+      expect(row.api_key.startsWith("enc:v1:")).toBe(true);
+      expect(row.api_key).not.toContain("garmin-plain-key");
+      audit.close();
+
+      const reopened = createStore(`sqlite:${dbPath}`, { secretBox: box });
+      expect(reopened.store.getGarminKey("u1")?.apiKey).toBe("garmin-plain-key");
+      reopened.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("seals legacy plaintext rows on boot", () => {
+    const dir = mkdtempSync(join(tmpdir(), "milebook-sealed-legacy-"));
+    const dbPath = join(dir, "legacy-keys.db");
+    try {
+      const plain = createStore(`sqlite:${dbPath}`);
+      plain.store.saveGarminKey(garminKey("u1", "written-before-sealing", "2026-11-01T08:00:00.000Z"));
+      plain.close();
+
+      const box = createSecretBox(randomBytes(32));
+      const sealed = createStore(`sqlite:${dbPath}`, { secretBox: box });
+      expect(sealed.store.getGarminKey("u1")?.apiKey).toBe("written-before-sealing");
+      sealed.close();
+
+      const audit = new DatabaseSync(dbPath);
+      const row = audit.prepare("SELECT api_key FROM garmin_keys WHERE user_id = ?").get("u1") as { api_key: string };
+      expect(row.api_key.startsWith("enc:v1:")).toBe(true);
+      audit.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats a key sealed by another deployment key as absent", () => {
+    const dir = mkdtempSync(join(tmpdir(), "milebook-sealed-wrong-"));
+    const dbPath = join(dir, "wrong-key.db");
+    try {
+      const first = createStore(`sqlite:${dbPath}`, { secretBox: createSecretBox(randomBytes(32)) });
+      first.store.saveGarminKey(garminKey("u1", "sealed-with-key-a", "2026-11-01T08:00:00.000Z"));
+      first.close();
+
+      const second = createStore(`sqlite:${dbPath}`, { secretBox: createSecretBox(randomBytes(32)) });
+      expect(second.store.getGarminKey("u1")).toBeUndefined();
+      second.close();
+    } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
