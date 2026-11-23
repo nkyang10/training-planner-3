@@ -132,7 +132,7 @@ The file existing is not the same as satisfying the duty, and as of 1.1.0 the du
 | CC BY 4.0 attribution surface | **present** - `/credits` prints the string verbatim and every footer links it `(src/web.ts · renderCredits)` | `test/web.test.ts` asserts both credit strings |
 | `THIRD-PARTY-NOTICES.md` at root | present 2026-11-22; `/credits` states the licence, the source and the changes, and the file keeps the full text | linked from `/credits` |
 | Licence text reachable at a URL | **partial** - `/credits` renders both notices as HTML, but the raw licence files are still not routed | serve `/static/THREE-LICENSE.txt` when convenient; not a blocker |
-| Asset weight | 11.27 MB GLB is 91 % of the 11.78 MiB vendor tree, served uncompressed; parse measured ~0.3 s in a browser | accepted; PR-35 covers compression |
+| Asset weight | 11.27 MB GLB is 91 % of the 11.78 MiB vendor tree, served uncompressed (it is a compressed container; text assets are gzipped on the wire, binary ones are not); parse measured ~0.3 s in a browser | accepted; PR-35 covers compression |
 | LFS decision | `.gitattributes` exists (line-ending normalization only), so the GLB is a plain git blob | decide before the next tag ([RELEASE.md](RELEASE.md)); converting later rewrites history |
 | Checksums | no manifest, no drift test | add `tools/asset-checksums.json` + the test (§2.1), or PR-30's fixed-artifact record |
 | No unlicensed fonts or icons | system stacks only (`--font`, `--auth-font`, `--auth-display`), inline SVG, emoji glyphs; no `@font-face`, no CDN `(src/styles.ts)` | pass |

@@ -25,7 +25,7 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 
 | Domain | File | Tests | Protects |
 |---|---|---|---|
-| web HTTP surface | `test/web.test.ts` | 145 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, request logging, health with db, throttling identity, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
+| web HTTP surface | `test/web.test.ts` | 147 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, request logging, health with db, throttling identity, gzip with CSP intact, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
 | gateway contract | `test/gateway.test.ts` | 85 | completions, a hung upstream at the configured timeout, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5) |
 | coach prompt/parsing | `test/coach.test.ts` | 71 | turn parsing, reply-style contract (LL-1), prompt segment A, context snapshot B/C, turn suffix E, conversation assembly, prompt epoch (LL-3), silent profile updates (LL-5), suggestions, schedule actions, revert, state proposals, muscle-condition suggestions, extended race horizon |
 | coach prompt/parsing | `test/directives.test.ts` | 14 | coach intents, directives, muscle-review intents/directives, directive-hash stability |
@@ -51,8 +51,9 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 | schema migrations | `test/migrations.test.ts` | 5 | fresh stamp, legacy upgrade in place, second boot no-op, failing step rollback, invalid version |
 | secrets at rest | `test/secrets.test.ts` | 6 | round-trip, fresh nonce, wrong key, tamper, plaintext rejection, key length |
 | structured logs | `test/log.test.ts` | 8 | JSON shape, level filter, redaction by name, truncation, child bindings, unserializable field, level parsing, silent |
+| compression | `test/compress.test.ts` | 6 | textual-only rule, accept-encoding parsing with refusals, round-trip, small/binary/refusing clients untouched, asset cache, ETag variant |
 
-**26 files, 680 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, `test/migrations.test.ts` opens a real legacy file and `test/log.test.ts` pins the log contract; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets are now injected rather than read from source.
+**27 files, 688 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, `test/migrations.test.ts` opens a real legacy file, `test/log.test.ts` pins the log contract and `test/compress.test.ts` pins the encoding rules; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets are injected rather than read from source.
 
 ## 3. Test conventions
 

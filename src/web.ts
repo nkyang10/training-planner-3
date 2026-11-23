@@ -13,6 +13,7 @@ import { applyRevert } from "./history";
 import { buildCalendarIcs, buildExportBundle } from "./export";
 import { buildManualActivity } from "./manual-activity";
 import { createRateLimiter } from "./rate-limit";
+import { encodeBody, encodedValidator } from "./compress";
 import { silentLogger, type Logger } from "./log";
 import { createGarminClient, type GarminClient } from "./garmin";
 import { describeGarminError } from "./garmin-errors";
@@ -222,13 +223,24 @@ function contentSecurityPolicy(html: string): string {
   ].join("; ");
 }
 
-function sendHtml(response: ServerResponse, status: number, html: string): void {
-  response.writeHead(status, {
+function sendHtml(request: IncomingMessage, response: ServerResponse, status: number, html: string): void {
+  // The policy is computed from the uncompressed markup; compression is a transport detail the browser undoes before
+  // parsing, so the hashes still describe exactly what arrives.
+  const encoded = encodeBody({
+    body: html,
+    contentType: "text/html; charset=utf-8",
+    acceptEncoding: request.headers["accept-encoding"],
+  });
+  const headers: Record<string, string | number> = {
     "content-type": "text/html; charset=utf-8",
     "cache-control": "no-store",
     "content-security-policy": contentSecurityPolicy(html),
-  });
-  response.end(html);
+    vary: "accept-encoding",
+    "content-length": encoded.body.length,
+  };
+  if (encoded.encoding === "gzip") headers["content-encoding"] = "gzip";
+  response.writeHead(status, headers);
+  response.end(encoded.body);
 }
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
@@ -262,18 +274,29 @@ function sendAsset(
   cacheControl: string,
   etag: string,
 ): void {
-  if (request.headers["if-none-match"] === etag) {
-    response.writeHead(304, { etag, "cache-control": cacheControl });
+  // A static asset compresses once and is cached under its validator; the validator carries the variant so a client
+  // that revalidates gets a 304 only for the encoding it actually holds.
+  const encoded = encodeBody({
+    body,
+    contentType,
+    acceptEncoding: request.headers["accept-encoding"],
+    cacheKey: etag,
+  });
+  const validator = encodedValidator(etag, encoded.encoding);
+  const headers: Record<string, string | number> = {
+    "content-type": contentType,
+    "cache-control": cacheControl,
+    etag: validator,
+    vary: "accept-encoding",
+  };
+  if (encoded.encoding === "gzip") headers["content-encoding"] = "gzip";
+  if (request.headers["if-none-match"] === validator) {
+    response.writeHead(304, headers);
     response.end();
     return;
   }
-  response.writeHead(200, {
-    "content-type": contentType,
-    "content-length": Buffer.byteLength(body),
-    "cache-control": cacheControl,
-    etag,
-  });
-  response.end(body);
+  response.writeHead(200, { ...headers, "content-length": encoded.body.length });
+  response.end(encoded.body);
 }
 
 /** Asset validators, computed once at startup so a revalidating request costs a 304 and no body. */
@@ -5244,7 +5267,7 @@ export function createWeb(options: WebOptions): WebApp {
       ): string => layout(title, body, user, activeView, unreadFor(user), flash, tx);
 
       if (method === "POST" && !isSameOriginPost(request)) {
-        sendHtml(response, 403, pageLayout(tx.t("error.forbidden"), `<p>${tx.t("error.crossOrigin")}</p>`, undefined, "none"));
+        sendHtml(request, response, 403, pageLayout(tx.t("error.forbidden"), `<p>${tx.t("error.crossOrigin")}</p>`, undefined, "none"));
         return;
       }
 
@@ -5321,26 +5344,26 @@ export function createWeb(options: WebOptions): WebApp {
       }
       if (url.pathname === "/credits") {
         if (method !== "GET") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
           return;
         }
-        sendHtml(response, 200, renderCredits(tx));
+        sendHtml(request, response, 200, renderCredits(tx));
         return;
       }
       if (url.pathname === "/privacy") {
         if (method !== "GET") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
           return;
         }
-        sendHtml(response, 200, renderPrivacy(tx));
+        sendHtml(request, response, 200, renderPrivacy(tx));
         return;
       }
       if (url.pathname === "/goodbye") {
         if (method !== "GET") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
           return;
         }
-        sendHtml(response, 200, renderGoodbye(tx));
+        sendHtml(request, response, 200, renderGoodbye(tx));
         return;
       }
       if (url.pathname === "/favicon.ico") {
@@ -5363,7 +5386,7 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/calendar");
             return;
           }
-          sendHtml(response, 200, renderLogin(url.searchParams.get("error") ?? undefined, tx));
+          sendHtml(request, response, 200, renderLogin(url.searchParams.get("error") ?? undefined, tx));
           return;
         }
         if (method === "POST") {
@@ -5371,7 +5394,7 @@ export function createWeb(options: WebOptions): WebApp {
           const username = (form.get("username") ?? "").trim().toLowerCase();
           const attemptKey = `${clientKey(request, trustProxy)}|login|${username}`;
           if (authLimiter.blocked(attemptKey)) {
-            sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
+            sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
             return;
           }
           try {
@@ -5390,7 +5413,7 @@ export function createWeb(options: WebOptions): WebApp {
           }
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -5400,7 +5423,7 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/calendar");
             return;
           }
-          sendHtml(response, 200, renderSignup(url.searchParams.get("error") ?? undefined, tx));
+          sendHtml(request, response, 200, renderSignup(url.searchParams.get("error") ?? undefined, tx));
           return;
         }
         if (method === "POST") {
@@ -5408,7 +5431,7 @@ export function createWeb(options: WebOptions): WebApp {
           const signupName = (form.get("username") ?? "").trim().toLowerCase();
           const attemptKey = `${clientKey(request, trustProxy)}|signup|${signupName}`;
           if (authLimiter.blocked(attemptKey)) {
-            sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
+            sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
             return;
           }
           try {
@@ -5430,7 +5453,7 @@ export function createWeb(options: WebOptions): WebApp {
           }
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -5441,7 +5464,7 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
 
@@ -5469,7 +5492,7 @@ export function createWeb(options: WebOptions): WebApp {
       if (url.pathname === "/profile") {
         if (method === "GET") {
           sendHtml(
-            response,
+            request, response,
             200,
             renderProfile(
               user,
@@ -5508,7 +5531,7 @@ export function createWeb(options: WebOptions): WebApp {
           }
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -5520,7 +5543,7 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -5546,7 +5569,7 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/goodbye", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -5558,16 +5581,16 @@ export function createWeb(options: WebOptions): WebApp {
           const stateEvents = options.store.listCoachStateEvents(user.userId, 20);
           const preferences = options.store.getCoachPreferences(user.userId);
           const snapshots = options.store.listPromptSnapshots(user.userId, 3);
-          sendHtml(response, 200, renderCoachAudit(user, directives, states, stateEvents, { layout: pageLayout }, tx, preferences, snapshots));
+          sendHtml(request, response, 200, renderCoachAudit(user, directives, states, stateEvents, { layout: pageLayout }, tx, preferences, snapshots));
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
       if (url.pathname === "/coach-states/refresh") {
         if (method !== "POST") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
           return;
         }
         refreshCoachStates(options.store, user.userId, now(), today, {
@@ -5585,7 +5608,7 @@ export function createWeb(options: WebOptions): WebApp {
           const tabParam = url.searchParams.get("tab");
           const selectedTab = tabParam === "set" || tabParam === "history" ? tabParam : "current";
           sendHtml(
-            response,
+            request, response,
             200,
             renderCoachStates(user, states, history, url.searchParams.get("error") ?? undefined, { layout: pageLayout }, tx, selectedTab),
           );
@@ -5612,14 +5635,14 @@ export function createWeb(options: WebOptions): WebApp {
           redirect(response, "/coach-states");
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
       const stateAction = /^\/coach-states\/([^/]+)\/(confirm|resolve)$/.exec(url.pathname);
       if (stateAction !== null) {
         if (method !== "POST") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
           return;
         }
         let stateId = "";
@@ -5745,7 +5768,7 @@ export function createWeb(options: WebOptions): WebApp {
           const dismissedProposalId =
             url.searchParams.get("saved") === "dismissed" ? url.searchParams.get("proposal") : null;
           sendHtml(
-            response,
+            request, response,
             200,
             renderMusclePage(
               {
@@ -5784,7 +5807,7 @@ export function createWeb(options: WebOptions): WebApp {
           );
           return;
         }
-        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
         return;
       }
 
@@ -5926,7 +5949,7 @@ export function createWeb(options: WebOptions): WebApp {
       const proposalAction = /^\/muscle\/proposals\/([^/]+)\/(confirm|dismiss|restore)$/.exec(url.pathname);
       if (proposalAction !== null) {
         if (method !== "POST") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
           return;
         }
         let proposalId = "";
@@ -6020,7 +6043,7 @@ export function createWeb(options: WebOptions): WebApp {
        */
       if (url.pathname === "/changes") {
         if (method !== "GET") {
-          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "changes"));
+          sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "changes"));
           return;
         }
         const typeParam = url.searchParams.get("type");
@@ -6032,7 +6055,7 @@ export function createWeb(options: WebOptions): WebApp {
         const controls = options.store.listMuscleStatusControls(user.userId).slice().sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
         const scheduleCard = recentChangesCard(changeSets, "/changes", tx, today, timezone, { headingKey: "changes.scheduleTitle" });
         const body = renderChangesPage({ scheduleCard, scheduleCount: changeSets.length, activities, checkIns, controls, filter, tx, today, timezone });
-        sendHtml(response, 200, pageLayout(tx.t("changes.allTitle"), body, user, "changes", flash));
+        sendHtml(request, response, 200, pageLayout(tx.t("changes.allTitle"), body, user, "changes", flash));
         return;
       }
 
@@ -6646,7 +6669,7 @@ export function createWeb(options: WebOptions): WebApp {
           <p class="muted small">${escapeHtml(lastImportText)}</p>
           ${loadLine}
           ${historyTabs}`;
-        sendHtml(response, 200, pageLayout(tx.t("history.eyebrow"), body, user, "history", flash));
+        sendHtml(request, response, 200, pageLayout(tx.t("history.eyebrow"), body, user, "history", flash));
         return;
       }
 
@@ -6776,7 +6799,7 @@ export function createWeb(options: WebOptions): WebApp {
             <div class="month" data-month="${escapeHtml(month)}">${cells.join("")}</div>
           </section>
           ${garminPanel}`;
-        sendHtml(response, 200, pageLayout("Plan", body, user, "calendar", flash));
+        sendHtml(request, response, 200, pageLayout("Plan", body, user, "calendar", flash));
         return;
       }
 
@@ -6839,12 +6862,12 @@ export function createWeb(options: WebOptions): WebApp {
         try {
           activityId = decodeURIComponent(url.pathname.slice("/activity/".length));
         } catch {
-          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
+          sendHtml(request, response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const activity = options.store.getActivity(user.userId, activityId);
         if (activity === undefined) {
-          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
+          sendHtml(request, response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const sessions = options.store.listSessions(user.userId, activity.day, activity.day);
@@ -6928,14 +6951,14 @@ export function createWeb(options: WebOptions): WebApp {
           <div class="activity-columns"><div class="activity-col">${workoutHtml}${metricsCard}${splitsHtml}</div><div class="activity-col">${workedCard}${zonesHtml}${lapsHtml}</div></div>
           <section class="card"><h2>${escapeHtml(tx.t("activity.askCoachTitle"))}</h2><p class="muted">${escapeHtml(tx.t("activity.askCoachProse"))}</p><div class="review-actions"><button type="button" class="coach-ask" data-coach-message="${escapeHtml(message)}" data-coach-intent="${escapeHtml(JSON.stringify({ kind: "review-activity", activityId: activity.activityId, source: "activity-detail" }))}">${escapeHtml(tx.t("activity.askCoach"))}</button><a class="chip" href="/day/${escapeHtml(activity.day)}">${escapeHtml(tx.t("activity.viewDay"))}</a><a class="chip" href="/calendar?month=${escapeHtml(activity.day.slice(0, 7))}">${escapeHtml(tx.t("activity.viewPlan"))}</a></div></section>
           ${otherSessions}`;
-        sendHtml(response, 200, pageLayout(tx.t("activity.title"), body, user, "history", flash));
+        sendHtml(request, response, 200, pageLayout(tx.t("activity.title"), body, user, "history", flash));
         return;
       }
 
       if (url.pathname.startsWith("/day/")) {
         const day = url.pathname.slice("/day/".length);
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
-          sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
+          sendHtml(request, response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
         const sessions = options.store.listSessions(user.userId, day, day);
@@ -6973,7 +6996,7 @@ export function createWeb(options: WebOptions): WebApp {
             if (location.hash === '#log-run') log.open = true;
           })();
           </script>`;
-        sendHtml(response, 200, pageLayout(formatDayLabel(day, tx.date), body, user, "calendar", flash));
+        sendHtml(request, response, 200, pageLayout(formatDayLabel(day, tx.date), body, user, "calendar", flash));
         return;
       }
 
@@ -7134,14 +7157,14 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
 
-      sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
+      sendHtml(request, response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
     })().catch((error: unknown) => {
       // The failure is logged for the operator; the runner gets a stable page, never an internal message.
       requestLog.error("http.failed", {
         message: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? (error.stack ?? "") : "",
       });
-      if (!response.headersSent) sendHtml(response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(defaultTranslator.t("error.serverErrorBody"))}</p>`, requestUser, "none", unreadFor(requestUser)));
+      if (!response.headersSent) sendHtml(request, response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(defaultTranslator.t("error.serverErrorBody"))}</p>`, requestUser, "none", unreadFor(requestUser)));
       else response.end();
     });
   });

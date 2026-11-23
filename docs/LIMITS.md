@@ -79,7 +79,7 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Sign-in failures | 10 per client+route+username per 15 min | `(src/rate-limit.ts · createRateLimiter)` | In-process; a proxy makes every runner share one client address |
 | Coach turns | 40 per runner per 5 min | `(src/rate-limit.ts · createRateLimiter)` | |
 | Coach turn lease | 10 minutes | `(src/gateway.ts · TURN_LEASE_MS)` | An `in_progress` turn older than the lease is reclaimed on replay; the 120 s upstream abort makes a live turn that slow impossible |
-| Static asset | 11 MB anatomy GLB, no compression | `(src/web.ts · sendAsset)` | ETag revalidation; first load is 11 MB |
+| Static asset | 11 MB anatomy GLB, no compression | `(src/web.ts · sendAsset)` | ETag revalidation; first load is 11 MB. Text assets and HTML are gzipped (CSS 124 KB → 23 KB, login 31 KB → 8.7 KB); the GLB is already a compressed container, so gzipping it costs CPU for a few percent |
 | Horizontal scaling | none | — | Needs a shared session store, a migration to Postgres, and a real job runner |
 | Locales | English, Traditional Chinese (Hong Kong) | `(src/i18n.ts · LOCALES)` | |
 

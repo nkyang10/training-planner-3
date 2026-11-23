@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img alt="Tests: 680 passing" src="https://img.shields.io/badge/tests-680%20passing-1f7a4d">
+  <img alt="Tests: 688 passing" src="https://img.shields.io/badge/tests-688%20passing-1f7a4d">
   <img alt="Typecheck: passing" src="https://img.shields.io/badge/typecheck-passing-1f7a4d">
   <img alt="Docs gate: passing" src="https://img.shields.io/badge/docs%20gate-passing-1f7a4d">
   <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933?logo=node.js&amp;logoColor=white">
@@ -209,14 +209,14 @@ stylesheet version read from `APP_CSS_VERSION` in `src/web.ts`. Full runbook, ba
 
 | Gate | State |
 |---|---|
-| Tests | 680 passing in 26 files (`pnpm test`) |
+| Tests | 688 passing in 27 files (`pnpm test`) |
 | Restore drill | `pnpm restore-drill` restores the newest backup and proves it boots |
 | Smoke | `pnpm smoke` against a running instance (health, CSP, cookie flags, signup, gated pages, coach, erasure) |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | Docs gate | pass (`pnpm docs:check`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Linux and Windows, Node 24 |
-| Release | **1.8.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
+| Release | **1.9.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
 
 ## License
 

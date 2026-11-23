@@ -124,7 +124,7 @@ client scripts, and the route dispatcher. Splitting it is the top structural fol
 | Art plates (webp) | `/static/*.webp` | `public, max-age=86400` + ETag |
 
 All assets are read into memory once at startup and served with a startup-computed ETag, so a revalidating request costs
-a `304` and no bytes. There is no compression and no CDN; both are recorded as follow-ups.
+a `304` and no bytes. Textual responses (HTML, CSS, JS, JSON) are gzipped when the client accepts it, with the encoding folded into the ETag (`(src/compress.ts · encodeBody)`); images and the GLB stay uncompressed. There is still no CDN.
 
 ## 8. Architectural decisions
 

@@ -14,6 +14,26 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.9.0] — 2026-11-23
+
+Compression on the wire, measured rather than assumed.
+
+### Added
+
+- **gzip for textual responses.** HTML, CSS, JavaScript, JSON and SVG are compressed when the client sends
+  `accept-encoding: gzip`; images and the anatomy GLB are not, because they are already compressed containers
+  (`(src/compress.ts · encodeBody)`). Measured on a scratch instance: `/static/app.css` 123,857 → 23,342 bytes
+  (−81.2 %), `/login` 30,908 → 8,681 bytes (−71.9 %).
+
+### Changed
+
+- **The ETag carries the variant.** A compressed response answers `vary: accept-encoding` and an ETag with `-gzip`
+  inside the quotes, so a revalidating client gets `304` only for the encoding it actually holds. The CSP is still
+  computed from the uncompressed markup, so every inline-script hash keeps matching after the browser decompresses.
+- Static assets are compressed once and cached under their validator; a rendered page is compressed per response, which
+  costs a millisecond or two on a page that spends far longer in SQLite.
+
+
 ## [1.8.0] — 2026-11-23
 
 Backups that are proven, coverage that has a floor, and the repo hygiene the audit asked for.
