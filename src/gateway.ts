@@ -83,6 +83,8 @@ export interface GatewayOptions {
    * Unset in unit tests that drive the gateway directly.
    */
   internalToken?: string;
+  /** Per-call model abort in milliseconds; defaults to 120 s. Lower it when an edge proxy cuts earlier. */
+  modelTimeoutMs?: number;
   /** Structured event log; defaults to silent so a test never writes to stdout. */
   logger?: Logger;
 }
@@ -281,7 +283,7 @@ function parseToolCall(raw: unknown): ModelToolCall | undefined {
 async function callModel(options: GatewayOptions, messages: Array<Record<string, unknown>>): Promise<ModelReply> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
+  const timer = setTimeout(() => controller.abort(), options.modelTimeoutMs ?? 120_000);
   try {
     const response = await fetchImpl(`${options.modelBaseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",

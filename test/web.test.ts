@@ -56,6 +56,7 @@ interface StartOptions {
   cookieSecure?: boolean;
   logger?: Logger;
   trustProxy?: boolean;
+  proxyTimeoutMs?: number;
   seed?: (store: Store, user: AuthUser) => void;
 }
 
@@ -218,6 +219,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     ...(options.cookieSecure === undefined ? {} : { cookieSecure: options.cookieSecure }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
+    ...(options.proxyTimeoutMs === undefined ? {} : { proxyTimeoutMs: options.proxyTimeoutMs }),
     ...(options.garmin === undefined ? {} : { garmin: options.garmin }),
     ...(options.garminFactory === undefined ? {} : { garminFactory: options.garminFactory }),
     ...(options.autoSyncMinutes === undefined ? {} : { autoSyncMinutes: options.autoSyncMinutes }),
@@ -4979,6 +4981,29 @@ describe("production hardening", () => {
       });
       // 45 rejected bodies is past the 40-turn limit; only model-bound turns may consume it.
       expect(response.status).toBe(400);
+    }
+  });
+
+  it("answers 504 itself when the gateway outlasts the proxy budget", async () => {
+    // A gateway that accepts the connection and never answers: only the proxy budget can end this request.
+    const silent = createServer(() => undefined);
+    await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
+    const address = silent.address();
+    const port = typeof address === "object" && address !== null ? address.port : 0;
+    try {
+      const { base, cookie } = await start({ gatewayUrl: `http://127.0.0.1:${port}`, proxyTimeoutMs: 150 });
+      const startedAt = Date.now();
+      const response = await fetch(`${base}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ message: "how did my week go?" }),
+      });
+      const elapsed = Date.now() - startedAt;
+      expect(response.status).toBe(504);
+      expect(elapsed).toBeLessThan(3000);
+    } finally {
+      silent.closeAllConnections();
+      await new Promise<void>((resolve) => silent.close(() => resolve()));
     }
   });
 

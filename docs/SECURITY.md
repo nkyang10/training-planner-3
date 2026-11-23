@@ -78,6 +78,11 @@ KMS and is tracked in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md).
 
 ## 6. Transport and hosting
 
+**Public exposure path.** The first public URL is a Cloudflare Tunnel: the app binds `127.0.0.1`, `cloudflared` dials
+out, and Cloudflare terminates TLS. `MILEBOOK_COOKIE_SECURE=true` keeps the session cookie off plaintext and
+`MILEBOOK_TRUST_PROXY=true` keeps throttling keyed on the viewer rather than the tunnel. Open signup is an accepted risk
+with its revisit trigger in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) §4.
+
 - **TLS is not implemented in the app** (**open**). The web surface binds `0.0.0.0` in plain HTTP; production must put a
   TLS terminator in front of it and set `MILEBOOK_COOKIE_SECURE=true`.
 - The gateway binds `127.0.0.1`; it must never be exposed.

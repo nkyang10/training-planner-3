@@ -12,7 +12,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [HTTP-API.md](HTTP-API.md) · [CO
 |---|---|---|---|
 | Browser → web | `POST /chat` | `{ message, intent? }` plus `x-milebook-request-id` | 400 message not 1..1000 chars, 400 bad intent, 404 activity not found, 502/504 upstream |
 | Web → gateway | `POST /v1/chat/completions` | `x-milebook-user`, `x-milebook-internal-token` when configured, `x-milebook-request-id`; body `{ model, stream:false, messages:[{role:"user",content}], milebook:{directive}? }` | 130 s abort → 504 `the coach did not answer in time`; other failure → 502 `the coach service is unavailable` |
-| Gateway → model | `POST {MILEBOOK_MODEL_BASE_URL}/chat/completions` | `temperature: 0.3`, `tools: [COACH_TOOL]`, `tool_choice: "auto"`, `parallel_tool_calls: false`, optional bearer `MILEBOOK_MODEL_API_KEY` | 120 s abort; non-2xx or empty message → 502 `model-failed` |
+| Gateway → model | `POST {MILEBOOK_MODEL_BASE_URL}/chat/completions` | `temperature: 0.3`, `tools: [COACH_TOOL]`, `tool_choice: "auto"`, `parallel_tool_calls: false`, optional bearer `MILEBOOK_MODEL_API_KEY` | 120 s abort by default (`MILEBOOK_MODEL_TIMEOUT_SECONDS`); non-2xx or empty message → 502 `model-failed` |
 | Gateway surfaces | `GET /health` (open), `GET /v1/models`, `POST /v1/chat/completions` | `x-milebook-internal-token` on everything except `/health` | 401 `unauthorized`, 404 `not-found` |
 
 - The web surface is the only client: it validates the typed intent, builds the hidden directive and proxies one user

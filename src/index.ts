@@ -70,6 +70,8 @@ function readPort(name: string, fallback: number): number {
 
 const gatewayPort = readPort("GATEWAY_PORT", 8090);
 const webPort = readPort("WEB_PORT", 8091);
+/** Bind address for the calendar surface; loopback when a tunnel is the only intended path in. */
+const webHost = readEnv("WEB_HOST") ?? "0.0.0.0";
 const databaseSpec = readEnv("DB") ?? "sqlite:data/milebook.sqlite";
 const userId = readEnv("DEFAULT_USER") ?? "system";
 const authSecret = requireEnv("AUTH_SECRET", "generate one with `node -e \"console.log(require('node:crypto').randomBytes(32).toString('hex'))\"`");
@@ -78,6 +80,12 @@ if (authSecret.length < 32) {
 }
 const modelBaseUrl = requireEnv("MODEL_BASE_URL", "the OpenAI-compatible base URL, e.g. http://127.0.0.1:8102/v1");
 const modelName = requireEnv("MODEL_NAME", "the model id to request, e.g. dgx/general");
+/** Per-call model abort, in seconds. Lower it when an edge proxy cuts the response earlier. */
+const modelTimeoutValue = Number(readEnv("MODEL_TIMEOUT_SECONDS") ?? "120");
+const modelTimeoutMs = Number.isFinite(modelTimeoutValue) ? Math.max(1, Math.floor(modelTimeoutValue)) * 1000 : 120_000;
+/** How long the web surface waits for the gateway, in seconds; keep it under any edge timeout. */
+const proxyTimeoutValue = Number(readEnv("PROXY_TIMEOUT_SECONDS") ?? "130");
+const proxyTimeoutMs = Number.isFinite(proxyTimeoutValue) ? Math.max(1, Math.floor(proxyTimeoutValue)) * 1000 : 130_000;
 const maxAttemptsValue = Number(readEnv("MAX_ATTEMPTS") ?? "2");
 const maxAttempts = Number.isFinite(maxAttemptsValue) ? Math.max(1, Math.floor(maxAttemptsValue)) : 2;
 /**
@@ -126,6 +134,7 @@ const gateway = createGateway({
   maxAttempts,
   autoStates,
   internalToken,
+  modelTimeoutMs,
   logger: log.child({ component: "gateway" }),
 });
 
@@ -138,6 +147,7 @@ const web = createWeb({
   autoStates,
   cookieSecure,
   trustProxy: readBoolean("TRUST_PROXY", false),
+  proxyTimeoutMs,
   logger: log.child({ component: "web" }),
 });
 
@@ -145,9 +155,9 @@ gateway.server.listen(gatewayPort, "127.0.0.1", () => {
   console.log(`milebook gateway: listening on 127.0.0.1:${gatewayPort} (model: ${modelName})`);
   log.info("boot", { component: "gateway", port: gatewayPort, model: modelName, logLevel: parseLogLevel(readEnv("LOG_LEVEL")) });
 });
-web.server.listen(webPort, "0.0.0.0", () => {
-  console.log(`milebook calendar: listening on 0.0.0.0:${webPort}`);
-  log.info("boot", { component: "web", port: webPort });
+web.server.listen(webPort, webHost, () => {
+  console.log(`milebook calendar: listening on ${webHost}:${webPort}`);
+  log.info("boot", { component: "web", host: webHost, port: webPort });
 });
 
 let shuttingDown = false;

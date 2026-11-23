@@ -28,13 +28,14 @@ One `node` process (`src/index.ts`) starts two `http` servers over one SQLite fi
 
 ## 2. Configuration reference
 
-Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Seventeen variables, all `MILEBOOK_*`.
+Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Twenty variables, all `MILEBOOK_*`.
 
 | Variable | Required | Default | Effect | Failure mode |
 |---|---|---|---|---|
 | `MILEBOOK_DB` | no | `sqlite:data/milebook.sqlite` | SQLite spec; only `sqlite:` is honored; parent directory created at boot | default is used; a non-`sqlite:` spec fails inside `createStore` |
 | `MILEBOOK_AUTH_SECRET` | **yes** | — | HMAC-SHA256 key signing `milebook_session` `(src/auth.ts · cookieFor)` | process exits; fewer than 32 chars also exits |
 | `MILEBOOK_WEB_PORT` | no | `8091` | calendar port | non-integer or outside 1–65535 → exits |
+| `MILEBOOK_WEB_HOST` | no | `0.0.0.0` | bind address for the calendar surface `(src/index.ts)` | set `127.0.0.1` when a tunnel is the only intended path in, so the LAN cannot bypass TLS |
 | `MILEBOOK_GATEWAY_PORT` | no | `8090` | gateway port | same validation |
 | `MILEBOOK_GATEWAY_URL` | no | `http://127.0.0.1:${GATEWAY_PORT}` | where the web surface sends `/chat` | wrong value → every coach turn 502 or 504 |
 | `MILEBOOK_MODEL_BASE_URL` | **yes** | — | OpenAI-compatible base; `/chat/completions` appended | process exits |
@@ -45,6 +46,8 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Seve
 | `MILEBOOK_GARMIN_KEY` | no | — | 32 bytes base64; seals Garmin API keys at rest and re-seals legacy plaintext rows on boot `(src/secrets.ts · parseSecretKey)` | invalid length → exits; unset → keys stay plaintext and the boot log warns |
 | `MILEBOOK_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` or `silent`; lines below it are dropped `(src/log.ts · parseLogLevel)` | an unknown value falls back to `info` rather than silencing the log |
 | `MILEBOOK_TRUST_PROXY` | no | `false` | `true` takes the last `X-Forwarded-For` hop your proxy appended as the throttle key, for a host behind a reverse proxy `(src/web.ts · clientKey)` | leave it off unless a proxy you control overwrites the header; otherwise a client could rotate its own budget |
+| `MILEBOOK_MODEL_TIMEOUT_SECONDS` | no | `120` | per-call model abort `(src/gateway.ts · callModel)` | lower it when an edge proxy cuts the response earlier |
+| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | no | `130` | how long the web proxy waits before answering its own `504` `(src/web.ts · createWeb)` | keep it above model timeout × attempts and below any edge timeout |
 | `MILEBOOK_AUTO_STATES` | no | `true` | deterministic coaching-state detection; `false` keeps manual/chat states | any value but `true`/`1` reads false |
 | `MILEBOOK_DEFAULT_USER` | no | `system` | identity for a gateway request with no `x-milebook-user` header | never fails; a headerless turn lands under an id with no account |
 | `MILEBOOK_INTERNAL_TOKEN` | no | random 32 bytes per start | shared web→gateway secret | a restart rotates it; set it only to pin the value |
@@ -119,7 +122,8 @@ node --import tsx src/index.ts
 **Parameters** (default): `-WebPort` (0 → 8093), `-GatewayPort` (0 → 8092), `-Database` ('' → env),
 `-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-GarminKeyFile` (`data/milebook-garmin.secret`), `-ModelBaseUrl` ('' → env),
 `-ModelName` ('' → env), `-MaxAttempts` (2, exported), `-TimeoutSeconds` (60), `-BackupKeep` (14), `-CookieSecure` (off),
-`-SkipBackup` (off), `-TrustProxy` (off, exports `MILEBOOK_TRUST_PROXY=true`).
+`-SkipBackup` (off), `-TrustProxy` (off, exports `MILEBOOK_TRUST_PROXY=true`), `-WebHost` ('' → `0.0.0.0`),
+`-ModelTimeoutSeconds` (120), `-ProxyTimeoutSeconds` (130).
 
 **Deploy log line** — appended, never rewritten, the only surviving deploy history:
 
@@ -218,7 +222,39 @@ Every request, coach turn and boot line is a **JSON object on one line** `(src/l
 `console.error` (which lands in `.err.log`) or a line in `src/index.ts`. No request id, no timing, no error counter, no
 rotation — and a failed coach turn prints nothing: it shows only as the HTTP response (502/504) and the SQLite turn row.
 
-## 9. Rollback
+## 9. Public access through Cloudflare Tunnel
+
+The host is not exposed: `cloudflared` dials out, and Cloudflare terminates TLS at its edge. This is the chosen path for
+the first public URL — it needs no port forward, no certificate on the host, and no inbound firewall rule.
+
+| Step | Command / setting | Why |
+|---|---|---|
+| 1. Install | `winget install --id Cloudflare.cloudflared` | the daemon runs beside Milebook |
+| 2. Temporary URL | `cloudflared tunnel --url http://127.0.0.1:8093` | prints `https://<random>.trycloudflare.com`; no account needed |
+| 3. Deploy | `pnpm deploy:live -- -WebHost 127.0.0.1 -CookieSecure -TrustProxy -ModelTimeoutSeconds 40 -ProxyTimeoutSeconds 95` | see the table below |
+| 4. Verify | open the printed URL, sign up, load the calendar, send one coach message | end-to-end through the edge |
+| 5. Stable hostname | `cloudflared tunnel create milebook`, ingress `hostname → http://127.0.0.1:8093`, `cloudflared tunnel run milebook` | needs a Cloudflare account and DNS for the domain |
+
+| Setting | Value | Why |
+|---|---|---|
+| `MILEBOOK_WEB_HOST` | `127.0.0.1` | the only way in is the tunnel; the LAN cannot bypass TLS on `:8093` |
+| `MILEBOOK_COOKIE_SECURE` | `true` | session cookies carry `Secure` and the app sends HSTS |
+| `MILEBOOK_TRUST_PROXY` | `true` | throttling keys on the last `X-Forwarded-For` hop, which is the viewer, not the tunnel |
+| `MILEBOOK_MODEL_TIMEOUT_SECONDS` | `40` | two attempts fit in 80 s, under the edge limit |
+| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | `95` | the app answers its own `504` before Cloudflare's **100 s** edge timeout turns it into a `524` |
+
+**What the runner sees when the model is slow.** With the two budgets above, the bubble receives the app's JSON
+`504` ("the coach did not answer in time") instead of a Cloudflare error page, and the turn row records the failure.
+
+**Edge limits to respect.** Cloudflare cuts a proxied response at 100 s; a full turn is `MODEL_TIMEOUT_SECONDS ×
+`MAX_ATTEMPTS` plus overhead. Raising either budget past that ceiling moves the failure from the app to the edge, where
+it is invisible to the logs.
+
+**Exposure.** The URL is public and `/signup` is open — that is an accepted risk with a revisit trigger in
+[PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) §4. Share the URL narrowly, watch the `http.request` log for
+unexpected signups, and add an invite gate before the audience widens.
+
+## 10. Rollback
 
 - **Code.** Read the last good line of `data/milebook-deploy.log`, `git checkout <commit>`, then `pnpm deploy:live` — the
   deploy backs up first, so a rollback is itself reversible. This checkout has no tags yet (`git tag --list` is empty); the
@@ -228,7 +264,7 @@ rotation — and a failed coach turn prints nothing: it shows only as the HTTP r
   process running but unverified — pid recorded, deploy-log line already appended — exit code 1, and 40-line log tails
   printed. Nothing rolls back automatically: fix and redeploy, or restore.
 
-## 10. Routine runbook
+## 11. Routine runbook
 
 | Task | How | Consequence / note |
 |---|---|---|
@@ -239,7 +275,7 @@ rotation — and a failed coach turn prints nothing: it shows only as the HTTP r
 | Prune backups | automatic on every backup run; manual: the §6 command | keeps the newest 14 by default; never delete the newest |
 | Check disk | `src/vendor/anatomy-muscles.glb` is 11 271 460 B (10.75 MiB), served from memory | pressure comes from the database, its `-wal` and `data/backups` (up to 14 × database size) |
 
-## 11. Incident playbook
+## 12. Incident playbook
 
 | Symptom | First checks | Likely cause | Action |
 |---|---|---|---|

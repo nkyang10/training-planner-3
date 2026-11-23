@@ -225,7 +225,7 @@ metadata. `(src/gateway.ts · streamChunk)`
 | 502 | `model-failed` | the upstream model call threw or was aborted |
 | 500 | `gateway-failed` | the handler failed before replying |
 
-**Upstream abort** — `callModel` aborts the model request after **120 s**; the abort surfaces as `502 model-failed`. `(src/gateway.ts · callModel)`
+**Upstream abort** — `callModel` aborts the model request after **120 s** by default (`MILEBOOK_MODEL_TIMEOUT_SECONDS`); the abort surfaces as `502 model-failed`. `(src/gateway.ts · callModel)`
 
 ## 5. Auth model
 
@@ -251,7 +251,7 @@ also slides the page session: `resolveSession` issues a fresh `milebooksid` when
 | 429 | 10 failed logins per 15 min per IP+username; 40 coach messages per 5 min per user (only turns that reach the model) | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
 | 500 | any uncaught handler error | HTML page; the message is `error.message` interpolated into the page (HTML-escaped), so internal text can reach the browser |
 | 502 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |
-| 504 | `/chat` when the proxy's 130 s budget expires | JSON `{error:{detail:"the coach did not answer in time"}}` |
+| 504 | `/chat` when the proxy's budget expires (default 130 s, `MILEBOOK_PROXY_TIMEOUT_SECONDS`) | JSON `{error:{detail:"the coach did not answer in time"}}` |
 
 A non-POST to `/chat`, `/sync`, `/garmin/key`, `/garmin/key/delete`, `/activities`, `/notifications/read`, `/calendar/data`, `/export.json`, `/export.ics` or `/muscle/attention.json` is not a 405 — it falls to the final 404. `(src/web.ts · createWeb)`
 

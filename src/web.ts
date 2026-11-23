@@ -136,6 +136,8 @@ export interface WebOptions {
   now?: () => string;
   /** Trust the first `X-Forwarded-For` entry for throttling; enable only behind a reverse proxy you control. */
   trustProxy?: boolean;
+  /** How long the proxy waits for the gateway before answering 504 itself; defaults to 130 s. */
+  proxyTimeoutMs?: number;
   /** Structured event log; defaults to silent so a test never writes to stdout. */
   logger?: Logger;
 }
@@ -6087,7 +6089,7 @@ export function createWeb(options: WebOptions): WebApp {
         // budget stays slightly above that so a slow-but-valid turn is not cut off, and a hung gateway cannot pin a
         // browser request indefinitely.
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 130_000);
+        const timer = setTimeout(() => controller.abort(), options.proxyTimeoutMs ?? 130_000);
         try {
           const upstream = await fetch(`${gatewayUrl}/v1/chat/completions`, {
             method: "POST",
