@@ -14,6 +14,31 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.8.0] — 2026-11-23
+
+Backups that are proven, coverage that has a floor, and the repo hygiene the audit asked for.
+
+### Added
+
+- **`pnpm restore-drill`** (`tools/restore-drill.ts`). Copies the newest backup to a scratch directory, opens it through
+  the same `createStore` path the app uses at boot — migrations and sealed-key handling included — then asserts
+  `PRAGMA integrity_check = ok`, that the file reports the current schema version, and that the app's tables answer.
+  Prints row counts and deletes the scratch copy; `--file` drills one backup, `--keep` leaves it. Against the live backup
+  set it reports integrity ok, schema 2, 7 users / 64 sessions / 106 activities.
+- **Coverage floors.** `pnpm test:coverage` measures `src/` only (the suite, tools and `src/vendor` are excluded) and
+  enforces statements 90, branches 78, functions 95, lines 90 — today it reads 94.9 / 84.9 / 98.9 / 94.9. CI runs it as
+  its own job and uploads the lcov report.
+- **Dependabot** (`.github/dependabot.yml`) opens grouped weekly PRs for npm and GitHub Actions, with `@types/node`
+  majors left alone because a Node jump is a separate decision.
+- **`CODEOWNERS`** (`.github/CODEOWNERS`) routes the files that carry the production contract: migrations, secrets, auth,
+  the store, the deploy script and the workflows.
+
+### Notes
+
+- PR-36 and PR-40 are closed. PR-38 is narrowed to what still hurts: the drill proves the backups restore, but no copy
+  leaves the host. PR-37 is narrowed to the missing CycloneDX SBOM per release.
+
+
 ## [1.7.1] — 2026-11-23
 
 A post-deploy smoke check, and the deploy trap that cost an outage during this session.

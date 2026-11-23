@@ -58,6 +58,8 @@ server-validated coach contract, and a green suite at that point.
 | PR-32 | **Medium** | The chat throttle counted every coach POST, including rejected ones, and never reset | The counter is incremented only after the body, intent and activity validate, so a malformed or unauthorised request cannot burn the budget; it stays a rate cap, not a failure counter (`(src/web.ts · chatLimiter)`) |
 | PR-33 | **Medium** | Behind a reverse proxy every runner shares one client address, so throttling collapses to one budget | `MILEBOOK_TRUST_PROXY=true` (deploy `-TrustProxy`) makes the throttle key the last `X-Forwarded-For` hop, so a client-rotated prefix cannot buy a fresh budget; a malformed header falls back to the socket, and the header is ignored unless the switch is on (`(src/web.ts · clientKey)`) |
 | PR-34 | **Medium** | The best-efforts copy said "last 90 days, up to 100 activities" while the code scans the selected period | The string now says the numbers come from the activities stored for the period being viewed, in both locales (`(src/i18n.ts · besteffort.scope)`) |
+| PR-36 | **Medium** | No coverage measurement or threshold in CI | `vitest --coverage` over `src/` only, with floors (statements 90, branches 78, functions 95, lines 90) enforced by `pnpm test:coverage` and its own CI job; the lcov report is uploaded as an artifact (`vitest.config.ts`) |
+| PR-40 | **Medium** | No `CODEOWNERS`, issue templates or release notes process | `.github/CODEOWNERS` routes the contract-bearing files, `.github/pull_request_template.md` asks for the gate and the docs, and `docs/RELEASE.md` is the release checklist (`(docs/RELEASE.md)`) |
 
 ## 2. Open blockers — must close before real users
 
@@ -72,11 +74,9 @@ server-validated coach contract, and a green suite at that point.
 |---|---|---|---|
 | PR-31 | `scryptSync` blocks the single event loop; the throttle is per-process and in-memory | Async `scrypt` on a worker, or a small connection pool with a shared limiter store | M |
 | PR-35 | No compression for HTML/CSS/JS; the 11 MB GLB is uncompressed | `gzip`/`brotli` for text assets, and consider Draco or gzip for the GLB | S-M |
-| PR-36 | No coverage measurement or threshold in CI | Add `@vitest/coverage-v8`, publish the report, set a floor near today's number | S |
-| PR-37 | CI runs `pnpm audit` on every push (the dependency-audit job); there is still no SBOM per release and no automated dependency updates | Add a CycloneDX SBOM to the release job and Dependabot/Renovate | S |
-| PR-38 | Backups live on the same host and no restore drill exists | Copy backups off-host (or to a second disk), and run a monthly restore drill into a scratch file | S |
+| PR-37 | CI runs `pnpm audit` on every push and Dependabot opens grouped weekly updates (`.github/dependabot.yml`); a CycloneDX SBOM per release is still missing | Generate the SBOM in the release job and attach it to the tag | S |
+| PR-38 | Backups live on the same host; the automated restore drill now proves they restore (`pnpm restore-drill`), but no copy leaves the machine | Copy the newest backup to a second disk or an off-host share after each deploy, and keep the monthly rehearsal in `docs/OPERATIONS.md` §6 | S |
 | PR-39 | Deploy stops the process before starting the new one: a failed start leaves the site down | Blue/green on a second port behind the proxy, or start-then-swap with a health gate | M |
-| PR-40 | No `CODEOWNERS`, issue templates or release notes process | Add `CODEOWNERS`, issue forms, and a release checklist (see [RELEASE.md](RELEASE.md)) | S |
 
 ## 4. Accepted risks (deliberate, with an owner)
 

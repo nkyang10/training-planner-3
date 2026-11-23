@@ -1,0 +1,16 @@
+# Review ownership for the files that carry the production contract. A single-owner project, so this is a routing
+# record rather than a gate: it says who must read a change before it reaches `main`.
+* @nkyang10
+
+# The data layer and the security posture change rarely and cost the most when wrong.
+/docs/PRODUCTION-READINESS.md @nkyang10
+/docs/SECURITY.md @nkyang10
+/docs/DATA-MODEL.md @nkyang10
+/src/migrations.ts @nkyang10
+/src/secrets.ts @nkyang10
+/src/auth.ts @nkyang10
+/src/store.ts @nkyang10
+
+# The release mechanics: a change here can take the site down without touching a page.
+/tools/deploy.ps1 @nkyang10
+/.github/workflows/ @nkyang10

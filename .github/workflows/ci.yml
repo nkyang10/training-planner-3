@@ -35,6 +35,30 @@ jobs:
       - name: Gate (lint, typecheck, docs, tests)
         run: pnpm check
 
+  coverage:
+    name: coverage floor
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The thresholds in vitest.config.ts are the gate; the lcov report is kept for inspection.
+      - name: Coverage (src only, floors enforced)
+        run: pnpm test:coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest

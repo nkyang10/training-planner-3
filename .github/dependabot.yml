@@ -1,0 +1,32 @@
+version: 2
+
+# Dependency updates land as pull requests, which the CI gate then proves. Grouped so one PR carries a week of patch
+# bumps instead of a dozen; major versions stay separate on purpose, because a major is a decision, not a chore.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: Asia/Hong_Kong
+    open-pull-requests-limit: 5
+    groups:
+      patch-and-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      # Node's built-in sqlite is part of the runtime, not a dependency; a major Node jump is a separate decision.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "02:00"
+      timezone: Asia/Hong_Kong
+    groups:
+      actions:
+        patterns: ["*"]
