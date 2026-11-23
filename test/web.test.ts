@@ -493,18 +493,28 @@ describe("authentication pages", () => {
         timezone: "Europe/Berlin",
         goal: "10K plan",
         password: "new-password-456",
+        currentPassword: PASSWORD,
       }),
       redirect: "manual",
     });
     expect(update.status).toBe(303);
     // The goal changed, so the redirect also flags the tell-the-coach offer.
     expect(update.headers.get("location")).toBe("/profile?saved=1&goal=1");
+    // A password change rotates the session version, so this response reissues the session cookie for this device.
+    const rotatedCookie = cookieFrom(update.headers.get("set-cookie") ?? "");
+    expect(rotatedCookie).toContain("milebook_session=");
+    expect(rotatedCookie).not.toBe(cookie);
     const stored = handle.store.getUser(user.userId);
     expect(stored?.displayName).toBe("Updated Runner");
     expect(stored?.timezone).toBe("Europe/Berlin");
     expect(stored?.goal).toBe("10K plan");
 
-    const updatedPage = await fetch(`${base}/profile?saved=1`, { headers: { cookie } });
+    // The pre-change cookie is dead: another device has to sign in again.
+    const stale = await fetch(`${base}/profile`, { headers: { cookie }, redirect: "manual" });
+    expect(stale.status).toBe(303);
+    expect(stale.headers.get("location")).toBe("/login");
+
+    const updatedPage = await fetch(`${base}/profile?saved=1`, { headers: { cookie: rotatedCookie } });
     const updatedHtml = await updatedPage.text();
     expect(updatedHtml).toContain("Profile saved.");
     expect(updatedHtml).toContain("Updated Runner");
@@ -524,6 +534,74 @@ describe("authentication pages", () => {
       redirect: "manual",
     });
     expect(newLogin.headers.get("location")).toBe("/calendar");
+  });
+
+  it("refuses a password change without the current password", async () => {
+    const { base, handle, user, cookie } = await start();
+    const before = handle.store.getUser(user.userId)?.passwordHash;
+
+    const missing = await fetch(`${base}/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ displayName: DISPLAY_NAME, timezone: "UTC", password: "new-password-456" }),
+      redirect: "manual",
+    });
+    expect(missing.headers.get("location")).toBe("/profile?error=invalid-current-password");
+
+    const wrong = await fetch(`${base}/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({
+        displayName: DISPLAY_NAME,
+        timezone: "UTC",
+        password: "new-password-456",
+        currentPassword: "not-the-password",
+      }),
+      redirect: "manual",
+    });
+    expect(wrong.headers.get("location")).toBe("/profile?error=invalid-current-password");
+
+    expect(handle.store.getUser(user.userId)?.passwordHash).toBe(before);
+    expect(handle.store.getUser(user.userId)?.tokenVersion ?? 0).toBe(0);
+    // The session still works: a failed password change is not a sign-out.
+    const page = await fetch(`${base}/profile?error=invalid-current-password`, { headers: { cookie } });
+    expect(page.status).toBe(200);
+    expect(await page.text()).toContain("Current password is incorrect.");
+  });
+
+  it("signs out every device and clears the session cookie", async () => {
+    const { base, handle, user, cookie } = await start();
+
+    const signedOut = await fetch(`${base}/profile/sign-out-everywhere`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      redirect: "manual",
+    });
+    expect(signedOut.status).toBe(303);
+    expect(signedOut.headers.get("location")).toBe("/login");
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(handle.store.getUser(user.userId)?.tokenVersion).toBe(1);
+
+    const after = await fetch(`${base}/profile`, { headers: { cookie }, redirect: "manual" });
+    expect(after.status).toBe(303);
+    expect(after.headers.get("location")).toBe("/login");
+  });
+
+  it("serves the third-party credits without a session", async () => {
+    const { base } = await start();
+    const response = await fetch(`${base}/credits`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    // The two licence statements must be visible to the end user, not merely present in the repository.
+    expect(html).toContain("BodyParts3D");
+    expect(html).toContain("CC Attribution 4.0 International");
+    expect(html).toContain("three.js");
+    expect(html).toContain("MIT License");
+    expect(html).toContain("THIRD-PARTY-NOTICES.md");
+    expect(html).not.toContain("milebooksid");
+
+    const login = await fetch(`${base}/login`);
+    expect(await login.text()).toContain('href="/credits"');
   });
 
   it("serves a no-content favicon so the console stays clean", async () => {

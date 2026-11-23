@@ -211,7 +211,7 @@ describe("profile", () => {
       goal: "10 km in eight weeks",
     });
 
-    expect(updated).toMatchObject({
+    expect(updated.user).toMatchObject({
       userId: signup.user.userId,
       username: "alice_99",
       displayName: "Alice Liddell",
@@ -219,12 +219,12 @@ describe("profile", () => {
       goal: "10 km in eight weeks",
       createdAt: signup.user.createdAt,
     });
-    expect(updated).not.toHaveProperty("passwordHash");
-    expect(auth.read(request(cookieFrom(signup.cookie)))).toEqual(updated);
+    expect(updated.user).not.toHaveProperty("passwordHash");
+    expect(auth.read(request(cookieFrom(signup.cookie)))).toEqual(updated.user);
     expect(store.getUser(signup.user.userId)?.displayName).toBe("Alice Liddell");
 
     const cleared = auth.updateProfile(signup.user.userId, { goal: null });
-    expect(cleared.goal).toBeNull();
+    expect(cleared.user.goal).toBeNull();
     expect(store.getUser(signup.user.userId)?.goal).toBeNull();
   });
 
@@ -239,8 +239,11 @@ describe("profile", () => {
     const signup = auth.signup(SIGNUP);
     const oldHash = store.getUser(signup.user.userId)?.passwordHash;
 
-    const updated = auth.updateProfile(signup.user.userId, { password: "new-password-456" });
-    expect(updated).not.toHaveProperty("passwordHash");
+    const updated = auth.updateProfile(signup.user.userId, {
+      password: "new-password-456",
+      currentPassword: SIGNUP.password,
+    });
+    expect(updated.user).not.toHaveProperty("passwordHash");
     expect(store.getUser(signup.user.userId)?.passwordHash).not.toBe(oldHash);
     expect(store.getUser(signup.user.userId)?.passwordHash).not.toContain("new-password-456");
 
@@ -250,7 +253,55 @@ describe("profile", () => {
     expect(rejected.code).toBe("invalid-credentials");
 
     const accepted = auth.login({ username: "alice_99", password: "new-password-456" });
-    expect(accepted.user).toEqual(updated);
+    expect(accepted.user).toEqual(updated.user);
+  });
+
+  it("demands the current password before changing it", () => {
+    const { auth, store } = start();
+    const signup = auth.signup(SIGNUP);
+    const before = store.getUser(signup.user.userId)?.passwordHash;
+
+    const missing = catchAuthError(() =>
+      auth.updateProfile(signup.user.userId, { password: "new-password-456" }),
+    );
+    const wrong = catchAuthError(() =>
+      auth.updateProfile(signup.user.userId, { password: "new-password-456", currentPassword: "not-it-000" }),
+    );
+
+    expect(missing.code).toBe("invalid-current-password");
+    expect(wrong.code).toBe("invalid-current-password");
+    expect(store.getUser(signup.user.userId)?.passwordHash).toBe(before);
+    expect(store.getUser(signup.user.userId)?.tokenVersion ?? 0).toBe(0);
+  });
+
+  it("rotates the session version on a password change, ending every other session", () => {
+    const { auth, store } = start();
+    const signup = auth.signup(SIGNUP);
+    const otherDevice = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
+
+    const changed = auth.updateProfile(signup.user.userId, {
+      password: "new-password-456",
+      currentPassword: SIGNUP.password,
+    });
+
+    expect(store.getUser(signup.user.userId)?.tokenVersion).toBe(1);
+    expect(auth.read(request(cookieFrom(signup.cookie)))).toBeUndefined();
+    expect(auth.read(request(cookieFrom(otherDevice.cookie)))).toBeUndefined();
+    expect(auth.read(request(cookieFrom(changed.cookie)))).toEqual(changed.user);
+  });
+
+  it("signs out every device without touching the password", () => {
+    const { auth, store } = start();
+    const signup = auth.signup(SIGNUP);
+    const before = store.getUser(signup.user.userId)?.passwordHash;
+
+    auth.signOutEverywhere(signup.user.userId);
+
+    expect(store.getUser(signup.user.userId)?.tokenVersion).toBe(1);
+    expect(store.getUser(signup.user.userId)?.passwordHash).toBe(before);
+    expect(auth.read(request(cookieFrom(signup.cookie)))).toBeUndefined();
+    const fresh = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
+    expect(auth.read(request(cookieFrom(fresh.cookie)))).toEqual(fresh.user);
   });
 });
 
@@ -309,10 +360,11 @@ describe("password hash exposure", () => {
     const update = auth.updateProfile(signup.user.userId, {
       displayName: "Alice Updated",
       password: "another-password-789",
+      currentPassword: SIGNUP.password,
     });
     const read = auth.read(request(cookieFrom(login.cookie)));
 
-    const returned: AuthUser[] = [signup.user, login.user, update];
+    const returned: AuthUser[] = [signup.user, login.user, update.user];
     if (read !== undefined) returned.push(read);
 
     const storedHash = store.getUser(signup.user.userId)?.passwordHash ?? "";

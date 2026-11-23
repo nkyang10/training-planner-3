@@ -80,13 +80,13 @@ BodyParts3D, (c) The Database Center for Life Science licensed under CC Attribut
 
 The two repo copies differ only in the copyright glyph — `(c)` in `THREE-LICENSE.txt`, `©` in the notices file — and the test pins the ASCII form, so an edit that changes either one is a licence edit, not a typo fix.
 
-**It is NOT visible to end users.** There is no credits or about page, no route serves `THREE-LICENSE.txt` or `THIRD-PARTY-NOTICES.md` `(src/web.ts · sendAsset)`, and the Muscle tab's last card, "Honest notes about this page", carries four medical/privacy statements and no attribution `(src/i18n.ts · muscle.safetyHeading)`, `(src/web-muscle.ts · safetySection)`. The running app therefore redistributes a CC BY 4.0 asset whose credit exists only in the source tree — a release blocker, not a polish item, tracked as PR-29 `(docs/PRODUCTION-READINESS.md · PR-29)`.
+**It is visible to end users now.** `/credits` is a public, server-rendered page that prints both required strings verbatim, names the source database, states the changes made and points at `THIRD-PARTY-NOTICES.md` `(src/web.ts · renderCredits)`. Every footer links it, including the sign-in page, so the credit is reachable before an account exists `(src/web.ts · renderFooter)`; `test/web.test.ts` fetches the page and asserts both strings, so a refactor cannot drop the credit silently.
 
-**What must change before release.**
-1. An in-app credits/about surface: `/credits` (server-rendered, works without JS) or a section on the profile page, printing the string verbatim, linking the licence and the source database, and stating the changes made. Linked from the footer and the profile page; it is the same fix PR-29 tracks.
-2. Serve the licence text, e.g. route `/static/THREE-LICENSE.txt`, so the licence travels with the asset it covers instead of only with the clone.
-3. A test that fetches the surface and asserts the string, so the credit cannot be dropped silently in a refactor.
-4. Both locales, like every other string `(src/i18n.ts)`.
+**What shipped.**
+1. A public `/credits` page, no JavaScript, both locales: the three.js MIT line and the BodyParts3D CC BY line verbatim, the source URL, the changes made, and a pointer to the notices file `(src/web.ts · renderCredits)`.
+2. A footer link on every page, sign-in included, so the attribution does not require an account `(src/web.ts · renderFooter)`.
+3. A test that fetches `/credits` without a session and asserts both strings `(test/web.test.ts)`; it fails if either credit line is edited away.
+4. The credit lines are deliberately not translated: an attribution that changes with the interface language is no longer an attribution. Only the labels around them are localized `(src/i18n.ts · credits.heading)`.
 
 **Blender → GLB pipeline.** The scripts and the curated mapping are committed under `tools/anatomy/`: `build-region-map.mjs` (FMA → catalog region), `extract-muscle-view.mjs` (region map → extraction manifest), `materialize-muscle-view.mjs` (manifest names → OBJ files), `build-muscle-view.py` (Blender: decimate, one `RegionMuscle-<region>` material per region, bones under `AnatomyBone`, 4.7-unit scale, export GLB), `build-anatomy-probe.py` (the exploratory probe build) and `inspect-glb.mjs` (node/material assertions). `data/region-map.json` and `data/muscleview-manifest.json` ship with them, so the curation is reviewable and the generators reproduce it byte-for-byte. A rebuild still needs Blender 5.2 with the Khronos glTF exporter — the shipped file's `asset.generator` reads `Khronos glTF Blender I/O v5.2.41` `(src/vendor/anatomy-muscles.glb)` — and the BodyParts3D 4.0 mesh download, which is not redistributed here; `tools/anatomy/README.md` records every step and that boundary.
 
@@ -123,17 +123,17 @@ All six are decorative: empty `alt`, `aria-hidden` parents, hidden in forced col
 5. A statement that no fonts, icon sets or stock imagery are included.
 6. No endorsement implication and no warranty from the upstream authors.
 
-The file existing is not the same as satisfying the duty: nothing serves it and no page links it, so a recipient of the running app still cannot read it (§3, PR-29). `pnpm check` now also runs `node tools/docs-check.mjs` `(package.json)`, which rejects GBK round-trip markers and stray double question marks in prose, and requires the status header on every reference page — so a notices file damaged by a bad edit fails the gate instead of shipping quietly.
+The file existing is not the same as satisfying the duty, and as of 1.1.0 the duty is met by `/credits` rather than by the file: the page carries both notices in HTML, and the repo file keeps the full text. `pnpm check` also runs `node tools/docs-check.mjs` `(package.json)`, which rejects GBK round-trip markers and stray double question marks in prose and requires the status header on every reference page, so a notices file damaged by a bad edit fails the gate instead of shipping quietly.
 
 ## 6. Release checklist for assets
 
 | Check | State today | Gate |
 |---|---|---|
-| CC BY 4.0 attribution surface | missing — repo files and code comments only (§3) | **blocker** — PR-29 |
-| `THIRD-PARTY-NOTICES.md` at root | present 2026-11-22, but not served and not linked from any page | link it from the credits surface (PR-29) |
-| Licence text reachable at a URL | missing — neither `LICENSE` nor `THREE-LICENSE.txt` is routed | **blocker** |
+| CC BY 4.0 attribution surface | **present** - `/credits` prints the string verbatim and every footer links it `(src/web.ts · renderCredits)` | `test/web.test.ts` asserts both credit strings |
+| `THIRD-PARTY-NOTICES.md` at root | present 2026-11-22; `/credits` states the licence, the source and the changes, and the file keeps the full text | linked from `/credits` |
+| Licence text reachable at a URL | **partial** - `/credits` renders both notices as HTML, but the raw licence files are still not routed | serve `/static/THREE-LICENSE.txt` when convenient; not a blocker |
 | Asset weight | 11.27 MB GLB is 91 % of the 11.78 MiB vendor tree, served uncompressed; parse measured ~0.3 s in a browser | accepted; PR-35 covers compression |
-| LFS decision | no `.gitattributes`, no filter attribute on the GLB, so it is a plain git blob | decide before the tag ([RELEASE.md](RELEASE.md)); converting later rewrites history |
+| LFS decision | `.gitattributes` exists (line-ending normalization only), so the GLB is a plain git blob | decide before the next tag ([RELEASE.md](RELEASE.md)); converting later rewrites history |
 | Checksums | no manifest, no drift test | add `tools/asset-checksums.json` + the test (§2.1), or PR-30's fixed-artifact record |
 | No unlicensed fonts or icons | system stacks only (`--font`, `--auth-font`, `--auth-display`), inline SVG, emoji glyphs; no `@font-face`, no CDN `(src/styles.ts)` | pass |
 | No remote asset URLs at runtime | none — every image and the GLB are same-origin reads `(src/web.ts · sendAsset)` | pass |

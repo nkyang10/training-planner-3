@@ -1028,6 +1028,10 @@ code { padding: 1px 4px; border-radius: 5px; background: var(--wash); font-famil
 .site-footer { border-top: 1px solid var(--line); background: rgba(255,255,255,.7); padding: 14px 20px; margin-top: auto; }
 .site-footer-inner { max-width: 1080px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .footer-tagline { font-size: 12px; color: var(--muted); }
+.footer-credits { font-size: 12px; color: var(--muted); text-decoration: none; border-bottom: 1px solid transparent; }
+.footer-credits:hover { color: var(--ink); border-bottom-color: var(--line); }
+.auth-foot { text-align: center; padding: 0 20px 24px; }
+.credit-line { font-weight: 600; }
 .lang-switch { display: flex; align-items: center; gap: 8px; }
 .lang-switch-label { font-size: 12px; color: var(--muted); }
 .lang-switch-label::before { content: "\\1F310 "; margin-right: 4px; }

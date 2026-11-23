@@ -17,7 +17,7 @@ Render order (`(src/web.ts · layout)`):
 | Page column | max 1080 px, `24px 18px 80px`, grows so the footer sits low | `main` |
 | Page head | one eyebrow, one `h1`, one muted line — never a stack of blocks | `.page-head`, `.eyebrow` |
 | Card | white surface, 1 px line, 20 px radius, 20 px padding, shadow, 18 px bottom gap | `.card` |
-| Footer | tagline + language switch, pushed down by `margin-top: auto` | `.site-footer` |
+| Footer | tagline + credits link + language switch, pushed down by `margin-top: auto` | `.site-footer`, `.footer-credits` |
 | Coach | `aside.coach-dock` after `</main>`; closed it has no box | `.coach-dock` |
 
 `body` is a flex column at `min-height: 100vh` (`.top`, `body`, src/styles.ts); `.app-shell` wraps `main` + dock so the coach can become a grid column without moving the page (`.app-shell`, src/styles.ts). `layout()` writes `data-site-name`, `data-locale`, `data-page-context`, `data-active-view`, `data-timezone` on `<body>`; client scripts read those attributes instead of receiving JSON (`(src/web.ts · layout)`).
@@ -32,7 +32,7 @@ The rendered skeleton — every page body slots into `<main>`, nothing else chan
     <main> flash banner + page body </main>
     <aside class="coach-dock"> #coach-bubble + #coach-panel </aside>
   </div>
-  <footer class="site-footer"> tagline + .lang-switch </footer>
+  <footer class="site-footer"> tagline + .footer-credits (/credits) + .lang-switch </footer>
   scripts: __I18N__, notifications, account menu, muscle badge, track
 ```
 
@@ -114,9 +114,9 @@ Reflow, dock only: `body.coach-open .app-shell` becomes `grid-template-columns: 
 
 **/changes** — `(src/web.ts · renderChangesPage)`: head, `.filter-bar` of `.filter-pill` links (`?filter=all|schedule|activity|muscle`, each with a `.filter-count`), one `.changes-summary` line, then the schedule card and `#activity-changes` / `#muscle-changes` sections built from `.event-list` / `.event-item`, plus `.changes-footnote`. Empty state is a single `.changes-empty-card`.
 
-**Auth** — `(src/web.ts · renderAuthPage)`: standalone document, no app bar and no site footer. `.auth-skip` is the first focusable element (→ `#username`); `.auth-shell` is a grid `minmax(0, 1.06fr) minmax(440px, .94fr)` with the sticky story panel (hero plate, floating object, `.auth-proof`) and the form panel `<main class="auth-panel" tabindex="-1">` containing `.auth-mode` links (`aria-current="page"`), `.auth-head`, a POST `.auth-form` (`novalidate`, `aria-describedby` pointing at the error banner), the `<details class="auth-goal-disclosure">` and `.auth-foot` with the language switch. At ≤980 px the story becomes a band and the panel a rounded sheet.
+**Auth** - `(src/web.ts · renderAuthPage)`: standalone document, no app bar and no site footer, but it does carry a centred `.auth-foot` credits link, because the attribution must be reachable before an account exists. `.auth-skip` is the first focusable element (→ `#username`); `.auth-shell` is a grid `minmax(0, 1.06fr) minmax(0, .94fr)` that stacks under 900 px.
 
-**Profile, audit and error pages** — the quiet pages that still use the shell: profile is a single `.card.narrow` (max 460 px, `8vh` top margin) with a `.stack` form; `(src/web-coach-states.ts · renderCoachAudit)` uses `<section class="page-head">` plus `.audit-summary` / `.audit-item` cards; error and 405/403/429 pages are `pageLayout(title, <p>…</p>, user, "none")` — a bare page head and one paragraph, no card and no tab strip.
+**Profile, audit and error pages** - the quiet pages that still use the shell: profile is a single `.card.narrow` (max 460 px, `8vh` top margin) with two `.stack` forms: the profile patch (display name, timezone, goal, new password, current password) and a ghost-button "sign out everywhere" form `(src/web.ts · renderProfile)`. The audit and error pages reuse the same card grammar `(src/web-coach-states.ts · renderCoachAudit)`.
 
 ## 5. Accessibility actually implemented
 

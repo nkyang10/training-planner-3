@@ -24,10 +24,17 @@ export interface UserProfile {
   /** Free-text training goal, or null when the runner has not written one yet. */
   goal: string | null;
   createdAt: string;
+  /**
+   * Session version. A cookie carries the version it was minted with; bumping this value invalidates every
+   * outstanding cookie for the account (password change, "sign out everywhere"). Absent means 0.
+   */
+  tokenVersion?: number;
 }
 
 /** The mutable part of a profile; the id, username and createdAt are immutable. */
-export type UserProfilePatch = Partial<Pick<UserProfile, "displayName" | "passwordHash" | "timezone" | "goal">>;
+export type UserProfilePatch = Partial<
+  Pick<UserProfile, "displayName" | "passwordHash" | "timezone" | "goal" | "tokenVersion">
+>;
 
 export interface Message {
   messageId: string;

@@ -963,6 +963,39 @@ describe("idempotent coach turns", () => {
     expect(response.status).toBe(409);
     expect(model.prompts).toHaveLength(0);
   });
+
+  it("reclaims a turn abandoned by a crash instead of refusing it forever", async () => {
+    const model = queueResponses();
+    model.responses.push(modelResponse(VALID));
+    const { handle, url } = await base(model.fetchImpl);
+    // The claim is two hours old: the process that wrote it never finished, so the lease has expired.
+    handle.store.claimCoachTurn({
+      requestId: "req-abandoned",
+      userId: USER,
+      createdAt: `${TODAY}T06:00:00.000Z`,
+      completedAt: null,
+      status: "in_progress",
+      attempts: 0,
+      validationCode: null,
+      outcome: null,
+      responseJson: null,
+      directiveHash: null,
+    });
+
+    const response = await post(url, {
+      model: "milebook-coach",
+      request_id: "req-abandoned",
+      messages: [{ role: "user", content: "Plan my week" }],
+    });
+
+    expect(response.status).toBe(200);
+    expect(model.prompts).toHaveLength(1);
+    expect(handle.store.getCoachTurn(USER, "req-abandoned")).toMatchObject({
+      status: "completed",
+      attempts: 1,
+      outcome: "committed",
+    });
+  });
 });
 
 describe("hidden coach directives", () => {
