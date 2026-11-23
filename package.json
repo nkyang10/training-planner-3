@@ -1,6 +1,6 @@
 {
   "name": "milebook",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "private": true,
   "description": "Milebook ??a calendar-first AI coach for runners: the private calendar is the product, the coach bubble books and edits it.",
   "license": "SEE LICENSE IN LICENSE",
@@ -17,11 +17,13 @@
     "dev": "tsx src/index.ts",
     "start": "node --import tsx src/index.ts",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node tools/lint.mjs",
     "docs:check": "node tools/docs-check.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm docs:check && pnpm test",
     "backup": "node tools/backup-db.mjs data/milebook.sqlite data/backups 14",
+    "restore-drill": "node --import tsx tools/restore-drill.ts",
     "deploy:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1",
     "smoke": "node tools/smoke.mjs"
   },
@@ -30,6 +32,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@vitest/coverage-v8": "2.1.9",
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
   }

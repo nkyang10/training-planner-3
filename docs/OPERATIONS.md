@@ -177,10 +177,17 @@ Restoring is the only data rollback: migrations are forward-only, so rolling cod
 matching backup. Backups contain every secret in the database - password hashes and, when no at-rest key is configured, plaintext Garmin keys - so
 `data/backups` deserves the same care as the database `(docs/SECURITY.md)`.
 
-**Monthly drill (30–45 min).** Restore the newest backup into a scratch file and start it on spare ports with a throwaway
-secret (`MILEBOOK_WEB_PORT=18091`, `MILEBOOK_GATEWAY_PORT=18090`, `MILEBOOK_DB=sqlite:data/drill.sqlite`), then sign in, open
-a calendar month, send one coach turn, delete the scratch database. If that fails the backup policy is unproven; a full
-rehearsal on the live file uses the same steps inside a window.
+**Restore drill, automated.** `pnpm restore-drill` copies the newest backup to a scratch directory, opens it through
+the same `createStore` path the app uses at boot (so migrations and sealed-key handling run), then asserts
+`PRAGMA integrity_check = ok`, that the file reports the current schema version, and that the app's tables answer;
+it prints row counts and deletes the scratch copy. `--file <path>` drills one specific backup, `--keep` leaves the copy
+for inspection. Exit codes: `0` restored, `1` a check failed, `2` usage or no backup found. Run it monthly and before
+every release: a drill that fails means the backup set is not a backup set `(tools/restore-drill.ts)`.
+
+**Monthly rehearsal (30–45 min).** Beyond the drill, start the restored copy on spare ports with a throwaway secret
+(`MILEBOOK_WEB_PORT=18091`, `MILEBOOK_GATEWAY_PORT=18090`, `MILEBOOK_DB=sqlite:data/drill.sqlite`), sign in, open a
+calendar month, send one coach turn, then delete the scratch database. That proves the session cookies and the coach
+path survive a restore, which an integrity check cannot show.
 
 ## 7. Health and observability
 
