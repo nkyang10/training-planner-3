@@ -5398,7 +5398,7 @@ export function createWeb(options: WebOptions): WebApp {
             return;
           }
           try {
-            const result = options.auth.login({
+            const result = await options.auth.login({
               username: form.get("username") ?? "",
               password: form.get("password") ?? "",
             });
@@ -5435,7 +5435,7 @@ export function createWeb(options: WebOptions): WebApp {
             return;
           }
           try {
-            const result = options.auth.signup({
+            const result = await options.auth.signup({
               username: form.get("username") ?? "",
               displayName: form.get("displayName") ?? "",
               password: form.get("password") ?? "",
@@ -5518,7 +5518,7 @@ export function createWeb(options: WebOptions): WebApp {
             patch.currentPassword = form.get("currentPassword") ?? "";
           }
           try {
-            const result = options.auth.updateProfile(user.userId, patch);
+            const result = await options.auth.updateProfile(user.userId, patch);
             // The offer appears only when the goal actually changed to a new non-empty text, so it never nags.
             const goalChanged =
               form.has("goal") && (patch.goal ?? "").trim().length > 0 && (patch.goal ?? "").trim() !== (user.goal ?? "");
@@ -5553,7 +5553,7 @@ export function createWeb(options: WebOptions): WebApp {
           const currentPassword = form.get("currentPassword") ?? "";
           const confirmation = (form.get("confirm") ?? "").trim().toLowerCase();
           // Two independent gates: prove the credential, then prove intent by typing the username.
-          if (!options.auth.confirmPassword(user.userId, currentPassword)) {
+          if (!(await options.auth.confirmPassword(user.userId, currentPassword))) {
             redirect(response, "/profile?error=invalid-current-password");
             return;
           }

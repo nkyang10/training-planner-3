@@ -79,7 +79,7 @@ interface Harness {
 const start = async (): Promise<Harness> => {
   const handle = createStore(":memory:");
   const auth = createAuth({ store: handle.store, secret: SECRET, now: () => `${TODAY}T08:00:00.000Z` });
-  const signup = auth.signup({
+  const signup = await auth.signup({
     username: USERNAME,
     password: PASSWORD,
     displayName: DISPLAY_NAME,
@@ -89,7 +89,7 @@ const start = async (): Promise<Harness> => {
   const user = signup.user;
   seedSession(handle.store, user.userId, "session:tempo", TODAY, "Morning tempo", "tempo", 8);
   seedActivity(handle.store, user.userId, "garmin:today-1", TODAY, "Morning tempo", 8);
-  const login = auth.login({ username: USERNAME, password: PASSWORD });
+  const login = await auth.login({ username: USERNAME, password: PASSWORD });
   const web = createWeb({
     store: handle.store,
     auth,
@@ -441,14 +441,14 @@ describe("the muscle tab page", () => {
       ["soreness", "6"],
       ["conditions", "tight"],
     ]);
-    auth.signup({
+    await auth.signup({
       username: "other_runner",
       password: PASSWORD,
       displayName: "Other",
       timezone: "Asia/Hong_Kong",
       goal: null,
     });
-    const otherLogin = auth.login({ username: "other_runner", password: PASSWORD });
+    const otherLogin = await auth.login({ username: "other_runner", password: PASSWORD });
     const otherCookie = cookieFrom(otherLogin.cookie);
     const otherHtml = await (await fetch(`${base}/muscle`, { headers: { cookie: otherCookie } })).text();
     expect(otherHtml).toContain("No check-ins yet");
@@ -753,14 +753,14 @@ describe("the muscle status layer", () => {
   it("never leaks one runner's statuses to another", async () => {
     const { base, cookie, auth } = await start();
     await postCheckIn(base, cookie, [["day", TODAY], ["muscleIds", "calves"], ["soreness", "7"]]);
-    auth.signup({
+    await auth.signup({
       username: "status_other",
       password: PASSWORD,
       displayName: "Other",
       timezone: "Asia/Hong_Kong",
       goal: null,
     });
-    const otherCookie = cookieFrom(auth.login({ username: "status_other", password: PASSWORD }).cookie);
+    const otherCookie = cookieFrom((await auth.login({ username: "status_other", password: PASSWORD })).cookie);
     const feed = await attention(base, otherCookie);
     expect(feed.count).toBe(0);
     expect(feed.items).toHaveLength(0);

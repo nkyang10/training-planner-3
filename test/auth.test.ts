@@ -58,10 +58,11 @@ function request(cookie?: string): IncomingMessage {
   return { headers } as unknown as IncomingMessage;
 }
 
-function catchAuthError(action: () => void): AuthError {
+/** The auth surface is async now (scrypt runs on the thread pool), so the helper awaits the action it is given. */
+async function catchAuthError(action: () => Promise<unknown>): Promise<AuthError> {
   let caught: unknown;
   try {
-    action();
+    await action();
   } catch (error) {
     caught = error;
   }
@@ -99,9 +100,9 @@ const SIGNUP = {
 };
 
 describe("signup and login", () => {
-  it("creates a normalized account, hashes the password and restores the session", () => {
+  it("creates a normalized account, hashes the password and restores the session", async () => {
     const { auth, store } = start();
-    const signup = auth.signup({ ...SIGNUP, displayName: "  Alice Runner  " });
+    const signup = await auth.signup({ ...SIGNUP, displayName: "  Alice Runner  " });
 
     expect(signup.user).toMatchObject({
       username: "alice_99",
@@ -123,14 +124,14 @@ describe("signup and login", () => {
     expect(auth.read(request(cookieFrom(signup.cookie)))).toEqual(signup.user);
     expect(auth.read(request(cookieFrom(auth.setCookie(signup.user))))).toEqual(signup.user);
 
-    const login = auth.login({ username: "ALICE_99", password: SIGNUP.password });
+    const login = await auth.login({ username: "ALICE_99", password: SIGNUP.password });
     expect(login.user).toEqual(signup.user);
     expect(auth.read(request(cookieFrom(login.cookie)))).toEqual(signup.user);
   });
 
-  it("defaults the timezone to UTC when signup omits it", () => {
+  it("defaults the timezone to UTC when signup omits it", async () => {
     const { auth } = start();
-    const result = auth.signup({
+    const result = await auth.signup({
       username: "runner",
       password: "password123",
       displayName: "Runner",
@@ -139,24 +140,24 @@ describe("signup and login", () => {
     expect(result.user.goal).toBeNull();
   });
 
-  it("rejects a duplicate username regardless of case", () => {
+  it("rejects a duplicate username regardless of case", async () => {
     const { auth, store } = start();
-    auth.signup(SIGNUP);
+    await auth.signup(SIGNUP);
 
-    const error = catchAuthError(() => auth.signup({ ...SIGNUP, username: "ALICE_99" }));
+    const error = await catchAuthError(async () => await auth.signup({ ...SIGNUP, username: "ALICE_99" }));
     expect(error.code).toBe("username-taken");
     expect(store.getUserByUsername("alice_99")?.displayName).toBe(SIGNUP.displayName);
   });
 
-  it("rejects a wrong password with a generic credentials error", () => {
+  it("rejects a wrong password with a generic credentials error", async () => {
     const { auth } = start();
-    auth.signup(SIGNUP);
+    await auth.signup(SIGNUP);
 
-    const wrongPassword = catchAuthError(() =>
-      auth.login({ username: "alice_99", password: "wrong-password" }),
+    const wrongPassword = await catchAuthError(async () =>
+      await auth.login({ username: "alice_99", password: "wrong-password" }),
     );
-    const missingUser = catchAuthError(() =>
-      auth.login({ username: "nobody", password: SIGNUP.password }),
+    const missingUser = await catchAuthError(async () =>
+      await auth.login({ username: "nobody", password: SIGNUP.password }),
     );
 
     expect(wrongPassword.code).toBe("invalid-credentials");
@@ -164,9 +165,9 @@ describe("signup and login", () => {
     expect(wrongPassword.message).toBe(missingUser.message);
   });
 
-  it("rejects malformed, tampered and expired cookies", () => {
+  it("rejects malformed, tampered and expired cookies", async () => {
     const { auth, setNow } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
     const token = tokenFrom(signup.cookie);
 
     expect(auth.read(request(`${AUTH_COOKIE_NAME}=garbage`))).toBeUndefined();
@@ -182,9 +183,9 @@ describe("signup and login", () => {
     expect(auth.read(request(cookieFrom(signup.cookie)))).toBeUndefined();
   });
 
-  it("signs a payload with a thirty-day expiry and clears with Max-Age=0", () => {
+  it("signs a payload with a thirty-day expiry and clears with Max-Age=0", async () => {
     const { auth } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
     const payload = payloadOf(signup.cookie);
 
     expect(payload.userId).toBe(signup.user.userId);
@@ -201,11 +202,11 @@ describe("signup and login", () => {
 });
 
 describe("profile", () => {
-  it("updates the mutable profile fields and reads them back through the cookie", () => {
+  it("updates the mutable profile fields and reads them back through the cookie", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
 
-    const updated = auth.updateProfile(signup.user.userId, {
+    const updated = await auth.updateProfile(signup.user.userId, {
       displayName: "Alice Liddell",
       timezone: "Europe/Berlin",
       goal: "10 km in eight weeks",
@@ -223,23 +224,23 @@ describe("profile", () => {
     expect(auth.read(request(cookieFrom(signup.cookie)))).toEqual(updated.user);
     expect(store.getUser(signup.user.userId)?.displayName).toBe("Alice Liddell");
 
-    const cleared = auth.updateProfile(signup.user.userId, { goal: null });
+    const cleared = await auth.updateProfile(signup.user.userId, { goal: null });
     expect(cleared.user.goal).toBeNull();
     expect(store.getUser(signup.user.userId)?.goal).toBeNull();
   });
 
-  it("reports a missing profile as not-found", () => {
+  it("reports a missing profile as not-found", async () => {
     const { auth } = start();
-    const error = catchAuthError(() => auth.updateProfile("missing-user", { displayName: "Nobody" }));
+    const error = await catchAuthError(async () => await auth.updateProfile("missing-user", { displayName: "Nobody" }));
     expect(error.code).toBe("not-found");
   });
 
-  it("changes the password so the old password is rejected and the new one accepted", () => {
+  it("changes the password so the old password is rejected and the new one accepted", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
     const oldHash = store.getUser(signup.user.userId)?.passwordHash;
 
-    const updated = auth.updateProfile(signup.user.userId, {
+    const updated = await auth.updateProfile(signup.user.userId, {
       password: "new-password-456",
       currentPassword: SIGNUP.password,
     });
@@ -247,25 +248,25 @@ describe("profile", () => {
     expect(store.getUser(signup.user.userId)?.passwordHash).not.toBe(oldHash);
     expect(store.getUser(signup.user.userId)?.passwordHash).not.toContain("new-password-456");
 
-    const rejected = catchAuthError(() =>
-      auth.login({ username: "alice_99", password: SIGNUP.password }),
+    const rejected = await catchAuthError(async () =>
+      await auth.login({ username: "alice_99", password: SIGNUP.password }),
     );
     expect(rejected.code).toBe("invalid-credentials");
 
-    const accepted = auth.login({ username: "alice_99", password: "new-password-456" });
+    const accepted = await auth.login({ username: "alice_99", password: "new-password-456" });
     expect(accepted.user).toEqual(updated.user);
   });
 
-  it("demands the current password before changing it", () => {
+  it("demands the current password before changing it", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
     const before = store.getUser(signup.user.userId)?.passwordHash;
 
-    const missing = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { password: "new-password-456" }),
+    const missing = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { password: "new-password-456" }),
     );
-    const wrong = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { password: "new-password-456", currentPassword: "not-it-000" }),
+    const wrong = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { password: "new-password-456", currentPassword: "not-it-000" }),
     );
 
     expect(missing.code).toBe("invalid-current-password");
@@ -274,12 +275,12 @@ describe("profile", () => {
     expect(store.getUser(signup.user.userId)?.tokenVersion ?? 0).toBe(0);
   });
 
-  it("rotates the session version on a password change, ending every other session", () => {
+  it("rotates the session version on a password change, ending every other session", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
-    const otherDevice = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
+    const signup = await auth.signup(SIGNUP);
+    const otherDevice = await auth.login({ username: SIGNUP.username, password: SIGNUP.password });
 
-    const changed = auth.updateProfile(signup.user.userId, {
+    const changed = await auth.updateProfile(signup.user.userId, {
       password: "new-password-456",
       currentPassword: SIGNUP.password,
     });
@@ -290,9 +291,9 @@ describe("profile", () => {
     expect(auth.read(request(cookieFrom(changed.cookie)))).toEqual(changed.user);
   });
 
-  it("signs out every device without touching the password", () => {
+  it("signs out every device without touching the password", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
     const before = store.getUser(signup.user.userId)?.passwordHash;
 
     auth.signOutEverywhere(signup.user.userId);
@@ -300,23 +301,23 @@ describe("profile", () => {
     expect(store.getUser(signup.user.userId)?.tokenVersion).toBe(1);
     expect(store.getUser(signup.user.userId)?.passwordHash).toBe(before);
     expect(auth.read(request(cookieFrom(signup.cookie)))).toBeUndefined();
-    const fresh = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
+    const fresh = await auth.login({ username: SIGNUP.username, password: SIGNUP.password });
     expect(auth.read(request(cookieFrom(fresh.cookie)))).toEqual(fresh.user);
   });
 
-  it("confirms a password without exposing the hash", () => {
+  it("confirms a password without exposing the hash", async () => {
     const { auth } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
 
-    expect(auth.confirmPassword(signup.user.userId, SIGNUP.password)).toBe(true);
-    expect(auth.confirmPassword(signup.user.userId, "not-the-password")).toBe(false);
-    expect(auth.confirmPassword(signup.user.userId, "")).toBe(false);
-    expect(auth.confirmPassword("missing-user", SIGNUP.password)).toBe(false);
+    expect(await auth.confirmPassword(signup.user.userId, SIGNUP.password)).toBe(true);
+    expect(await auth.confirmPassword(signup.user.userId, "not-the-password")).toBe(false);
+    expect(await auth.confirmPassword(signup.user.userId, "")).toBe(false);
+    expect(await auth.confirmPassword("missing-user", SIGNUP.password)).toBe(false);
   });
 });
 
 describe("validation", () => {
-  it("rejects invalid signup fields with invalid-input", () => {
+  it("rejects invalid signup fields with invalid-input", async () => {
     const { auth } = start();
     const cases: Array<{ field: string; input: typeof SIGNUP }> = [
       { field: "username", input: { ...SIGNUP, username: "ab" } },
@@ -330,26 +331,26 @@ describe("validation", () => {
     ];
 
     for (const testCase of cases) {
-      const error = catchAuthError(() => auth.signup(testCase.input));
+      const error = await catchAuthError(async () => await auth.signup(testCase.input));
       expect(error.code).toBe("invalid-input");
     }
   });
 
-  it("rejects invalid profile changes without mutating the stored profile", () => {
+  it("rejects invalid profile changes without mutating the stored profile", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
+    const signup = await auth.signup(SIGNUP);
 
-    const badName = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { displayName: "x".repeat(61) }),
+    const badName = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { displayName: "x".repeat(61) }),
     );
-    const badTimezone = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { timezone: "not/a-zone" }),
+    const badTimezone = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { timezone: "not/a-zone" }),
     );
-    const badGoal = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { goal: "x".repeat(121) }),
+    const badGoal = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { goal: "x".repeat(121) }),
     );
-    const badPassword = catchAuthError(() =>
-      auth.updateProfile(signup.user.userId, { password: "short" }),
+    const badPassword = await catchAuthError(async () =>
+      await auth.updateProfile(signup.user.userId, { password: "short" }),
     );
 
     expect(badName.code).toBe("invalid-input");
@@ -363,11 +364,11 @@ describe("validation", () => {
 });
 
 describe("password hash exposure", () => {
-  it("never includes passwordHash in signup, login, read or update results", () => {
+  it("never includes passwordHash in signup, login, read or update results", async () => {
     const { auth, store } = start();
-    const signup = auth.signup(SIGNUP);
-    const login = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
-    const update = auth.updateProfile(signup.user.userId, {
+    const signup = await auth.signup(SIGNUP);
+    const login = await auth.login({ username: SIGNUP.username, password: SIGNUP.password });
+    const update = await auth.updateProfile(signup.user.userId, {
       displayName: "Alice Updated",
       password: "another-password-789",
       currentPassword: SIGNUP.password,

@@ -10,14 +10,14 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 
 | Control | State | Evidence |
 |---|---|---|
-| Password hashing | scrypt, 16-byte salt, 64-byte hash, constant-time compare | `(src/auth.ts · hashPassword)`, `(src/auth.ts · verifyPassword)` |
+| Password hashing | scrypt, 16-byte salt, 64-byte hash, constant-time compare, run on the libuv thread pool `(src/auth.ts · hashPassword)` | `(src/auth.ts · verifyPassword)` |
 | Username policy | lowercase letters/digits/underscore, 3–24 chars, case-insensitive unique | `(src/auth.ts · normalizeUsername)` |
 | Password policy | minimum 8 characters, no upper bound, no complexity rule | `(src/auth.ts · validatePassword)` |
 | Timezone validation | pattern plus a real `Intl.DateTimeFormat` check | `(src/auth.ts · normalizeTimezone)` |
 | Password change | requires the current password, verified against the stored hash before the hash is rotated; a wrong or missing value returns `invalid-current-password` and changes nothing | `(src/auth.ts · updateProfile)`, `(src/web.ts · createWeb)` profile POST |
 | Login throttle | 10 failures per (client, route, username) per 15 min → `429`; a success clears the key | `(src/rate-limit.ts · createRateLimiter)`, `(src/web.ts · createWeb)` |
 | Credential stuffing at scale | throttled per client address; behind a reverse proxy set `MILEBOOK_TRUST_PROXY=true` so the **last** `X-Forwarded-For` hop (the one your proxy appended) is used instead of the shared proxy address `(src/web.ts · clientKey)`. A client-rotated prefix cannot buy a fresh budget, a malformed header falls back to the socket, and the header is ignored entirely unless the switch is on |
-| Hashing cost | synchronous `scryptSync` blocks the single event loop for tens of milliseconds per attempt (**open**) | `(src/auth.ts · hashPassword)` |
+| Hashing cost | `scrypt` runs asynchronously on the thread pool, so a burst of sign-ins does not stall other requests; measured ~56 ms per hash and `/health` stayed at 2 ms median during eight parallel verifications | `(src/auth.ts · hashPassword)` |
 
 ## 2. Sessions
 

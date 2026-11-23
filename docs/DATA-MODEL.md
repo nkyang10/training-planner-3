@@ -227,7 +227,7 @@ Rules for the next step: never edit or renumber a shipped one; append the next v
 and add a test that opens a legacy file and asserts both the new shape and the preserved rows
 `(test/migrations.test.ts)`.
 
-**Secrets at rest.** Password hashes are scrypt strings. The Garmin API key is sealed with AES-256-GCM (fresh 96-bit
+**Secrets at rest.** Password hashes are scrypt strings, produced and verified asynchronously so a login burst does not block the server. The Garmin API key is sealed with AES-256-GCM (fresh 96-bit
 nonce per value, self-describing `enc:v1:` envelope) when the deployment sets `MILEBOOK_GARMIN_KEY`, and legacy plaintext
 rows are sealed during the first boot after the key appears `(src/secrets.ts · createSecretBox)`,
 `(src/store.ts · sealStoredGarminKeys)`. Without the variable the key stays plaintext and the boot log says so.
