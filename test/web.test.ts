@@ -604,6 +604,80 @@ describe("authentication pages", () => {
     expect(await login.text()).toContain('href="/credits"');
   });
 
+  it("serves the privacy statement and links it from the footer", async () => {
+    const { base } = await start();
+    const response = await fetch(`${base}/privacy`);
+    expect(response.status).toBe(200);
+    const html = await response.text();
+    expect(html).toContain("What is stored");
+    expect(html).toContain("Who else receives it");
+    expect(html).toContain("Garmin");
+    expect(html).toContain("180 days");
+    expect(html).toContain("all 19 tables");
+    expect(html).not.toContain("milebooksid");
+
+    const login = await fetch(`${base}/login`);
+    expect(await login.text()).toContain('href="/privacy"');
+  });
+
+  it("deletes the account only with the password and a typed username, and erases the data", async () => {
+    const { base, handle, user, cookie } = await start();
+    handle.store.appendMessage({
+      messageId: "msg-delete-me",
+      userId: user.userId,
+      role: "user",
+      text: "erase this",
+      createdAt: `${TODAY}T07:00:00.000Z`,
+    });
+
+    const noPassword = await fetch(`${base}/profile/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ confirm: USERNAME }),
+      redirect: "manual",
+    });
+    expect(noPassword.headers.get("location")).toBe("/profile?error=invalid-current-password");
+
+    const wrongConfirmation = await fetch(`${base}/profile/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ currentPassword: PASSWORD, confirm: "not-my-name" }),
+      redirect: "manual",
+    });
+    expect(wrongConfirmation.headers.get("location")).toBe("/profile?error=confirm-mismatch");
+    expect(handle.store.getUser(user.userId)).toBeDefined();
+    expect(handle.store.listMessages(user.userId)).toHaveLength(1);
+
+    const deleted = await fetch(`${base}/profile/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ currentPassword: PASSWORD, confirm: USERNAME }),
+      redirect: "manual",
+    });
+    expect(deleted.status).toBe(303);
+    expect(deleted.headers.get("location")).toBe("/goodbye");
+    expect(deleted.headers.get("set-cookie")).toContain("Max-Age=0");
+
+    expect(handle.store.getUser(user.userId)).toBeUndefined();
+    expect(handle.store.listMessages(user.userId)).toHaveLength(0);
+    expect(handle.store.getUserByUsername(USERNAME)).toBeUndefined();
+
+    // The old cookie is dead and the credentials no longer sign in.
+    const afterDelete = await fetch(`${base}/profile`, { headers: { cookie }, redirect: "manual" });
+    expect(afterDelete.headers.get("location")).toBe("/login");
+    const login = await fetch(`${base}/login`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: USERNAME, password: PASSWORD }),
+      redirect: "manual",
+    });
+    expect(login.headers.get("location")).toContain("/login?error=");
+
+    const goodbye = await fetch(`${base}/goodbye`);
+    expect(goodbye.status).toBe(200);
+    expect(await goodbye.text()).toContain("Your account is gone");
+  });
+
   it("serves a no-content favicon so the console stays clean", async () => {
     const { base } = await start();
     const response = await fetch(`${base}/favicon.ico`);

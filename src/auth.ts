@@ -106,6 +106,11 @@ export interface Auth {
   updateProfile(userId: string, patch: ProfileUpdate): AuthResult;
   /** Invalidates every outstanding cookie for the user, including the caller's. */
   signOutEverywhere(userId: string): void;
+  /**
+   * True when `password` matches the account's stored hash. Used to re-authenticate before irreversible actions
+   * (password change, account erasure) without exposing the hash itself.
+   */
+  confirmPassword(userId: string, password: string): boolean;
 }
 
 function invalid(message: string): AuthError {
@@ -383,5 +388,12 @@ export function createAuth(options: AuthOptions): Auth {
     store.updateUser(userId, { tokenVersion: (existing.tokenVersion ?? 0) + 1 });
   };
 
-  return { signup, login, read, setCookie, clearCookie, updateProfile, signOutEverywhere };
+  const confirmPassword = (userId: string, password: string): boolean => {
+    const existing = store.getUser(userId);
+    if (existing === undefined) return false;
+    if (typeof password !== "string" || password.length === 0) return false;
+    return verifyPassword(password, existing.passwordHash);
+  };
+
+  return { signup, login, read, setCookie, clearCookie, updateProfile, signOutEverywhere, confirmPassword };
 }

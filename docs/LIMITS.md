@@ -75,6 +75,7 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Body size | 200 KB web, 2 MB gateway | `(src/web.ts · readJsonBody)` | Larger bodies are rejected, not truncated |
 | Page sessions | 500 in memory, 24 h, lost on restart | `(src/web.ts · createWeb)` | Only gates the "sync on new session" decision |
 | Session revocation | immediate, all devices | `(src/auth.ts · signOutEverywhere)` | Bumps `tokenVersion`; there is no per-device list, so revocation is all-or-nothing |
+| Account erasure | immediate and complete, no restore | `(src/store.ts · deleteAccount)` | One transaction over all 19 tables; a host backup can still hold a copy until it is pruned (newest 14 kept) |
 | Sign-in failures | 10 per client+route+username per 15 min | `(src/rate-limit.ts · createRateLimiter)` | In-process; a proxy makes every runner share one client address |
 | Coach turns | 40 per runner per 5 min | `(src/rate-limit.ts · createRateLimiter)` | |
 | Coach turn lease | 10 minutes | `(src/gateway.ts · TURN_LEASE_MS)` | An `in_progress` turn older than the lease is reclaimed on replay; the 120 s upstream abort makes a live turn that slow impossible |
@@ -96,7 +97,6 @@ either in [ROADMAP.md](ROADMAP.md) or explicitly rejected there.
 | Garmin 90 days / 100 activities | Pagination support in the API; the client already caps per call |
 | Garmin future plan | A Garmin SSO web session, a terms review, and a scheduled-workout import path |
 | No streaming | Consume the gateway's existing SSE chunks in the bubble; keep the reply cap |
-| No account deletion | Tombstone + cascade across 19 tables in one transaction ([DATA-MODEL.md](DATA-MODEL.md)) |
 | No CSP | Extract the inline client scripts, then nonce or hash them ([PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) PR-23) |
 | Plaintext Garmin key | AES-256-GCM with a key from the environment, per-row nonce |
 

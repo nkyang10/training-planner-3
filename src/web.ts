@@ -2315,7 +2315,7 @@ function renderLanguageSwitch(tx: Translator, extraClass = ""): string {
  * sends the runner back to the page they were on.
  */
 function renderFooter(tx: Translator): string {
-  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span><a class="footer-credits" href="/credits">${escapeHtml(tx.t("footer.credits"))}</a>${renderLanguageSwitch(tx)}</div></footer>`;
+  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span><a class="footer-credits" href="/privacy">${escapeHtml(tx.t("footer.privacy"))}</a><a class="footer-credits" href="/credits">${escapeHtml(tx.t("footer.credits"))}</a>${renderLanguageSwitch(tx)}</div></footer>`;
 }
 
 /**
@@ -4256,6 +4256,8 @@ function authErrorText(code: string | undefined, fallbackKey: MessageKey, tx: Tr
       return tx.t("authErr.notFound");
     case "invalid-current-password":
       return tx.t("authErr.invalidCurrentPassword");
+    case "confirm-mismatch":
+      return tx.t("authErr.confirmMismatch");
     default:
       return tx.t(fallbackKey);
   }
@@ -4870,7 +4872,7 @@ function renderAuthPage(mode: "login" | "signup", title: string, error: string |
   <body class="auth-page" data-mode="${mode}" data-site-name="${E(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${context}" data-timezone="Asia/Hong_Kong">
     <a class="auth-skip" href="#username">${E(tx.t("auth.skip"))}</a>
     <div class="auth-shell">${renderAuthStory(tx)}${renderAuthPanel(mode, info, tx)}</div>
-    <footer class="auth-foot"><a class="footer-credits" href="/credits">${E(tx.t("footer.credits"))}</a></footer>
+    <footer class="auth-foot"><a class="footer-credits" href="/privacy">${E(tx.t("footer.privacy"))}</a> · <a class="footer-credits" href="/credits">${E(tx.t("footer.credits"))}</a></footer>
     ${clientI18nScript(tx)}${renderTrackScript()}${renderAuthScript()}
   </body></html>`;
 }
@@ -4910,6 +4912,13 @@ function renderProfile(user: AuthUser, saved: boolean, error: string | undefined
         <button class="btn ghost" type="submit">${escapeHtml(tx.t("profile.signOutEverywhere"))}</button>
         <p class="muted small">${escapeHtml(tx.t("profile.signOutEverywhereHint"))}</p>
       </form>
+      <h2>${escapeHtml(tx.t("profile.deleteHeading"))}</h2>
+      <p class="muted small">${escapeHtml(tx.t("profile.deleteHint"))}</p>
+      <form method="post" action="/profile/delete" class="stack">
+        <label for="deletePassword">${escapeHtml(tx.t("profile.currentPassword"))}</label><input id="deletePassword" name="currentPassword" type="password" required autocomplete="current-password">
+        <label for="deleteConfirm">${escapeHtml(tx.t("profile.deleteConfirmLabel", { username: user.username }))}</label><input id="deleteConfirm" name="confirm" required autocomplete="off">
+        <button class="btn ghost" type="submit">${escapeHtml(tx.t("profile.deleteSubmit"))}</button>
+      </form>
       <p class="muted small">${escapeHtml(tx.t("profile.memberSince", { date: user.createdAt.slice(0, 10) }))}</p>
       <p class="muted small"><a href="/muscle">${escapeHtml(tx.t("profile.muscleLink"))}</a> — ${escapeHtml(tx.t("profile.muscleHint"))}</p>
       <p class="muted small"><a href="/coach-states">${escapeHtml(tx.t("profile.coachStatesLink"))}</a> — ${escapeHtml(tx.t("profile.coachStatesHint"))}</p>
@@ -4948,6 +4957,39 @@ function renderCredits(tx: Translator): string {
       <p class="muted small">${escapeHtml(tx.t("credits.noticeFile"))}</p>
     </section>`;
   return layout(tx.t("credits.title"), body, undefined, "none", 0, "", tx);
+}
+
+/**
+ * The privacy statement. It is written against the schema, not against intentions: every section names what the store
+ * actually keeps (`src/types.ts` records), who else receives it (the configured model endpoint and Garmin), how long it
+ * lives (the pruning constants) and what deletion does (all 19 tables, irreversibly). If a fact here stops matching the
+ * code, the page is wrong, not the code.
+ */
+function renderPrivacy(tx: Translator): string {
+  const section = (heading: MessageKey, body: MessageKey): string =>
+    `<h2>${escapeHtml(tx.t(heading))}</h2>\n      <p>${escapeHtml(tx.t(body))}</p>`;
+  const body = `<section class="card narrow">
+      <h1>${escapeHtml(tx.t("privacy.heading"))}</h1>
+      <p class="muted">${escapeHtml(tx.t("privacy.intro"))}</p>
+      ${section("privacy.dataHeading", "privacy.dataBody")}
+      ${section("privacy.modelHeading", "privacy.modelBody")}
+      ${section("privacy.retentionHeading", "privacy.retentionBody")}
+      ${section("privacy.choicesHeading", "privacy.choicesBody")}
+      ${section("privacy.deleteHeading", "privacy.deleteBody")}
+      ${section("privacy.contactHeading", "privacy.contactBody")}
+      <p class="muted small">${escapeHtml(tx.t("privacy.updated"))}</p>
+    </section>`;
+  return layout(tx.t("privacy.title"), body, undefined, "none", 0, "", tx);
+}
+
+/** Confirmation after an erasure. Deliberately carries no account detail: the account no longer exists. */
+function renderGoodbye(tx: Translator): string {
+  const body = `<section class="card narrow">
+      <h1>${escapeHtml(tx.t("goodbye.heading"))}</h1>
+      <p>${escapeHtml(tx.t("goodbye.body"))}</p>
+      <p><a href="/signup">${escapeHtml(tx.t("goodbye.signup"))}</a></p>
+    </section>`;
+  return layout(tx.t("goodbye.title"), body, undefined, "none", 0, "", tx);
 }
 
 export function createWeb(options: WebOptions): WebApp {
@@ -5210,6 +5252,22 @@ export function createWeb(options: WebOptions): WebApp {
         sendHtml(response, 200, renderCredits(tx));
         return;
       }
+      if (url.pathname === "/privacy") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          return;
+        }
+        sendHtml(response, 200, renderPrivacy(tx));
+        return;
+      }
+      if (url.pathname === "/goodbye") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          return;
+        }
+        sendHtml(response, 200, renderGoodbye(tx));
+        return;
+      }
       if (url.pathname === "/favicon.ico") {
         response.writeHead(204);
         response.end();
@@ -5385,6 +5443,32 @@ export function createWeb(options: WebOptions): WebApp {
           const sessionId = parseCookies(request)[SESSION_COOKIE];
           if (sessionId !== undefined) sessions.delete(sessionId);
           redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
+          return;
+        }
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        return;
+      }
+
+      if (url.pathname === "/profile/delete") {
+        if (method === "POST") {
+          const form = await readForm(request);
+          const currentPassword = form.get("currentPassword") ?? "";
+          const confirmation = (form.get("confirm") ?? "").trim().toLowerCase();
+          // Two independent gates: prove the credential, then prove intent by typing the username.
+          if (!options.auth.confirmPassword(user.userId, currentPassword)) {
+            redirect(response, "/profile?error=invalid-current-password");
+            return;
+          }
+          if (confirmation !== user.username.toLowerCase()) {
+            redirect(response, "/profile?error=confirm-mismatch");
+            return;
+          }
+          options.store.deleteAccount(user.userId);
+          // Every in-memory page session for the account dies with it, so no tab keeps a stale identity.
+          for (const [sessionId, session] of sessions) {
+            if (session.userId === user.userId) sessions.delete(sessionId);
+          }
+          redirect(response, "/goodbye", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
         sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));

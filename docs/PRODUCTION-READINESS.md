@@ -50,13 +50,13 @@ server-validated coach contract, 645 tests.
 | PR-22 | **High** | A password change did not require the current password, so a stolen session escalated to a permanent takeover | The profile form asks for the current password whenever a new one is set; the hash is verified before rotation and a wrong or missing value returns `invalid-current-password` with nothing changed (`(src/auth.ts · updateProfile)`) |
 | PR-28 | **Medium** | A coach turn claimed as `in_progress` before a crash stayed that way, so a retry with the same request id got `409` forever | A 10-minute lease: an `in_progress` turn older than that is failed and reclaimed on replay (`(src/gateway.ts · TURN_LEASE_MS)`) |
 | PR-29 | **Medium** | BodyParts3D attribution (CC BY 4.0) was not visible to end users | Public `/credits` page prints both third-party notices verbatim, every footer links it including sign-in, and a test asserts both strings (`(src/web.ts · renderCredits)`) |
+| PR-20 | **Blocker** | No erasure path: no account deletion, no cascade, no retention for messages/turns | `POST /profile/delete` needs the current password plus the username typed exactly, then deletes all 18 user-scoped tables and the account row in one transaction and clears both cookies and the in-memory page sessions; `/privacy` states what is kept, who else receives it, how long it lives and what deletion does (`(src/store.ts · deleteAccount)`, `(src/web.ts · renderPrivacy)`) |
 
 ## 2. Open blockers — must close before real users
 
 | ID | Severity | Finding | Why it blocks | Remediation | Effort |
 |---|---|---|---|---|---|
 | PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; redirect 80→443; verify HSTS | S |
-| PR-20 | **Blocker** | No erasure path: no account deletion, no cascade, no retention for messages/turns | Health-adjacent personal data must be deletable; GDPR-style erasure is a legal expectation once real users exist | Add `POST /account/delete` (password re-entry + typed confirmation), cascade across all 19 tables in one transaction, keep an audit tombstone; add a privacy policy and a consent line at signup | M |
 | PR-23 | **High** | No Content-Security-Policy: ~3.2k lines of inline client JavaScript | XSS is mitigated only by escaping discipline | Extract client JS to static modules (see PR-27) and then serve a nonce-based or hash-based CSP; a nonce CSP alone is possible but touches every page render | M-L |
 | PR-24 | **High** | No observability: two startup log lines, a static `/health`, no metrics, no error reporting | You cannot see a production incident until a runner reports it | Structured JSON logs to a file with rotation; `/health` checks the DB with a trivial query; add uptime monitoring on `/health` and a 5xx alert; optional Sentry-style error sink | M |
 | PR-25 | **Medium** | Schema migrations are ad-hoc (`PRAGMA table_info` + rebuild), with no `user_version` and no ordered list | The first post-release schema change is a manual gamble on live data | Introduce `PRAGMA user_version` + an ordered migration array applied in one transaction at boot; test "old DB → current" | M |
@@ -84,7 +84,7 @@ server-validated coach contract, 645 tests.
 |---|---|---|
 | Garmin key plaintext (until PR-26) | Single-tenant host, database file permissions are the control | A second tenant or an off-host backup leaves the machine |
 | One process per database, no horizontal scaling | Traffic is small and the store is synchronous | Sustained concurrency above a few hundred requests/second |
-| Model provider receives coach prompts including health-adjacent text | The product is an LLM coach; there is no local model | A privacy policy is published (must be before real users) |
+| Model provider receives coach prompts including health-adjacent text | The product is an LLM coach; there is no local model | The `/privacy` page names the provider relationship and the deletion path; a second provider or a local model would change the page |
 | No admin console | Support can use the audit page per runner and the database directly | Support needs cross-runner views |
 | Two locales only | The audience is en / zh-HK | A third locale is requested |
 
@@ -95,7 +95,7 @@ Ship only when all of these are true:
 - [ ] `pnpm check` green (lint, typecheck, docs gate, tests).
 - [ ] TLS termination live, `MILEBOOK_COOKIE_SECURE=true`, HSTS observed on a real response.
 - [ ] `MILEBOOK_AUTH_SECRET` is a fresh 32-byte random value, stored outside the repo.
-- [ ] Account deletion and a privacy policy exist (PR-20), or the release is explicitly invite-only with a written
+- [x] Account deletion and a privacy policy exist (PR-20): `POST /profile/delete` and `/privacy`.
       data-handling note.
 - [x] Session revocation (PR-21) and current-password re-entry (PR-22) shipped.
 - [ ] A backup exists from today, and one restore has been proven into a scratch file.

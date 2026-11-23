@@ -22,12 +22,12 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 
 | Domain | File | Tests | Protects |
 |---|---|---|---|
-| web HTTP surface | `test/web.test.ts` | 135 | auth pages, private calendar, run/session peek, account menu, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
+| web HTTP surface | `test/web.test.ts` | 137 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
 | gateway contract | `test/gateway.test.ts` | 84 | completions, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5) |
 | coach prompt/parsing | `test/coach.test.ts` | 71 | turn parsing, reply-style contract (LL-1), prompt segment A, context snapshot B/C, turn suffix E, conversation assembly, prompt epoch (LL-3), silent profile updates (LL-5), suggestions, schedule actions, revert, state proposals, muscle-condition suggestions, extended race horizon |
 | coach prompt/parsing | `test/directives.test.ts` | 14 | coach intents, directives, muscle-review intents/directives, directive-hash stability |
-| store | `test/store.test.ts` | 56 | messages, memories, coach preferences, prompt snapshots, sessions, activities, activity workouts, sync state, Garmin keys, notifications, persistence, user isolation, session CRUD for coach actions, users, change sets, transactions, coach turn audit, muscle check-ins/proposals/status controls |
-| auth | `test/auth.test.ts` | 15 | signup and login, profile, validation, password-hash exposure, session versioning and revocation |
+| store | `test/store.test.ts` | 57 | messages, memories, account erasure across all 19 tables, coach preferences, prompt snapshots, sessions, activities, activity workouts, sync state, Garmin keys, notifications, persistence, user isolation, session CRUD for coach actions, users, change sets, transactions, coach turn audit, muscle check-ins/proposals/status controls |
+| auth | `test/auth.test.ts` | 16 | signup and login, profile, validation, password-hash exposure, session versioning and revocation |
 | coach states | `test/coach-states.test.ts` | 33 | catalog, deterministic detection, lifecycle, state proposals, guardrails |
 | muscles · domain | `test/muscles.test.ts` | 23 | catalog, check-in validation, interpretation rules, drill suggestions, muscles worked, coach prompt facts, condition catalog |
 | muscles · status | `test/muscle-status.test.ts` | 24 | day helpers, soreness decay curve, current statuses, shared status line, coach prompt facts |
@@ -46,7 +46,7 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 | calendar items | `test/calendar-items.test.ts` | 7 | calendar item rows |
 | rate limiting | `test/rate-limit.test.ts` | 5 | window arithmetic, block after the limit, reset on success, prune |
 
-**23 files, 645 tests.** `test/rate-limit.test.ts` exercises the limiter directly; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets (130 s web, 120 s gateway) are read from source rather than driven.
+**23 files, 649 tests.** `test/rate-limit.test.ts` exercises the limiter directly and `test/store.test.ts` audits an erasure table by table with a second connection; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets (130 s web, 120 s gateway) are read from source rather than driven.
 
 ## 3. Test conventions
 

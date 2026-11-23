@@ -462,6 +462,15 @@ export interface CoachTurnCompletion {
   responseJson: string;
 }
 
+/**
+ * What an account erasure removed. `tables` is keyed by table name; `users` is last, so a reader can see the account
+ * row went too. `total` is the sum, which is what a confirmation page reports.
+ */
+export interface ErasureReport {
+  readonly tables: Readonly<Record<string, number>>;
+  readonly total: number;
+}
+
 export interface Store {
   /** One account by id, or undefined when no such account exists. */
   getUser(userId: string): UserProfile | undefined;
@@ -592,5 +601,11 @@ export interface Store {
   pruneCoachStates(userId: string, before: string): void;
   /** Run a write batch atomically. The callback must not perform HTTP or model calls. */
   transaction<T>(work: () => T): T;
+  /**
+   * Erase one account and every row it owns in one transaction: all 18 user-scoped tables, then the account row.
+   * Idempotent for an unknown id (every count is zero). This is the erasure path behind the profile page; there is no
+   * soft-delete state to restore afterwards.
+   */
+  deleteAccount(userId: string): ErasureReport;
   close(): void;
 }

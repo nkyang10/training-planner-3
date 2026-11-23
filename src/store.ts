@@ -12,6 +12,7 @@ import type {
   CoachStateRecord,
   CoachTurnCompletion,
   CoachTurnRecord,
+  ErasureReport,
   GarminKey,
   Memory,
   Message,
@@ -431,6 +432,28 @@ function migrateCoachTurnsDirectiveHash(db: SqliteDatabase): void {
   if (columns.some((column) => column["name"] === "directive_hash")) return;
   db.exec("ALTER TABLE coach_turns ADD COLUMN directive_hash TEXT");
 }
+
+/** Every table keyed by `user_id`, in erasure order. `users` is handled separately and last. */
+const ERASURE_TABLES = [
+  "activity_workouts",
+  "activities",
+  "change_sets",
+  "coach_directives",
+  "coach_preferences",
+  "coach_state_events",
+  "coach_states",
+  "coach_turns",
+  "garmin_keys",
+  "memories",
+  "messages",
+  "muscle_checkins",
+  "muscle_proposals",
+  "muscle_status_controls",
+  "notifications",
+  "prompt_snapshots",
+  "sessions",
+  "sync_state",
+] as const;
 
 class SqliteStore implements Store {
   private readonly db: SqliteDatabase;
@@ -1133,6 +1156,27 @@ class SqliteStore implements Store {
       this.db.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  /**
+   * Every table that carries a `user_id`. Kept as one list so a new table cannot be added without either appearing
+   * here or failing the erasure test, which asserts each table is emptied.
+   */
+  deleteAccount(userId: string): ErasureReport {
+    return this.transaction(() => {
+      const tables: Record<string, number> = {};
+      let total = 0;
+      for (const table of ERASURE_TABLES) {
+        const removed = Number(this.db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId).changes);
+        tables[table] = removed;
+        total += removed;
+      }
+      // The account row goes last: if any table delete throws, the transaction rolls back and the account survives.
+      const account = Number(this.db.prepare("DELETE FROM users WHERE user_id = ?").run(userId).changes);
+      tables["users"] = account;
+      total += account;
+      return { tables, total };
+    });
   }
 
   close(): void {
