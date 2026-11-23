@@ -14,6 +14,7 @@ Milebook has no build step, so the suite is the only executable spec. This page 
 | `pnpm smoke` | `node tools/smoke.mjs` (tools/smoke.mjs) | a running instance, default `http://127.0.0.1:8093` | the process, its headers or its pages disagree with the source; a coach failure is a warning unless `--allow-coach-failure` is absent |
 | `pnpm test:coverage` | `vitest run --coverage` (vitest.config.ts) | `src/**/*.ts` only — the suite, the tools and `src/vendor` are excluded | the `coverage.thresholds` floors (statements 90, branches 78, functions 95, lines 90); CI runs this as its own job |
 | `pnpm restore-drill` | `node --import tsx tools/restore-drill.ts` (tools/restore-drill.ts) | the newest `data/backups/*.sqlite`, restored into a temp directory | the backup will not copy, will not migrate, fails `integrity_check`, or reports a schema version behind `MIGRATIONS` |
+| `pnpm sbom:cyclonedx` | `pnpm sbom --sbom-format cyclonedx --sbom-type application --sbom-spec-version 1.5 --out sbom.cdx.json` | the lockfile tree — every locked package, dev included | pnpm cannot read the lockfile, or the artifact is missing (the CI `sbom` job fails on that) |
 
 **Rule: never quote a test count in prose; run `pnpm check`.** Counts drift faster than docs: the HEAD commit message for the all-changes work says 627 tests, while `pnpm test` reported **626 tests in 22 files** on 2026-11-22 (~9 s wall, re-run twice; `pnpm typecheck` exit 0). A number copied into a doc, a PR body or a screenshot caption is stale by the next commit.
 

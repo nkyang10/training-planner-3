@@ -59,6 +59,29 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: ignore
 
+  sbom:
+    name: sbom
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12.16.1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # pnpm's own sbom command reads the lockfile; it lists every locked package, dev included.
+      - name: Generate CycloneDX SBOM
+        run: pnpm sbom --sbom-format cyclonedx --sbom-type application --sbom-spec-version 1.5 --out sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+          if-no-files-found: error
+
   audit:
     name: dependency audit
     runs-on: ubuntu-latest

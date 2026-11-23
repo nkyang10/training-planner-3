@@ -1,6 +1,6 @@
 {
   "name": "milebook",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "description": "Milebook ??a calendar-first AI coach for runners: the private calendar is the product, the coach bubble books and edits it.",
   "license": "SEE LICENSE IN LICENSE",
@@ -25,7 +25,8 @@
     "backup": "node tools/backup-db.mjs data/milebook.sqlite data/backups 14",
     "restore-drill": "node --import tsx tools/restore-drill.ts",
     "deploy:live": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1",
-    "smoke": "node tools/smoke.mjs"
+    "smoke": "node tools/smoke.mjs",
+    "sbom:cyclonedx": "pnpm sbom --sbom-format cyclonedx --sbom-type application --sbom-spec-version 1.5 --out sbom.cdx.json"
   },
   "dependencies": {
     "tsx": "4.23.15"

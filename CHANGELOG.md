@@ -14,6 +14,23 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.11.0] — 2026-11-23
+
+A backup that leaves the host, an SBOM per build, and a deploy path that accepts absolute paths.
+
+### Added
+
+- **`-BackupTarget`** copies the newest backup to another disk or a UNC share after every deploy, compares byte counts,
+  and records `offsite=ok|failed` in the deploy line; a failed copy is a loud warning, never a silent success.
+- **`pnpm sbom:cyclonedx`** wraps pnpm's own `sbom` command: CycloneDX 1.5, `--sbom-type application`, every locked package
+  (110 today, dev included — a superset is the honest shape for supply-chain tracking) and CI uploads it on every push.
+
+### Fixed
+
+- **`-Database` accepts an absolute path.** It was joined onto the checkout root, so `sqlite:D:\milebook\data\…` became a
+  nonsense path and the deploy refused to run; rooted paths are now used as given.
+
+
 ## [1.10.0] — 2026-11-23
 
 Password hashing off the event loop.

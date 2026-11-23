@@ -34,6 +34,8 @@ param(
     [int]$BackupKeep = 14,
     [switch]$CookieSecure,
     # Make a coach that cannot answer fatal at the post-deploy smoke instead of a warning.
+    # A directory on another disk or a UNC share; the newest backup is copied there after each deploy.
+    [string]$BackupTarget = '',
     [switch]$RequireCoach,
     [switch]$SkipBackup
 )
@@ -55,7 +57,7 @@ $gatewayPortValue = if ($GatewayPort -gt 0) { $GatewayPort } elseif ($env:MILEBO
 $databaseSpec = if ($Database) { $Database } elseif ($env:MILEBOOK_DB) { $env:MILEBOOK_DB } else { 'sqlite:data/milebook.sqlite' }
 if (-not $databaseSpec.StartsWith('sqlite:')) { throw "Only a sqlite: database is supported, got $databaseSpec" }
 $dbPath = $databaseSpec.Substring('sqlite:'.Length)
-$dbFile = Join-Path $root $dbPath
+if ([System.IO.Path]::IsPathRooted($dbPath)) { $dbFile = $dbPath } else { $dbFile = Join-Path $root $dbPath }
 if (-not (Test-Path $dbFile)) {
     # The app creates a missing database at boot; a first deploy must not be blocked by that. Warn loudly instead, so
     # a typo in MILEBOOK_DB is still visible in the deploy output.
@@ -138,10 +140,30 @@ function Test-IsThisApp {
 }
 
 # --- 1. Backup before the restart ------------------------------------------------------------------------------
+$offsiteState = 'off'
 if (-not $SkipBackup) {
     $backupDir = Join-Path $root 'data/backups'
     & node (Join-Path $PSScriptRoot 'backup-db.mjs') $dbFile $backupDir $BackupKeep
     if ($LASTEXITCODE -ne 0) { throw "Database backup failed (exit $LASTEXITCODE); not deploying." }
+
+    # Off-host copy: a backup on the same disk is one power event away from the database it protects.
+    if ($BackupTarget) {
+        $newest = Get-ChildItem -Path $backupDir -Filter '*.sqlite' | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if ($null -eq $newest) { throw 'Backup directory is empty after a successful backup.' }
+        try {
+            if (-not (Test-Path $BackupTarget)) { New-Item -ItemType Directory -Path $BackupTarget -Force | Out-Null }
+            $offsiteCopy = Join-Path $BackupTarget $newest.Name
+            Copy-Item -LiteralPath $newest.FullName -Destination $offsiteCopy -Force
+            $sourceSize = (Get-Item -LiteralPath $newest.FullName).Length
+            $copySize = (Get-Item -LiteralPath $offsiteCopy).Length
+            if ($copySize -ne $sourceSize) { throw "copy is $copySize bytes, source is $sourceSize" }
+            $offsiteState = 'ok'
+            Write-Host "offsite: $offsiteCopy ($([math]::Round($copySize / 1MB, 2)) MiB)"
+        } catch {
+            $offsiteState = 'failed'
+            Write-Warning "Off-host backup copy failed: $($_.Exception.Message)"
+        }
+    }
 }
 
 # --- 2. Stop the old process -----------------------------------------------------------------------------------
@@ -214,8 +236,8 @@ $process = Start-Process -FilePath 'node.exe' `
     -PassThru
 
 $process.Id | Set-Content -Path $pidFile -Encoding ASCII
-Add-Content -Path $deployLog -Value ("{0} deploy commit={1} web={2} gateway={3} db={4} css=v{5} secure={6} pid={7}" -f `
-    $startedAt.ToString('o'), $commit, $webPortValue, $gatewayPortValue, $databaseSpec, $cssVersion, $cookieSecureValue, $process.Id)
+Add-Content -Path $deployLog -Value ("{0} deploy commit={1} web={2} gateway={3} db={4} css=v{5} secure={6} offsite={8} pid={7}" -f `
+$startedAt.ToString('o'), $commit, $webPortValue, $gatewayPortValue, $databaseSpec, $cssVersion, $cookieSecureValue, $process.Id, $offsiteState)
 
 function Wait-HttpOk([string]$url, [int]$timeoutSeconds) {
     $end = (Get-Date).AddSeconds($timeoutSeconds)

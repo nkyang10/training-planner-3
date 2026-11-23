@@ -113,6 +113,7 @@ node --import tsx src/index.ts
 | 1 | Resolve settings | parameter → environment → default; secrets from `data/milebook-auth.secret` and `data/milebook-model.secret`, plus the optional `data/milebook-garmin.secret`; the DB spec must start with `sqlite:` and the file must already exist |
 | 2 | Read the stylesheet version | regex `APP_CSS_VERSION\s*=\s*(\d+)` over `src/web.ts` — never hardcoded (a hardcoded gate shipped broken once) |
 | 3 | Back up | `node tools/backup-db.mjs <db> data/backups <BackupKeep>`; a non-zero exit aborts before anything is stopped; `-SkipBackup` skips it |
+| 3b | Copy off-host | when `-BackupTarget` is set, copy the newest backup there, compare byte counts, and record `offsite=ok|failed`; a failed copy is a warning, never a silent success |
 | 4 | Refuse to kill | listeners on the two resolved ports are stopped only when `Test-IsThisApp` proves the command line names `src/index.ts` or the recorded pid is in the ancestry (12 levels); otherwise it throws and touches nothing |
 | 5 | Stop | `taskkill /PID <pid> /T /F`, then wait up to 20 s for both ports to be free |
 | 6 | Start | rotate the live log past 10 MB (five generations kept), then delete both live logs, export the environment, `Start-Process node.exe --import tsx src/index.ts -WorkingDirectory <root> -WindowStyle Hidden -PassThru` |
@@ -124,7 +125,8 @@ node --import tsx src/index.ts
 `-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-GarminKeyFile` (`data/milebook-garmin.secret`), `-ModelBaseUrl` ('' → env),
 `-ModelName` ('' → env), `-MaxAttempts` (2, exported), `-TimeoutSeconds` (60), `-BackupKeep` (14), `-CookieSecure` (off),
 `-SkipBackup` (off), `-TrustProxy` (off, exports `MILEBOOK_TRUST_PROXY=true`), `-WebHost` ('' → `0.0.0.0`),
-`-ModelTimeoutSeconds` (120), `-ProxyTimeoutSeconds` (130), `-RequireCoach` (off).
+`-ModelTimeoutSeconds` (120), `-ProxyTimeoutSeconds` (130), `-RequireCoach` (off), `-BackupTarget` (none; a directory on
+another disk or a UNC share). `-Database` accepts a relative path or an absolute one.
 
 **Calling it from a pipeline hangs.** The long-running child keeps an inherited pipe open, so `pnpm deploy:live | Select-Object`
 never returns even though the deploy finished. Redirect to a file instead:
@@ -145,6 +147,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1 <args> *> d
 | `commit=` / `web=` / `gateway=` | short HEAD (or `unknown` outside git) and the ports actually resolved |
 | `db=` / `css=v<N>` | full database spec; `APP_CSS_VERSION` read from source |
 | `secure=` / `pid=` | exported cookie flag and the started process id |
+| `offsite=` | `ok` when the newest backup was copied to `-BackupTarget` and the sizes matched, `failed` when the copy did not verify, `off` when no target was given |
 
 **Pid file.** `data/milebook-live.pid`, ASCII decimal, rewritten each deploy, read by the ancestry check — a note, not a
 lock. **Not done here:** no `pnpm install`, no `pnpm check`, no task registration, no rotation, no rollback; both live logs
@@ -176,6 +179,15 @@ an existing target is refused (exit 3). It prints the size in MiB, keeps the new
 Restoring is the only data rollback: migrations are forward-only, so rolling code back past a schema change needs the
 matching backup. Backups contain every secret in the database - password hashes and, when no at-rest key is configured, plaintext Garmin keys - so
 `data/backups` deserves the same care as the database `(docs/SECURITY.md)`.
+
+**Off-host copy.** A backup on the same disk shares a fate with the database it protects. Pass `-BackupTarget` a
+directory on another disk or a UNC share (`\\nas\share\milebook`) and every deploy copies the newest backup there,
+verifying the byte count before recording `offsite=ok`; a failed copy is a warning and `offsite=failed` in the deploy
+line, so a silent no-backup never looks like success. Point the drill at the copy too:
+
+```powershell
+pnpm restore-drill --backups \\nas\share\milebook
+```
 
 **Restore drill, automated.** `pnpm restore-drill` copies the newest backup to a scratch directory, opens it through
 the same `createStore` path the app uses at boot (so migrations and sealed-key handling run), then asserts
