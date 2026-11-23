@@ -52,7 +52,7 @@ jobs:
       # The thresholds in vitest.config.ts are the gate; the lcov report is kept for inspection.
       - name: Coverage (src only, floors enforced)
         run: pnpm test:coverage
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-lcov
@@ -76,7 +76,7 @@ jobs:
       # pnpm's own sbom command reads the lockfile; it lists every locked package, dev included.
       - name: Generate CycloneDX SBOM
         run: pnpm sbom --sbom-format cyclonedx --sbom-type application --sbom-spec-version 1.5 --out sbom.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: sbom
           path: sbom.cdx.json
