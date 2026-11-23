@@ -1,8 +1,8 @@
 {
   "name": "milebook",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
-  "description": "Milebook — a calendar-first AI coach for runners: the private calendar is the product, the coach bubble books and edits it.",
+  "description": "Milebook ??a calendar-first AI coach for runners: the private calendar is the product, the coach bubble books and edits it.",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

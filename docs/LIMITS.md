@@ -74,8 +74,10 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Processes per database | one writer | `(src/store.ts · SqliteStore)` | WAL helps readers; it does not make two writers safe |
 | Body size | 200 KB web, 2 MB gateway | `(src/web.ts · readJsonBody)` | Larger bodies are rejected, not truncated |
 | Page sessions | 500 in memory, 24 h, lost on restart | `(src/web.ts · createWeb)` | Only gates the "sync on new session" decision |
+| Session revocation | immediate, all devices | `(src/auth.ts · signOutEverywhere)` | Bumps `tokenVersion`; there is no per-device list, so revocation is all-or-nothing |
 | Sign-in failures | 10 per client+route+username per 15 min | `(src/rate-limit.ts · createRateLimiter)` | In-process; a proxy makes every runner share one client address |
 | Coach turns | 40 per runner per 5 min | `(src/rate-limit.ts · createRateLimiter)` | |
+| Coach turn lease | 10 minutes | `(src/gateway.ts · TURN_LEASE_MS)` | An `in_progress` turn older than the lease is reclaimed on replay; the 120 s upstream abort makes a live turn that slow impossible |
 | Static asset | 11 MB anatomy GLB, no compression | `(src/web.ts · sendAsset)` | ETag revalidation; first load is 11 MB |
 | Horizontal scaling | none | — | Needs a shared session store, a migration to Postgres, and a real job runner |
 | Locales | English, Traditional Chinese (Hong Kong) | `(src/i18n.ts · LOCALES)` | |
@@ -97,7 +99,6 @@ either in [ROADMAP.md](ROADMAP.md) or explicitly rejected there.
 | No account deletion | Tombstone + cascade across 19 tables in one transaction ([DATA-MODEL.md](DATA-MODEL.md)) |
 | No CSP | Extract the inline client scripts, then nonce or hash them ([PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) PR-23) |
 | Plaintext Garmin key | AES-256-GCM with a key from the environment, per-row nonce |
-| Session revocation | `tokenVersion` in the cookie payload and the user row |
 
 ## 9. Honesty rule
 

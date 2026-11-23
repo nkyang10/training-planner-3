@@ -1,10 +1,16 @@
 /**
  * Standalone accounts for Milebook.
  *
- * Passwords are stored as self-describing scrypt hashes. Sessions are stateless
- * signed cookies: the browser only holds a user id and an expiry, while the
- * HMAC prevents edits. The store remains the source of truth for the profile,
- * so a cookie alone cannot invent a user.
+ * Passwords are stored as self-describing scrypt hashes. Sessions are signed
+ * cookies: the browser only holds a user id, an expiry and a session version,
+ * while the HMAC prevents edits. The store remains the source of truth for the
+ * profile, so a cookie alone cannot invent a user.
+ *
+ * The session version makes revocation possible without server-side sessions:
+ * a profile carries `tokenVersion`, a cookie carries the version it was minted
+ * with, and a mismatch invalidates the cookie. Changing the password bumps the
+ * version (signing out every other device) and reissues a cookie for the device
+ * that made the change.
  */
 import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
@@ -21,7 +27,12 @@ const HEX_PATTERN = /^[0-9a-f]+$/i;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 const TIMEZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+\-]*(?:\/[A-Za-z0-9_+\-]+)*$/;
 
-export type AuthErrorCode = "username-taken" | "invalid-credentials" | "invalid-input" | "not-found";
+export type AuthErrorCode =
+  | "username-taken"
+  | "invalid-credentials"
+  | "invalid-current-password"
+  | "invalid-input"
+  | "not-found";
 
 export class AuthError extends Error {
   readonly code: AuthErrorCode;
@@ -65,11 +76,16 @@ export interface ProfileUpdate {
   displayName?: string;
   timezone?: string;
   goal?: string | null;
+  /** A new password; requires `currentPassword` to match the stored hash. */
   password?: string;
+  /** The runner's existing password, demanded whenever `password` is set. */
+  currentPassword?: string;
 }
 
 export interface CookieUser {
   userId: string;
+  /** Session version the cookie is minted for; absent means 0 (pre-1.1 accounts). */
+  tokenVersion?: number;
 }
 
 export interface AuthOptions {
@@ -86,7 +102,10 @@ export interface Auth {
   read(request: IncomingMessage): AuthUser | undefined;
   setCookie(user: CookieUser): string;
   clearCookie(): string;
-  updateProfile(userId: string, patch: ProfileUpdate): AuthUser;
+  /** Applies a profile patch; a password change reissues `cookie` for the calling device. */
+  updateProfile(userId: string, patch: ProfileUpdate): AuthResult;
+  /** Invalidates every outstanding cookie for the user, including the caller's. */
+  signOutEverywhere(userId: string): void;
 }
 
 function invalid(message: string): AuthError {
@@ -201,6 +220,8 @@ function readCookieValue(request: IncomingMessage): string | undefined {
 interface CookiePayload {
   userId: string;
   exp: number;
+  /** Session version; absent on cookies minted before 1.1, which read as 0. */
+  ver: number;
 }
 
 function decodeBase64Url(value: string): Buffer | undefined {
@@ -225,9 +246,11 @@ function parsePayload(encoded: string): CookiePayload | undefined {
   const record = parsed as Record<string, unknown>;
   const userId = record["userId"];
   const exp = record["exp"];
+  const ver = record["ver"] ?? 0;
   if (typeof userId !== "string" || userId.length === 0) return undefined;
   if (typeof exp !== "number" || !Number.isInteger(exp) || !Number.isFinite(exp)) return undefined;
-  return { userId, exp };
+  if (typeof ver !== "number" || !Number.isInteger(ver) || ver < 0) return undefined;
+  return { userId, exp, ver };
 }
 
 export function createAuth(options: AuthOptions): Auth {
@@ -240,9 +263,9 @@ export function createAuth(options: AuthOptions): Auth {
   const currentDate = (): Date => toDate(now());
   const currentSeconds = (): number => Math.floor(currentDate().getTime() / 1000);
 
-  const cookieFor = (userId: string, issuedAt: Date): string => {
+  const cookieFor = (userId: string, issuedAt: Date, tokenVersion: number): string => {
     const exp = Math.floor(issuedAt.getTime() / 1000) + AUTH_COOKIE_MAX_AGE_SECONDS;
-    const payload: CookiePayload = { userId, exp };
+    const payload: CookiePayload = { userId, exp, ver: tokenVersion };
     const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
     const signature = createHmac("sha256", secret).update(encoded).digest("base64url");
     return `${AUTH_COOKIE_NAME}=${encoded}.${signature}; Path=/; HttpOnly; SameSite=Lax${secureAttribute}; Max-Age=${AUTH_COOKIE_MAX_AGE_SECONDS}`;
@@ -252,7 +275,7 @@ export function createAuth(options: AuthOptions): Auth {
     if (typeof user.userId !== "string" || user.userId.length === 0) {
       throw invalid("user id is required");
     }
-    return cookieFor(user.userId, currentDate());
+    return cookieFor(user.userId, currentDate(), user.tokenVersion ?? 0);
   };
 
   const clearCookie = (): string =>
@@ -289,7 +312,7 @@ export function createAuth(options: AuthOptions): Auth {
       throw error;
     }
 
-    return { user: toAuthUser(profile), cookie: cookieFor(profile.userId, createdAt) };
+    return { user: toAuthUser(profile), cookie: cookieFor(profile.userId, createdAt, profile.tokenVersion ?? 0) };
   };
 
   const login = (input: LoginInput): AuthResult => {
@@ -318,14 +341,18 @@ export function createAuth(options: AuthOptions): Auth {
     const payload = parsePayload(encoded);
     if (payload === undefined || payload.exp <= currentSeconds()) return undefined;
     const profile = store.getUser(payload.userId);
-    return profile === undefined ? undefined : toAuthUser(profile);
+    if (profile === undefined) return undefined;
+    // A cookie minted before the last revocation no longer matches the profile's session version.
+    if ((profile.tokenVersion ?? 0) !== payload.ver) return undefined;
+    return toAuthUser(profile);
   };
 
-  const updateProfile = (userId: string, input: ProfileUpdate): AuthUser => {
+  const updateProfile = (userId: string, input: ProfileUpdate): AuthResult => {
     if (typeof userId !== "string" || userId.length === 0) {
       throw new AuthError("not-found", "user not found");
     }
-    if (store.getUser(userId) === undefined) {
+    const existing = store.getUser(userId);
+    if (existing === undefined) {
       throw new AuthError("not-found", "user not found");
     }
 
@@ -334,13 +361,27 @@ export function createAuth(options: AuthOptions): Auth {
     if (input.timezone !== undefined) patch.timezone = normalizeTimezone(input.timezone);
     if (input.goal !== undefined) patch.goal = normalizeGoal(input.goal);
     if (input.password !== undefined) {
-      patch.passwordHash = hashPassword(validatePassword(input.password));
+      // Validate the new password first (a cheap format check), then re-authenticate before rotating the credential:
+      // a hijacked session must not become a permanent takeover.
+      const nextPassword = validatePassword(input.password);
+      const current = typeof input.currentPassword === "string" ? input.currentPassword : "";
+      if (current.length === 0 || !verifyPassword(current, existing.passwordHash)) {
+        throw new AuthError("invalid-current-password", "current password is incorrect");
+      }
+      patch.passwordHash = hashPassword(nextPassword);
+      patch.tokenVersion = (existing.tokenVersion ?? 0) + 1;
     }
 
     const updated = store.updateUser(userId, patch);
     if (updated === undefined) throw new AuthError("not-found", "user not found");
-    return toAuthUser(updated);
+    return { user: toAuthUser(updated), cookie: cookieFor(userId, currentDate(), updated.tokenVersion ?? 0) };
   };
 
-  return { signup, login, read, setCookie, clearCookie, updateProfile };
+  const signOutEverywhere = (userId: string): void => {
+    const existing = store.getUser(userId);
+    if (existing === undefined) return;
+    store.updateUser(userId, { tokenVersion: (existing.tokenVersion ?? 0) + 1 });
+  };
+
+  return { signup, login, read, setCookie, clearCookie, updateProfile, signOutEverywhere };
 }

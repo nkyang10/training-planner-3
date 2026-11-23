@@ -47,7 +47,7 @@ Citations are symbol anchors (`(src/web.ts · createWeb)`), never line numbers; 
 
 | Cookie | Set by | Value | Flags | Lifetime |
 |---|---|---|---|---|
-| `milebook_session` | `createAuth` | `base64url({userId,exp}).` + HMAC-SHA256 signature | `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `MILEBOOK_COOKIE_SECURE=true` | 30 days `(src/auth.ts · AUTH_COOKIE_MAX_AGE_SECONDS)` |
+| `milebook_session` | `createAuth` | `base64url({userId,exp,ver}).` + HMAC-SHA256 signature; `ver` is the session version it was minted with | `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `MILEBOOK_COOKIE_SECURE=true` | 30 days, cut short when the profile's `tokenVersion` moves past `ver` `(src/auth.ts · AUTH_COOKIE_MAX_AGE_SECONDS)` |
 | `milebooksid` | `createWeb` | random UUID page-session id, held in memory (max 500, LRU-evicted) | `HttpOnly; SameSite=Lax; Path=/`, plus `Secure` when `cookieSecure` | 24 h `(src/web.ts · SESSION_TTL_MS)` |
 | `milebook_lang` | `/language` | locale code | `SameSite=Lax; Path=/` (readable by scripts) | 1 year `(src/i18n.ts · languageCookie)` |
 
@@ -91,7 +91,9 @@ same, and the POST also passes `isSameOriginPost`.
 | GET | `/signup` | public | query `error` | `200` signup page, or `303 /calendar` when already signed in | — | `(src/web.ts · createWeb)` |
 | POST | `/signup` | public+SO | form `username`, `displayName`, `password`, `timezone`, `goal` | `303 /calendar` + both cookies; failure `303 /signup?error=<code>` | `timezone` defaults to `Asia/Hong_Kong`; same 429 limiter, keyed `signup` | `(src/web.ts · authLimiter)` |
 | GET | `/logout` | public | — | `303 /login` | drops the in-memory page session and clears both cookies | `(src/web.ts · clearSessionCookie)` |
-| GET / POST | `/profile` | cookie+SO | GET query `saved`, `goal`, `error`; POST form `displayName`, `timezone`, `goal`, `password` | GET `200` page; POST `303 /profile?saved=1` (plus `&goal=1` when the goal was newly set) or `303 /profile?error=<code>` | only fields present in the form are patched; blank password keeps the hash | `(src/web.ts · createWeb)` |
+| POST | `/profile/sign-out-everywhere` | cookie+SO | — | `303 /login` | bumps `tokenVersion`, so every device's cookie stops validating, then clears both cookies `(src/auth.ts · signOutEverywhere)` | `(src/web.ts · createWeb)` |
+| GET | `/credits` | public | — | `200` page | third-party notices in both locales: three.js MIT and BodyParts3D CC BY 4.0, printed verbatim `(src/web.ts · renderCredits)` | `(src/web.ts · renderCredits)` |
+| GET / POST | `/profile` | cookie+SO | GET query `saved`, `goal`, `error`; POST form `displayName`, `timezone`, `goal`, `password`, `currentPassword` (required when `password` is set) | GET `200` page; POST `303 /profile?saved=1` (plus `&goal=1` when the goal was newly set) or `303 /profile?error=<code>` | a password change verifies `currentPassword`, bumps `tokenVersion` and reissues the session cookie for this device; the error code is `invalid-current-password` when it does not match | `(src/web.ts · createWeb)` |
 
 ### 3.3 Calendar and days
 
@@ -226,7 +228,7 @@ metadata. `(src/gateway.ts · streamChunk)`
 
 | Class | Routes | Behaviour without a valid signed cookie |
 |---|---|---|
-| Public | `/health`, `/favicon.ico`, `/static/*`, `/language`, `/login`, `/signup`, `/logout` | served normally; these are matched before `options.auth.read` |
+| Public | `/health`, `/favicon.ico`, `/static/*`, `/language`, `/login`, `/signup`, `/logout`, `/credits` | served normally; these are matched before `options.auth.read` |
 | Cookie | every other page and JSON route | `303 /login` (no `error` param, no body) |
 | Per-user | every cookie route | the handler only ever reads `user.userId`; ids in the URL or body are re-checked against that user and a miss is `404` |
 
@@ -242,7 +244,7 @@ also slides the page session: `resolveSession` issues a fresh `milebooksid` when
 | 403 | any POST whose `Origin.host` differs from `Host` | HTML page, `error.crossOrigin` |
 | 404 | unknown path, unknown activity, malformed day | HTML page |
 | 404 | peeks, `/chat` with an unknown `review-activity` id, proposal JSON | JSON `{error:{detail}}` or `{ok:false, detail}` |
-| 405 | wrong method on `/login`, `/signup`, `/logout`, `/profile`, `/coach-audit`, `/coach-states`, `/coach-states/refresh`, `/coach-states/:id/*`, `/muscle`, `/changes`, or either peek | HTML page, or JSON `{error:{detail:"method not allowed"}}` for the peeks |
+| 405 | wrong method on `/login`, `/signup`, `/logout`, `/profile`, `/profile/sign-out-everywhere`, `/credits`, `/coach-audit`, `/coach-states`, `/coach-states/refresh`, `/coach-states/:id/*`, `/muscle`, `/changes`, or either peek | HTML page, or JSON `{error:{detail:"method not allowed"}}` for the peeks |
 | 429 | 10 failed logins per 15 min per IP+username; 40 coach messages per 5 min per user | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
 | 500 | any uncaught handler error | HTML page; the message is `error.message` interpolated into the page (HTML-escaped), so internal text can reach the browser |
 | 502 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |

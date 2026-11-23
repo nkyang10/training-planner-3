@@ -121,7 +121,8 @@ Idempotency, keyed by `x-milebook-request-id` (or body `request_id`), pattern `^
 |---|---|---|
 | `completed`, same directive hash | replay | 200 with the cached completion and `x-milebook-idempotent-replay: true`; no model call, no writes |
 | `completed`, different directive hash | replay | 409 `directive-mismatch` |
-| `in_progress` | duplicate | 409 `turn-in-progress` |
+| `in_progress`, claim younger than the 10-minute lease | duplicate | 409 `turn-in-progress` |
+| `in_progress`, claim older than the lease | abandoned by a crash | the row is failed and reclaimed, then served like a first request | `(src/gateway.ts · TURN_LEASE_MS)` |
 | `failed` | retry | the claim is re-taken and the turn runs again |
 | absent | first request | claimed `in_progress` before the model call |
 

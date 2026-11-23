@@ -172,7 +172,7 @@ const CALENDAR_WASH_WEBP = readFileSync(new URL("./vendor/calendar/calendar-wash
 const COACH_TOKEN_WEBP = readFileSync(new URL("./vendor/calendar/coach-token.webp", import.meta.url));
 
 /** Bump when the auth or shared stylesheet changes; tests only assert the cache-busting prefix. */
-const APP_CSS_VERSION = 33;
+const APP_CSS_VERSION = 34;
 
 const SESSION_COOKIE = "milebooksid";
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
@@ -2315,7 +2315,7 @@ function renderLanguageSwitch(tx: Translator, extraClass = ""): string {
  * sends the runner back to the page they were on.
  */
 function renderFooter(tx: Translator): string {
-  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span>${renderLanguageSwitch(tx)}</div></footer>`;
+  return `<footer class="site-footer"><div class="site-footer-inner"><span class="footer-tagline">${escapeHtml(tx.t("footer.tagline"))}</span><a class="footer-credits" href="/credits">${escapeHtml(tx.t("footer.credits"))}</a>${renderLanguageSwitch(tx)}</div></footer>`;
 }
 
 /**
@@ -4254,6 +4254,8 @@ function authErrorText(code: string | undefined, fallbackKey: MessageKey, tx: Tr
       return tx.t("authErr.invalidInput");
     case "not-found":
       return tx.t("authErr.notFound");
+    case "invalid-current-password":
+      return tx.t("authErr.invalidCurrentPassword");
     default:
       return tx.t(fallbackKey);
   }
@@ -4868,6 +4870,7 @@ function renderAuthPage(mode: "login" | "signup", title: string, error: string |
   <body class="auth-page" data-mode="${mode}" data-site-name="${E(tx.t("app.name"))}" data-locale="${localeTag}" data-page-context="${context}" data-timezone="Asia/Hong_Kong">
     <a class="auth-skip" href="#username">${E(tx.t("auth.skip"))}</a>
     <div class="auth-shell">${renderAuthStory(tx)}${renderAuthPanel(mode, info, tx)}</div>
+    <footer class="auth-foot"><a class="footer-credits" href="/credits">${E(tx.t("footer.credits"))}</a></footer>
     ${clientI18nScript(tx)}${renderTrackScript()}${renderAuthScript()}
   </body></html>`;
 }
@@ -4900,7 +4903,12 @@ function renderProfile(user: AuthUser, saved: boolean, error: string | undefined
         <label for="timezone">${escapeHtml(tx.t("profile.timezone"))}</label><input id="timezone" name="timezone" value="${escapeHtml(user.timezone)}" required autocomplete="off">
         <label for="goal">${escapeHtml(tx.t("profile.goal"))} <span class="muted small">${escapeHtml(tx.t("profile.optional"))}</span></label><input id="goal" name="goal" value="${escapeHtml(user.goal ?? "")}" maxlength="120" autocomplete="off">
         <label for="password">${escapeHtml(tx.t("profile.changePassword"))} <span class="muted small">${escapeHtml(tx.t("profile.passwordHint"))}</span></label><input id="password" name="password" type="password" minlength="8" autocomplete="new-password">
+        <label for="currentPassword">${escapeHtml(tx.t("profile.currentPassword"))} <span class="muted small">${escapeHtml(tx.t("profile.currentPasswordHint"))}</span></label><input id="currentPassword" name="currentPassword" type="password" autocomplete="current-password">
         <button class="btn" type="submit">${escapeHtml(tx.t("profile.submit"))}</button>
+      </form>
+      <form method="post" action="/profile/sign-out-everywhere" class="stack">
+        <button class="btn ghost" type="submit">${escapeHtml(tx.t("profile.signOutEverywhere"))}</button>
+        <p class="muted small">${escapeHtml(tx.t("profile.signOutEverywhereHint"))}</p>
       </form>
       <p class="muted small">${escapeHtml(tx.t("profile.memberSince", { date: user.createdAt.slice(0, 10) }))}</p>
       <p class="muted small"><a href="/muscle">${escapeHtml(tx.t("profile.muscleLink"))}</a> — ${escapeHtml(tx.t("profile.muscleHint"))}</p>
@@ -4913,6 +4921,33 @@ function renderProfile(user: AuthUser, saved: boolean, error: string | undefined
     flash,
     tx,
   );
+}
+
+/**
+ * The two third-party works Milebook ships, with the notices their licences require. three.js is MIT, whose notice
+ * must accompany the distribution; the anatomy model derives from BodyParts3D, whose CC BY 4.0 terms require an
+ * attribution the end user can actually see, not merely a file in the repository.
+ *
+ * The credit lines are deliberately not translated: a licence statement that changes with the interface language is
+ * not a statement of attribution anymore. Only the labels around them are localized.
+ */
+const THREE_CREDIT = "three.js r170 - Copyright (c) 2010-2025 three.js authors - MIT License";
+const ANATOMY_CREDIT =
+  "BodyParts3D - Copyright (c) The Database Center for Life Science - CC Attribution 4.0 International";
+
+function renderCredits(tx: Translator): string {
+  const body = `<section class="card narrow">
+      <h1>${escapeHtml(tx.t("credits.heading"))}</h1>
+      <p class="muted">${escapeHtml(tx.t("credits.intro"))}</p>
+      <h2>${escapeHtml(tx.t("credits.threeHeading"))}</h2>
+      <p class="credit-line">${escapeHtml(THREE_CREDIT)}</p>
+      <p>${escapeHtml(tx.t("credits.threeBody"))}</p>
+      <h2>${escapeHtml(tx.t("credits.anatomyHeading"))}</h2>
+      <p class="credit-line">${escapeHtml(ANATOMY_CREDIT)}</p>
+      <p>${escapeHtml(tx.t("credits.anatomyBody"))}</p>
+      <p class="muted small">${escapeHtml(tx.t("credits.noticeFile"))}</p>
+    </section>`;
+  return layout(tx.t("credits.title"), body, undefined, "none", 0, "", tx);
 }
 
 export function createWeb(options: WebOptions): WebApp {
@@ -5167,6 +5202,14 @@ export function createWeb(options: WebOptions): WebApp {
         response.end(JSON.stringify({ status: gateway === "ok" ? "ok" : "degraded", gateway }));
         return;
       }
+      if (url.pathname === "/credits") {
+        if (method !== "GET") {
+          sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, undefined));
+          return;
+        }
+        sendHtml(response, 200, renderCredits(tx));
+        return;
+      }
       if (url.pathname === "/favicon.ico") {
         response.writeHead(204);
         response.end();
@@ -5314,17 +5357,34 @@ export function createWeb(options: WebOptions): WebApp {
           if (form.has("displayName")) patch.displayName = form.get("displayName") ?? "";
           if (form.has("timezone")) patch.timezone = form.get("timezone") ?? "";
           if (form.has("goal")) patch.goal = form.get("goal");
-          if (password.length > 0) patch.password = password;
+          if (password.length > 0) {
+            patch.password = password;
+            patch.currentPassword = form.get("currentPassword") ?? "";
+          }
           try {
-            options.auth.updateProfile(user.userId, patch);
+            const result = options.auth.updateProfile(user.userId, patch);
             // The offer appears only when the goal actually changed to a new non-empty text, so it never nags.
             const goalChanged =
               form.has("goal") && (patch.goal ?? "").trim().length > 0 && (patch.goal ?? "").trim() !== (user.goal ?? "");
-            redirect(response, goalChanged ? "/profile?saved=1&goal=1" : "/profile?saved=1");
+            redirect(response, goalChanged ? "/profile?saved=1&goal=1" : "/profile?saved=1", {
+              "set-cookie": result.cookie,
+            });
           } catch (error) {
             const code = error instanceof AuthError ? error.code : "generic";
             redirect(response, "/profile?error=" + encodeURIComponent(code));
           }
+          return;
+        }
+        sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));
+        return;
+      }
+
+      if (url.pathname === "/profile/sign-out-everywhere") {
+        if (method === "POST") {
+          options.auth.signOutEverywhere(user.userId);
+          const sessionId = parseCookies(request)[SESSION_COOKIE];
+          if (sessionId !== undefined) sessions.delete(sessionId);
+          redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
         sendHtml(response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, user, "none"));

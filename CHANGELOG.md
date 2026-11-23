@@ -12,12 +12,43 @@ it described a product that no longer exists in this shape. This changelog start
 
 - TLS termination, cookie `Secure` and HSTS verified on the live host.
 - Account deletion and a privacy policy.
-- Session revocation (`tokenVersion`) and current-password re-entry on password change.
 - Content-Security-Policy after extracting the inline client scripts.
 - Schema migrations with `PRAGMA user_version`.
-- In-app third-party attribution for the BodyParts3D anatomy asset.
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
+
+## [1.1.0] — 2026-11-23
+
+Session security and licence compliance. No product behaviour changed for a signed-in runner except that a password
+change now asks for the current password.
+
+### Added
+
+- **Credits page.** `GET /credits` is public and server-rendered: it prints the three.js MIT notice and the
+  BodyParts3D CC BY 4.0 attribution verbatim, names the source database, states the changes made, and points at
+  `THIRD-PARTY-NOTICES.md`. Every footer links it, including the sign-in page, and a test asserts both strings, so
+  the CC BY duty is met by the running app rather than by a file in the clone.
+- **Sign out everywhere.** `POST /profile/sign-out-everywhere` bumps the session version, which invalidates every
+  device's cookie, then clears both cookies.
+
+### Changed
+
+- **Sessions are revocable.** The profile carries `tokenVersion`, the cookie carries the `ver` it was minted with, and
+  a mismatch is rejected on every read. A password change bumps the version and reissues a cookie for the device that
+  made the change, so other devices are signed out.
+- **A password change requires the current password.** It is verified against the stored hash before rotation; a
+  missing or wrong value returns `invalid-current-password` and changes nothing.
+- **An abandoned coach turn no longer wedges its request id.** A turn claimed `in_progress` for more than ten minutes
+  is treated as left by a crash, failed, and reclaimed on the retry instead of returning `409` forever.
+- Profile page: current-password field and a ghost "sign out everywhere" form; `app.css` v34.
+
+### Notes
+
+- Cookies minted before 1.1 read as session version 0, so they keep working until the account's version moves; no
+  forced sign-out on upgrade.
+- The credit lines are deliberately untranslated: an attribution that changes with the interface language is not an
+  attribution.
+
 
 ## [1.0.1] — 2026-11-23
 

@@ -22,12 +22,12 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 
 | Domain | File | Tests | Protects |
 |---|---|---|---|
-| web HTTP surface | `test/web.test.ts` | 125 | auth pages, private calendar, run/session peek, account menu, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
-| gateway contract | `test/gateway.test.ts` | 83 | completions, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5) |
+| web HTTP surface | `test/web.test.ts` | 135 | auth pages, private calendar, run/session peek, account menu, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
+| gateway contract | `test/gateway.test.ts` | 84 | completions, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5) |
 | coach prompt/parsing | `test/coach.test.ts` | 71 | turn parsing, reply-style contract (LL-1), prompt segment A, context snapshot B/C, turn suffix E, conversation assembly, prompt epoch (LL-3), silent profile updates (LL-5), suggestions, schedule actions, revert, state proposals, muscle-condition suggestions, extended race horizon |
 | coach prompt/parsing | `test/directives.test.ts` | 14 | coach intents, directives, muscle-review intents/directives, directive-hash stability |
 | store | `test/store.test.ts` | 56 | messages, memories, coach preferences, prompt snapshots, sessions, activities, activity workouts, sync state, Garmin keys, notifications, persistence, user isolation, session CRUD for coach actions, users, change sets, transactions, coach turn audit, muscle check-ins/proposals/status controls |
-| auth | `test/auth.test.ts` | 12 | signup and login, profile, validation, password-hash exposure |
+| auth | `test/auth.test.ts` | 15 | signup and login, profile, validation, password-hash exposure, session versioning and revocation |
 | coach states | `test/coach-states.test.ts` | 33 | catalog, deterministic detection, lifecycle, state proposals, guardrails |
 | muscles · domain | `test/muscles.test.ts` | 23 | catalog, check-in validation, interpretation rules, drill suggestions, muscles worked, coach prompt facts, condition catalog |
 | muscles · status | `test/muscle-status.test.ts` | 24 | day helpers, soreness decay curve, current statuses, shared status line, coach prompt facts |
@@ -44,8 +44,9 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 | export | `test/export.test.ts` | 3 | export bundle, calendar ICS |
 | manual activity | `test/manual-activity.test.ts` | 10 | manual activity record |
 | calendar items | `test/calendar-items.test.ts` | 7 | calendar item rows |
+| rate limiting | `test/rate-limit.test.ts` | 5 | window arithmetic, block after the limit, reset on success, prune |
 
-**22 files, 626 tests.** Nothing in `test/` imports `src/rate-limit.ts` or `createRateLimiter`, and no test runs a browser, a real model or a real Garmin account. When a test fails, the file name is the domain and the `describe` is the behaviour — cite both, never a line number.
+**23 files, 645 tests.** `test/rate-limit.test.ts` exercises the limiter directly; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets (130 s web, 120 s gateway) are read from source rather than driven.
 
 ## 3. Test conventions
 
@@ -102,13 +103,11 @@ Verified by grepping `test/` and `src/` on 2026-11-22; absence of a test here is
 
 | Surface | Evidence | Risk if it breaks |
 |---|---|---|
-| login/signup rate limiting | `createRateLimiter` (src/rate-limit.ts) wired as `authLimiter` in `createWeb`; nothing in `test/` imports `src/rate-limit.ts` and no test asserts a 429 from a web route | password guessing and the window/refill maths ship unverified |
 | CSRF beyond the Origin check | `isSameOriginPost` (src/web.ts) allows a request with no `Origin`; one test covers one route (`rejects a cross-origin state POST`) | a non-browser client or an untested POST route has no token defence |
 | web→gateway proxy timeout | 130 s `AbortController` in `createWeb`, 120 s in `createGateway`; no test drives either budget | a hung gateway pins a browser request for two minutes with no regression alarm |
-| 502/504 pages | both error branches in the `/chat` proxy in `createWeb`; no test asserts either status or its copy | a down or slow gateway shows unverified copy in the bubble |
+| 504 page | the `/chat` proxy's timeout branch in `createWeb`; the 502 branch is tested, the 504 branch is not | a hung coach shows unverified copy in the bubble |
 | migrations beyond one | `migrateActivitiesTable` has a legacy-DB test; `migrateCoachTurnsDirectiveHash` (src/store.ts) has none | an old live database can lose directive-hash idempotency records with a green gate |
-| session eviction | `pruneSessions` / `SESSION_TTL_MS` in `createWeb`; auth tests cover signed-cookie expiry only | expired browser sessions and unbounded session-map growth are untested |
-| cookie `Secure` | `cookieSecure` in `WebOptions` appends the attribute; no test asserts it | a TLS deployment can ship a non-Secure session cookie unnoticed |
+| session eviction | `pruneSessions` / `SESSION_TTL_MS` in `createWeb`; auth tests cover cookie expiry and revocation, not the in-memory page-session map | unbounded session-map growth is untested |
 | CSP | no `Content-Security-Policy` header is set: `createWeb` sets nosniff, referrer, frame, COOP and permissions only | the inline scripts (7 on the calendar page) have no nonce policy; XSS has no second line of defence |
 | deploy script correctness | `tools/deploy.ps1` and `tools/deploy-task.ps1` are outside vitest and CI | the only path to the Windows live process is never exercised |
 | inline client JS execution | `test/web.test.ts` extracts the 7 `<script>` blocks and compiles each with `new Function` — syntax only, never a DOM | a runtime `ReferenceError` or DOM-wiring bug ships green |
@@ -159,12 +158,10 @@ Gaps, all verified against the workflow file: no build (none exists), no coverag
 
 | Gap | Risk |
 |---|---|
-| Ubuntu only, while production is Windows (`tools/deploy.ps1`, PowerShell deploy task) | a Windows-only path, case or SQLite-file failure reaches production first |
-| no coverage | the §4 surfaces are invisible; a passing run says nothing about what it never executed |
-| no `pnpm audit` / dependency review | a known-vulnerable transitive package merges silently |
+| no coverage | the section 4 surfaces are invisible; a passing run says nothing about what it never executed |
 | no artifact or log retention | a red run's vitest output is gone once the job ends |
-| no doc checks | stale counts and dead cross-links (the 627-vs-626 drift above) are not caught |
 | no concurrency group or timeout | parallel pushes repeat the full check and a hung job can occupy a runner |
+| no browser and no live model | the suite asserts strings and statuses; rendering, layout and a real model turn stay manual (section 8) |
 
 ## 8. Manual verification that cannot be automated
 

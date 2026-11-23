@@ -218,6 +218,11 @@ function lastUserText(body: Record<string, unknown>): string {
 }
 
 const REQUEST_ID = /^[A-Za-z0-9._:-]{1,100}$/;
+/**
+ * A turn claimed longer ago than this is treated as abandoned. The claim row is written before the model is called,
+ * so a crash or a restart mid-turn would otherwise wedge that request id behind `409 turn-in-progress` forever.
+ */
+const TURN_LEASE_MS = 10 * 60_000;
 
 /** Accept an idempotency key from the web proxy header or the OpenAI-compatible body. */
 function requestIdFrom(request: IncomingMessage, body: Record<string, unknown>): string | null {
@@ -996,10 +1001,17 @@ export function createGateway(options: GatewayOptions): Gateway {
           return;
         }
         if (existing?.status === "in_progress") {
-          sendJson(response, 409, {
-            error: { code: "turn-in-progress", detail: "a turn with this request id is already running" },
-          });
-          return;
+          const startedAt = Date.parse(existing.createdAt);
+          const ageMs = Date.parse(now()) - startedAt;
+          const abandoned = Number.isFinite(startedAt) && Number.isFinite(ageMs) && ageMs > TURN_LEASE_MS;
+          if (!abandoned) {
+            sendJson(response, 409, {
+              error: { code: "turn-in-progress", detail: "a turn with this request id is already running" },
+            });
+            return;
+          }
+          // The claim never reached completion (crash, restart or a killed process). Release it so the retry can run.
+          options.store.failCoachTurn(userId, requestId, now());
         }
       }
       let resolved: ResolvedDirective = { sessions: [] };

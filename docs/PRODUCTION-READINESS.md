@@ -16,7 +16,7 @@ in this branch and re-verified with `pnpm check`.
 **No-go for real users.** Eight blockers: no TLS, fail-open configuration, no credential throttling, an open gateway
 trust boundary, no data erasure, a deployment that was not one (and whose gate failed), no observability, and missing
 web hardening. The product logic itself was in good shape: consistent per-user scoping, strong escaping, a
-server-validated coach contract, 626 tests.
+server-validated coach contract, 645 tests.
 
 ## 1. Fixed in this release
 
@@ -46,6 +46,10 @@ server-validated coach contract, 626 tests.
 | PR-44 | **Medium** | `/health` proved only that the listener was up: a dead coach gateway looked healthy, so a green deploy could coexist with every coach turn failing | The web `/health` now probes the gateway (5 s cache) and answers `503 degraded` when it is unreachable; the deploy asserts `"gateway":"ok"` (`(src/web.ts · createWeb)`) |
 | PR-45 | **Low** | The deploy always exported `MILEBOOK_MAX_ATTEMPTS=2`, overriding a `.env` value | It honours the environment unless the parameter is passed explicitly (`(tools/deploy.ps1)`) |
 | PR-30 | **Medium** | The anatomy GLB build scripts and the curated mapping lived only in the gitignored `tmp/bp3d`, so the 11 MB asset could not be rebuilt or audited | Committed to `tools/anatomy/`: six scripts, `region-map.json`, `muscleview-manifest.json` and a README with the rebuild steps, the licence boundary and the known asset limits; both generators reproduce the committed JSON byte-for-byte (`(tools/anatomy/README.md)`) |
+| PR-21 | **High** | Sessions could not be revoked: a 30-day stateless cookie survived a password change | `tokenVersion` on the profile, a `ver` claim in the cookie, and a mismatch check on every read; a password change bumps it and reissues a cookie for the calling device, and `POST /profile/sign-out-everywhere` ends every session |
+| PR-22 | **High** | A password change did not require the current password, so a stolen session escalated to a permanent takeover | The profile form asks for the current password whenever a new one is set; the hash is verified before rotation and a wrong or missing value returns `invalid-current-password` with nothing changed (`(src/auth.ts · updateProfile)`) |
+| PR-28 | **Medium** | A coach turn claimed as `in_progress` before a crash stayed that way, so a retry with the same request id got `409` forever | A 10-minute lease: an `in_progress` turn older than that is failed and reclaimed on replay (`(src/gateway.ts · TURN_LEASE_MS)`) |
+| PR-29 | **Medium** | BodyParts3D attribution (CC BY 4.0) was not visible to end users | Public `/credits` page prints both third-party notices verbatim, every footer links it including sign-in, and a test asserts both strings (`(src/web.ts · renderCredits)`) |
 
 ## 2. Open blockers — must close before real users
 
@@ -53,15 +57,11 @@ server-validated coach contract, 626 tests.
 |---|---|---|---|---|---|
 | PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; redirect 80→443; verify HSTS | S |
 | PR-20 | **Blocker** | No erasure path: no account deletion, no cascade, no retention for messages/turns | Health-adjacent personal data must be deletable; GDPR-style erasure is a legal expectation once real users exist | Add `POST /account/delete` (password re-entry + typed confirmation), cascade across all 19 tables in one transaction, keep an audit tombstone; add a privacy policy and a consent line at signup | M |
-| PR-21 | **High** | Sessions cannot be revoked: a 30-day stateless cookie survives a password change | A leaked cookie is valid for a month with no way to kill it | Add `tokenVersion` to `users`, put it in the cookie payload, compare on read; bump on password change and on "sign out everywhere" | S-M |
-| PR-22 | **High** | Password change does not require the current password | Session theft escalates to account takeover permanently | Require current password (or a re-auth window) on the profile POST | S |
 | PR-23 | **High** | No Content-Security-Policy: ~3.2k lines of inline client JavaScript | XSS is mitigated only by escaping discipline | Extract client JS to static modules (see PR-27) and then serve a nonce-based or hash-based CSP; a nonce CSP alone is possible but touches every page render | M-L |
 | PR-24 | **High** | No observability: two startup log lines, a static `/health`, no metrics, no error reporting | You cannot see a production incident until a runner reports it | Structured JSON logs to a file with rotation; `/health` checks the DB with a trivial query; add uptime monitoring on `/health` and a 5xx alert; optional Sentry-style error sink | M |
 | PR-25 | **Medium** | Schema migrations are ad-hoc (`PRAGMA table_info` + rebuild), with no `user_version` and no ordered list | The first post-release schema change is a manual gamble on live data | Introduce `PRAGMA user_version` + an ordered migration array applied in one transaction at boot; test "old DB → current" | M |
 | PR-26 | **Medium** | Garmin keys stored plaintext in SQLite | A stolen database file exposes every runner's Garmin account | Encrypt at rest with a key from the environment (AES-256-GCM, per-row nonce), or move to OS credential storage | M |
 | PR-27 | **Medium** | `src/web.ts` is ~6.9k lines holding view builders, ~3.2k lines of inline client JS, and a 44-branch route dispatcher | Every change risks the whole surface; no linting, typing or unit testing of client code | Split into `web/routes/*`, `web/views/*`, `web/client/*.ts` with an esbuild step; add a route table | L |
-| PR-28 | **Medium** | A coach turn claimed as `in_progress` before a crash stays that way, so a retry with the same request id gets `409` forever | A restart mid-turn can wedge one idempotency key | On boot (or on replay), treat an `in_progress` turn older than N minutes as failed and allow the retry | S |
-| PR-29 | **Medium** | BodyParts3D attribution (CC BY 4.0) is not visible to end users | Shipping the Muscles tab without attribution breaches the licence | Add an in-app credits surface (footer link or About page) carrying the required string; link `THIRD-PARTY-NOTICES.md` | S |
 
 ## 3. Fast-follow — should close soon after release
 
@@ -97,10 +97,10 @@ Ship only when all of these are true:
 - [ ] `MILEBOOK_AUTH_SECRET` is a fresh 32-byte random value, stored outside the repo.
 - [ ] Account deletion and a privacy policy exist (PR-20), or the release is explicitly invite-only with a written
       data-handling note.
-- [ ] Session revocation (PR-21) and current-password re-entry (PR-22) shipped.
+- [x] Session revocation (PR-21) and current-password re-entry (PR-22) shipped.
 - [ ] A backup exists from today, and one restore has been proven into a scratch file.
 - [ ] Uptime monitoring on `/health` with an alert route that a human watches.
-- [ ] In-app BodyParts3D attribution shipped (PR-29).
+- [x] In-app BodyParts3D attribution shipped (PR-29).
 - [ ] `docs/RELEASE.md` checklist completed and the tag pushed.
 
 ## 6. Evidence trail

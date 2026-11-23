@@ -14,7 +14,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Username policy | lowercase letters/digits/underscore, 3–24 chars, case-insensitive unique | `(src/auth.ts · normalizeUsername)` |
 | Password policy | minimum 8 characters, no upper bound, no complexity rule | `(src/auth.ts · validatePassword)` |
 | Timezone validation | pattern plus a real `Intl.DateTimeFormat` check | `(src/auth.ts · normalizeTimezone)` |
-| Password change | requires the new password only — **the current password is not re-entered** (**open**) | `(src/web.ts · createWeb)` profile POST |
+| Password change | requires the current password, verified against the stored hash before the hash is rotated; a wrong or missing value returns `invalid-current-password` and changes nothing | `(src/auth.ts · updateProfile)`, `(src/web.ts · createWeb)` profile POST |
 | Login throttle | 10 failures per (client, route, username) per 15 min → `429`; a success clears the key | `(src/rate-limit.ts · createRateLimiter)`, `(src/web.ts · createWeb)` |
 | Credential stuffing at scale | throttled per client address only; behind a proxy every runner shares the proxy address (**open**) | `(src/web.ts · clientKey)` |
 | Hashing cost | synchronous `scryptSync` blocks the single event loop for tens of milliseconds per attempt (**open**) | `(src/auth.ts · hashPassword)` |
@@ -25,8 +25,8 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 |---|---|---|
 | Cookie | `milebook_session` = base64url payload + HMAC-SHA256 signature, `HttpOnly; SameSite=Lax; Path=/` | `(src/auth.ts · cookieFor)` |
 | `Secure` flag | added when `MILEBOOK_COOKIE_SECURE=true`; **default off** so a plain-HTTP dev host still works | `(src/auth.ts · createAuth)` |
-| Lifetime | 30 days, stateless; no server-side session table | `(src/auth.ts · AUTH_COOKIE_MAX_AGE_SECONDS)` |
-| Revocation | **open** — there is no session version or revocation list, so a password change or a leaked cookie stays valid until expiry | `(src/auth.ts · parsePayload)` |
+| Lifetime | 30 days, stateless; the cookie dies earlier if the account's session version moves past it | `(src/auth.ts · AUTH_COOKIE_MAX_AGE_SECONDS)`, `(src/auth.ts · parsePayload)` |
+| Revocation | enforced by a session version: the profile carries `tokenVersion`, the cookie carries the version it was minted with, and a mismatch invalidates the cookie. A password change bumps it and reissues a cookie for the calling device; `POST /profile/sign-out-everywhere` bumps it and clears both cookies | `(src/auth.ts · signOutEverywhere)`, `(src/auth.ts · read)` |
 | Secret | `MILEBOOK_AUTH_SECRET`, required, ≥ 32 characters, process refuses to start without it | `(src/index.ts · requireEnv)` |
 | Page-session cookie | `milebooksid` is an in-memory id that only gates "pull Garmin on a new browser session"; it grants no access | `(src/web.ts · startSession)` |
 | Logout | clears both cookies and drops the page session | `(src/web.ts · createWeb)` |

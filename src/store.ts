@@ -485,6 +485,7 @@ class SqliteStore implements Store {
     if (patch.displayName !== undefined) next.displayName = patch.displayName;
     if (patch.passwordHash !== undefined) next.passwordHash = patch.passwordHash;
     if (patch.timezone !== undefined) next.timezone = patch.timezone;
+    if (patch.tokenVersion !== undefined) next.tokenVersion = patch.tokenVersion;
     if (Object.hasOwn(patch, "goal")) next.goal = patch.goal ?? null;
     this.db.prepare(UPDATE_USER).run(JSON.stringify(next), userId);
     return next;
