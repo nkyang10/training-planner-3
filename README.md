@@ -210,13 +210,14 @@ stylesheet version read from `APP_CSS_VERSION` in `src/web.ts`. Full runbook, ba
 | Gate | State |
 |---|---|
 | Tests | 688 passing in 27 files (`pnpm test`) |
+| SBOM | `pnpm sbom:cyclonedx` writes a CycloneDX 1.5 document from the lockfile |
 | Restore drill | `pnpm restore-drill` restores the newest backup and proves it boots |
 | Smoke | `pnpm smoke` against a running instance (health, CSP, cookie flags, signup, gated pages, coach, erasure) |
 | Lint | pass (`pnpm lint`) |
 | Typecheck | pass (`pnpm typecheck`) |
 | Docs gate | pass (`pnpm docs:check`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Linux and Windows, Node 24 |
-| Release | **1.10.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
+| Release | **1.11.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
 
 ## License
 

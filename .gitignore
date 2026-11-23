@@ -34,3 +34,5 @@ __pycache__/
 
 # Local verification artifacts
 tmp/
+# Release artifact, regenerated per build
+sbom.cdx.json

@@ -62,6 +62,8 @@ server-validated coach contract, and a green suite at that point.
 | PR-40 | **Medium** | No `CODEOWNERS`, issue templates or release notes process | `.github/CODEOWNERS` routes the contract-bearing files, `.github/pull_request_template.md` asks for the gate and the docs, and `docs/RELEASE.md` is the release checklist (`(docs/RELEASE.md)`) |
 | PR-35 | **Medium** | No compression for HTML/CSS/JS; the 11 MB GLB is uncompressed | Textual responses are gzipped when the client accepts it, with the encoding folded into the ETag and `vary: accept-encoding` (`(src/compress.ts · encodeBody)`); measured on a scratch instance: CSS 123,857 → 23,342 B, `/login` 30,908 → 8,681 B. Binary assets stay as-is |
 | PR-31 | **Medium** | `scryptSync` blocked the single event loop, so a handful of wrong passwords was a cheap DoS; the throttle is per-process and in-memory | `crypto.scrypt` on the libuv thread pool: `hashPassword`/`verifyPassword` are async and the four auth entry points return promises. Measured ~56 ms per hash, eight parallel verifications in 65 ms, `/health` at 2 ms median during the burst (`(src/auth.ts · hashPassword)`). The in-memory throttle remains a known limit |
+| PR-37 | **Medium** | CI ran `pnpm audit` and Dependabot opened grouped weekly updates, but no SBOM shipped per release | `pnpm sbom:cyclonedx` wraps pnpm's own `sbom` command: CycloneDX 1.5 with `--sbom-type application`, every locked package (110 today, dev included), uploaded by CI on every push |
+| PR-38 | **Medium** | Backups lived on the same host | `pnpm restore-drill` proves the newest backup restores, and `-BackupTarget` copies it to another disk or a UNC share after every deploy with a byte-count check recorded as `offsite=ok|failed` (`docs/OPERATIONS.md` §6) |
 
 ## 2. Open blockers — must close before real users
 
@@ -74,8 +76,6 @@ server-validated coach contract, and a green suite at that point.
 
 | ID | Finding | Remediation | Effort |
 |---|---|---|---|
-| PR-37 | CI runs `pnpm audit` on every push and Dependabot opens grouped weekly updates (`.github/dependabot.yml`); a CycloneDX SBOM per release is still missing | Generate the SBOM in the release job and attach it to the tag | S |
-| PR-38 | Backups live on the same host; the automated restore drill now proves they restore (`pnpm restore-drill`), but no copy leaves the machine | Copy the newest backup to a second disk or an off-host share after each deploy, and keep the monthly rehearsal in `docs/OPERATIONS.md` §6 | S |
 | PR-39 | Deploy stops the process before starting the new one: a failed start leaves the site down | Blue/green on a second port behind the proxy, or start-then-swap with a health gate | M |
 
 ## 4. Accepted risks (deliberate, with an owner)
