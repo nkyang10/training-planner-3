@@ -11,9 +11,28 @@ it described a product that no longer exists in this shape. This changelog start
 ### Planned before the next release
 
 - TLS termination, cookie `Secure` and HSTS verified on the live host.
-- Content-Security-Policy after extracting the inline client scripts.
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
+
+## [1.4.0] — 2026-11-23
+
+Content-Security-Policy without extracting the client scripts.
+
+### Added
+
+- **Hash-based CSP on every HTML response.** The policy is computed from the exact inline `<script>` bodies the response
+  is about to send, so `script-src 'self'` plus one `sha256-` hash per script is always in step with the markup. No
+  `unsafe-inline` and no `unsafe-eval` in `script-src`; `style-src` keeps `'unsafe-inline'` for the markup's style
+  attributes, `img-src` allows `data:` for the CSS-embedded icon, and `frame-ancestors 'none'`, `base-uri 'none'` and
+  `object-src 'none'` close the usual bypasses.
+
+### Notes
+
+- No inline event handlers, `eval`, workers or third-party origins exist in the app, which is why a hash-only policy is
+  possible without the client-script extraction PR-27 still tracks.
+- A policy that silently blocks a script would break a page with no server error, so the smoke pass checks ten pages by
+  recomputing every hash from the body; that gap is recorded in `docs/TESTING.md`.
+
 
 ## [1.3.0] — 2026-11-23
 

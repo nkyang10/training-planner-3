@@ -22,7 +22,7 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 
 | Domain | File | Tests | Protects |
 |---|---|---|---|
-| web HTTP surface | `test/web.test.ts` | 137 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
+| web HTTP surface | `test/web.test.ts` | 138 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
 | gateway contract | `test/gateway.test.ts` | 84 | completions, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5) |
 | coach prompt/parsing | `test/coach.test.ts` | 71 | turn parsing, reply-style contract (LL-1), prompt segment A, context snapshot B/C, turn suffix E, conversation assembly, prompt epoch (LL-3), silent profile updates (LL-5), suggestions, schedule actions, revert, state proposals, muscle-condition suggestions, extended race horizon |
 | coach prompt/parsing | `test/directives.test.ts` | 14 | coach intents, directives, muscle-review intents/directives, directive-hash stability |
@@ -48,7 +48,7 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 | schema migrations | `test/migrations.test.ts` | 5 | fresh stamp, legacy upgrade in place, second boot no-op, failing step rollback, invalid version |
 | secrets at rest | `test/secrets.test.ts` | 6 | round-trip, fresh nonce, wrong key, tamper, plaintext rejection, key length |
 
-**25 files, 663 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, and `test/migrations.test.ts` opens a real legacy file; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets (130 s web, 120 s gateway) are read from source rather than driven.
+**25 files, 664 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, and `test/migrations.test.ts` opens a real legacy file; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets (130 s web, 120 s gateway) are read from source rather than driven.
 
 ## 3. Test conventions
 
@@ -110,7 +110,7 @@ Verified by grepping `test/` and `src/` on 2026-11-22; absence of a test here is
 | 504 page | the `/chat` proxy's timeout branch in `createWeb`; the 502 branch is tested, the 504 branch is not | a hung coach shows unverified copy in the bubble |
 | migrations beyond one | `migrateActivitiesTable` has a legacy-DB test; `migrateCoachTurnsDirectiveHash` (src/store.ts) has none | an old live database can lose directive-hash idempotency records with a green gate |
 | session eviction | `pruneSessions` / `SESSION_TTL_MS` in `createWeb`; auth tests cover cookie expiry and revocation, not the in-memory page-session map | unbounded session-map growth is untested |
-| CSP | no `Content-Security-Policy` header is set: `createWeb` sets nosniff, referrer, frame, COOP and permissions only | the inline scripts (7 on the calendar page) have no nonce policy; XSS has no second line of defence |
+| CSP hashes | `contentSecurityPolicy` in `createWeb` hashes the inline scripts of each response; the test recomputes one hash per script from the body and asserts it appears, but no browser is run, so a policy that blocks a real page would only show up in the smoke pass | a policy that silently blocks a script breaks the page with no server error |
 | deploy script correctness | `tools/deploy.ps1` and `tools/deploy-task.ps1` are outside vitest and CI | the only path to the Windows live process is never exercised |
 | inline client JS execution | `test/web.test.ts` extracts the 7 `<script>` blocks and compiles each with `new Function` — syntax only, never a DOM | a runtime `ReferenceError` or DOM-wiring bug ships green |
 
