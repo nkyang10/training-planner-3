@@ -341,17 +341,22 @@ function clearSessionCookie(secure: boolean): string {
 /**
  * A coarse client identity for throttling.
  *
- * By default it is the socket peer, never a spoofable header. When the deployment sets `trustProxy`, the first entry of
- * `X-Forwarded-For` is used instead, because behind a reverse proxy every runner shares the proxy's address and one
- * runner's failures would otherwise throttle everyone. Only an address-shaped value is accepted, so a malformed header
- * falls back to the socket rather than becoming a free-form throttle key.
+ * By default it is the socket peer, never a spoofable header. When the deployment sets `trustProxy`, the throttle key is
+ * the **last** `X-Forwarded-For` entry, because every proxy worth trusting (CloudFront, nginx, Caddy, ALB) *appends* the
+ * address it actually saw to whatever the client sent. The first entry is the client's own claim, so keying on it would
+ * let one runner rotate its budget by sending a header. Only an address-shaped value is accepted; anything else falls
+ * back to the socket rather than becoming a free-form throttle key.
  */
 function clientKey(request: IncomingMessage, trustProxy: boolean): string {
   if (trustProxy) {
     const header = request.headers["x-forwarded-for"];
     const raw = Array.isArray(header) ? header[0] : header;
-    const first = raw?.split(",")[0]?.trim();
-    if (first !== undefined && /^[0-9a-fA-F:.]{3,45}$/.test(first)) return first;
+    const hops = (raw ?? "")
+      .split(",")
+      .map((hop) => hop.trim())
+      .filter((hop) => hop.length > 0);
+    const last = hops[hops.length - 1];
+    if (last !== undefined && /^[0-9a-fA-F:.]{3,45}$/.test(last)) return last;
   }
   return request.socket.remoteAddress ?? "unknown";
 }

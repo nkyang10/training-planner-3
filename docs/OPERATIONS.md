@@ -44,7 +44,7 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Seve
 | `MILEBOOK_MAX_ATTEMPTS` | no | `2` | initial call plus repairs; floored at 1 | non-numeric → 2 |
 | `MILEBOOK_GARMIN_KEY` | no | — | 32 bytes base64; seals Garmin API keys at rest and re-seals legacy plaintext rows on boot `(src/secrets.ts · parseSecretKey)` | invalid length → exits; unset → keys stay plaintext and the boot log warns |
 | `MILEBOOK_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` or `silent`; lines below it are dropped `(src/log.ts · parseLogLevel)` | an unknown value falls back to `info` rather than silencing the log |
-| `MILEBOOK_TRUST_PROXY` | no | `false` | `true` takes the first `X-Forwarded-For` entry as the throttle key, for a host behind a reverse proxy `(src/web.ts · clientKey)` | leave it off unless a proxy you control overwrites the header; otherwise a client could rotate its own budget |
+| `MILEBOOK_TRUST_PROXY` | no | `false` | `true` takes the last `X-Forwarded-For` hop your proxy appended as the throttle key, for a host behind a reverse proxy `(src/web.ts · clientKey)` | leave it off unless a proxy you control overwrites the header; otherwise a client could rotate its own budget |
 | `MILEBOOK_AUTO_STATES` | no | `true` | deterministic coaching-state detection; `false` keeps manual/chat states | any value but `true`/`1` reads false |
 | `MILEBOOK_DEFAULT_USER` | no | `system` | identity for a gateway request with no `x-milebook-user` header | never fails; a headerless turn lands under an id with no account |
 | `MILEBOOK_INTERNAL_TOKEN` | no | random 32 bytes per start | shared web→gateway secret | a restart rotates it; set it only to pin the value |

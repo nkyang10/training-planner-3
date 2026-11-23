@@ -4938,6 +4938,22 @@ describe("production hardening", () => {
     expect((await attempt("203.0.113.8")).status).not.toBe(429);
   });
 
+  it("keys the throttle on the last forwarded hop, not the client's claim", async () => {
+    const trusted = await start({ trustProxy: true });
+    const attempt = (header: string) =>
+      fetch(`${trusted.base}/login`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": header },
+        body: formBody({ username: "ghost_runner", password: "wrong-password-1" }),
+        redirect: "manual",
+      });
+
+    // A proxy appends the address it saw; a client-rotated prefix must not buy a fresh budget.
+    for (let index = 0; index < 10; index += 1) await attempt(`10.0.0.${index + 1}, 203.0.113.7`);
+    expect((await attempt("10.9.9.9, 203.0.113.7")).status).toBe(429);
+    expect((await attempt("10.0.0.1, 203.0.113.8")).status).not.toBe(429);
+  });
+
   it("ignores the forwarded address when the proxy is not trusted", async () => {
     const { base } = await start();
     const attempt = (address: string) =>

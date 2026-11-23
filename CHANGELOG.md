@@ -14,6 +14,23 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.6.1] — 2026-11-23
+
+Proxy-aware throttling: key on the hop the proxy appended, not the client's claim.
+
+### Fixed
+
+- With `MILEBOOK_TRUST_PROXY=true` the throttle key was the **first** `X-Forwarded-For` entry. Every proxy worth
+  trusting — CloudFront, nginx, Caddy, ALB — *appends* the address it actually saw to whatever the client sent, so the
+  first entry is the client's own claim and a runner could rotate its budget by sending a header. The key is now the
+  **last** entry; a client-rotated prefix no longer buys a fresh budget `(src/web.ts · clientKey)`.
+
+### Notes
+
+- Found while reviewing a CloudFront-in-front plan: CloudFront appends the viewer address, which would have made the
+  first-entry key spoofable on the very deployment the switch exists for.
+
+
 ## [1.6.0] — 2026-11-23
 
 Throttling that survives a reverse proxy, and a chat budget that counts only real turns.
