@@ -14,6 +14,33 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.7.0] — 2026-11-23
+
+Tunnel-ready: loopback binding and timeouts that fit under an edge limit.
+
+### Added
+
+- **`MILEBOOK_WEB_HOST`** (deploy `-WebHost`). The calendar surface can bind `127.0.0.1` so the only way in is the
+  tunnel and the LAN cannot bypass TLS on `:8093`. Default stays `0.0.0.0`.
+- **`MILEBOOK_MODEL_TIMEOUT_SECONDS`** (default 120) and **`MILEBOOK_PROXY_TIMEOUT_SECONDS`** (default 130). Both
+  budgets were hardcoded; they are now configuration, so a deployment behind an edge proxy can keep a full turn inside
+  the edge limit.
+- **`docs/OPERATIONS.md` §9** documents the chosen public path — Cloudflare Tunnel — with the exact settings: loopback
+  bind, `Secure` cookies, trusted proxy, model timeout 40 s, proxy timeout 95 s against Cloudflare's 100 s edge limit,
+  so the runner gets the app's own `504` instead of a `524`.
+
+### Changed
+
+- Open signup is recorded as an **accepted risk** with its revisit trigger (`docs/PRODUCTION-READINESS.md` §4), since the
+  tunnel URL is public and `/signup` has no invite gate.
+- PR-19 now names the Cloudflare Tunnel path as the decision; what remains is the host-side tunnel, not code.
+
+### Notes
+
+- CloudFront was reviewed and rejected for this shape: it cannot reach a LAN origin without a public port or an AWS VPC,
+  its origin timeout is 60 s, and it appends `X-Forwarded-For` — which is why 1.6.1 keys on the last hop.
+
+
 ## [1.6.1] — 2026-11-23
 
 Proxy-aware throttling: key on the hop the proxy appended, not the client's claim.

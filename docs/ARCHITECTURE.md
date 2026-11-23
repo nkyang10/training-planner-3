@@ -54,13 +54,13 @@ so any CORS allowance would only help an attacker.
    (`(src/directives.ts · buildDirectiveForIntent)`), and calls the gateway with the runner id, the internal token and an
    idempotency header.
 3. The gateway assembles the prompt — byte-stable system head, the newest context snapshot, the append-only conversation
-   — calls the model with a 120 s abort, and validates the reply (`(src/coach.ts · parseCoachTurn)`).
+   — calls the model with a 120 s abort by default, and validates the reply (`(src/coach.ts · parseCoachTurn)`).
 4. Invalid replies get one bounded repair attempt with structured feedback; a validated turn is applied as one change
    set with before/after snapshots (`(src/history.ts · applyRevert)` is the reverse path).
 5. The gateway persists the assistant message, the turn record, directives and any proposals, then returns the reply and
    a `milebook` meta block. The web surface returns it to the bubble, which refreshes the grid in place.
 
-The proxy aborts at 130 s so a hung gateway cannot pin a browser request; the browser sees `504` (timeout) or `502`
+The proxy aborts at 130 s by default (both budgets are configurable) so a hung gateway cannot pin a browser request; the browser sees `504` (timeout) or `502`
 (upstream failure) with a stable message, never an internal error string.
 
 ## 4. Request flow: a page render

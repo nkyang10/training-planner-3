@@ -122,6 +122,8 @@ interface BaseOptions {
   timezone?: string;
   /** The runner's saved free-text goal, when the test creates a profile. */
   goal?: string | null;
+  /** Per-call model abort override, for the hung-upstream case. */
+  modelTimeoutMs?: number;
   /** Simulate a state-store failure before the prompt is built. */
   failStateRefresh?: boolean;
 }
@@ -161,6 +163,7 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
     modelName: "test-model",
     now: options.now ?? (() => `${TODAY}T08:00:00.000Z`),
     fetchImpl,
+    ...(options.modelTimeoutMs === undefined ? {} : { modelTimeoutMs: options.modelTimeoutMs }),
   });
   await new Promise<void>((resolve) => gateway.server.listen(0, "127.0.0.1", resolve));
   const address = gateway.server.address();
@@ -183,6 +186,28 @@ interface Completion {
   choices: Array<{ message: { content: string } }>;
   milebook: GatewayMeta;
 }
+
+it("aborts a hung model call at the configured timeout", async () => {
+  // A fetch that never settles unless the signal aborts: only the timeout can end the turn.
+  const hanging = ((_input: unknown, init?: { signal?: AbortSignal }) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    })) as unknown as typeof fetch;
+
+  const { url } = await base(hanging, { modelTimeoutMs: 120 });
+  const startedAt = Date.now();
+  const response = await post(url, {
+    model: "milebook-coach",
+    messages: [{ role: "user", content: "how did my week go?" }],
+    milebook: { today: TODAY, timezone: "Asia/Hong_Kong" },
+  });
+  const elapsed = Date.now() - startedAt;
+
+  expect(response.status).toBe(502);
+  const body = (await response.json()) as { error: { code: string } };
+  expect(body.error.code).toBe("model-failed");
+  expect(elapsed).toBeLessThan(3000);
+});
 
 const seedSession = (
   handle: StoreHandle,

@@ -63,7 +63,7 @@ server-validated coach contract, and a green suite at that point.
 
 | ID | Severity | Finding | Why it blocks | Remediation | Effort |
 |---|---|---|---|---|---|
-| PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; set `MILEBOOK_TRUST_PROXY=true` so throttling stays per runner behind the proxy; redirect 80→443; verify HSTS | S |
+| PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | **Chosen path: Cloudflare Tunnel** — `cloudflared` dials out, Cloudflare terminates TLS, the app binds `127.0.0.1` so the LAN cannot bypass it, with `MILEBOOK_COOKIE_SECURE=true`, `MILEBOOK_TRUST_PROXY=true`, `MILEBOOK_MODEL_TIMEOUT_SECONDS=40`, `MILEBOOK_PROXY_TIMEOUT_SECONDS=95` to stay inside the 100 s edge limit (`docs/OPERATIONS.md` §9). Remaining work is the host-side tunnel, not code | S |
 | PR-27 | **Medium** | `src/web.ts` is ~6.9k lines holding view builders, ~3.2k lines of inline client JS, and a 44-branch route dispatcher | Every change risks the whole surface; no linting, typing or unit testing of client code | Split into `web/routes/*`, `web/views/*`, `web/client/*.ts` with an esbuild step; add a route table | L |
 
 ## 3. Fast-follow — should close soon after release
@@ -82,11 +82,12 @@ server-validated coach contract, and a green suite at that point.
 
 | Risk | Why accepted | Revisit when |
 |---|---|---|
-| Garmin key plaintext (until PR-26) | Single-tenant host, database file permissions are the control | A second tenant or an off-host backup leaves the machine |
+| Garmin key at rest without `MILEBOOK_GARMIN_KEY` | Single-tenant host, database file permissions are the control; the boot log warns and the deploy validates the key when supplied | A second tenant, an off-host backup, or the key being absent from the live environment |
 | One process per database, no horizontal scaling | Traffic is small and the store is synchronous | Sustained concurrency above a few hundred requests/second |
 | Model provider receives coach prompts including health-adjacent text | The product is an LLM coach; there is no local model | The `/privacy` page names the provider relationship and the deletion path; a second provider or a local model would change the page |
 | No admin console | Support can use the audit page per runner and the database directly | Support needs cross-runner views |
 | Two locales only | The audience is en / zh-HK | A third locale is requested |
+| **Open signup** — `/signup` is unauthenticated and has no invite gate | Chosen deliberately for the tunnel launch: the URL is shared with a small group, the 40-turn/5-min coach cap bounds spend per identity, and there is no email verification to abuse | A stranger registers, model spend rises unexpectedly, or the URL is shared more widely than intended — then add an invite/allowlist gate before the next exposure |
 
 ## 5. Release gate
 

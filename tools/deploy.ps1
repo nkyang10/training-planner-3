@@ -22,6 +22,11 @@ param(
     [switch]$TrustProxy,
     [int]$MaxAttempts = 2,
     [int]$TimeoutSeconds = 60,
+    # Per-call model abort and the web proxy budget, in seconds. Keep proxy > model x attempts and both under any edge timeout.
+    [int]$ModelTimeoutSeconds = 120,
+    [int]$ProxyTimeoutSeconds = 130,
+    # Bind address for the calendar surface; 127.0.0.1 when a tunnel is the only intended path in.
+    [string]$WebHost = '',
     [int]$BackupKeep = 14,
     [switch]$CookieSecure,
     [switch]$SkipBackup
@@ -178,6 +183,9 @@ $env:MILEBOOK_DB = $databaseSpec
 $env:MILEBOOK_GATEWAY_PORT = [string]$gatewayPortValue
 $env:MILEBOOK_GATEWAY_URL = "http://127.0.0.1:$gatewayPortValue"
 $env:MILEBOOK_WEB_PORT = [string]$webPortValue
+$env:MILEBOOK_WEB_HOST = if ($WebHost) { $WebHost } else { '0.0.0.0' }
+$env:MILEBOOK_MODEL_TIMEOUT_SECONDS = [string]$ModelTimeoutSeconds
+$env:MILEBOOK_PROXY_TIMEOUT_SECONDS = [string]$ProxyTimeoutSeconds
 $env:MILEBOOK_MODEL_BASE_URL = $modelUrlValue
 $env:MILEBOOK_MODEL_API_KEY = $modelKey
 $env:MILEBOOK_MODEL_NAME = $modelNameValue
