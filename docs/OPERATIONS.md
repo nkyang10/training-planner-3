@@ -28,7 +28,7 @@ One `node` process (`src/index.ts`) starts two `http` servers over one SQLite fi
 
 ## 2. Configuration reference
 
-Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Fifteen variables, all `MILEBOOK_*`.
+Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Sixteen variables, all `MILEBOOK_*`.
 
 | Variable | Required | Default | Effect | Failure mode |
 |---|---|---|---|---|
@@ -43,6 +43,7 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Fift
 | `MILEBOOK_MODEL_ID` | no | `milebook-coach` | id advertised on `/v1/models` and in payloads | cosmetic only |
 | `MILEBOOK_MAX_ATTEMPTS` | no | `2` | initial call plus repairs; floored at 1 | non-numeric → 2 |
 | `MILEBOOK_GARMIN_KEY` | no | — | 32 bytes base64; seals Garmin API keys at rest and re-seals legacy plaintext rows on boot `(src/secrets.ts · parseSecretKey)` | invalid length → exits; unset → keys stay plaintext and the boot log warns |
+| `MILEBOOK_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` or `silent`; lines below it are dropped `(src/log.ts · parseLogLevel)` | an unknown value falls back to `info` rather than silencing the log |
 | `MILEBOOK_AUTO_STATES` | no | `true` | deterministic coaching-state detection; `false` keeps manual/chat states | any value but `true`/`1` reads false |
 | `MILEBOOK_DEFAULT_USER` | no | `system` | identity for a gateway request with no `x-milebook-user` header | never fails; a headerless turn lands under an id with no account |
 | `MILEBOOK_INTERNAL_TOKEN` | no | random 32 bytes per start | shared web→gateway secret | a restart rotates it; set it only to pin the value |
@@ -110,9 +111,9 @@ node --import tsx src/index.ts
 | 3 | Back up | `node tools/backup-db.mjs <db> data/backups <BackupKeep>`; a non-zero exit aborts before anything is stopped; `-SkipBackup` skips it |
 | 4 | Refuse to kill | listeners on the two resolved ports are stopped only when `Test-IsThisApp` proves the command line names `src/index.ts` or the recorded pid is in the ancestry (12 levels); otherwise it throws and touches nothing |
 | 5 | Stop | `taskkill /PID <pid> /T /F`, then wait up to 20 s for both ports to be free |
-| 6 | Start | delete both live logs, export the environment, `Start-Process node.exe --import tsx src/index.ts -WorkingDirectory <root> -WindowStyle Hidden -PassThru` |
+| 6 | Start | rotate the live log past 10 MB (five generations kept), then delete both live logs, export the environment, `Start-Process node.exe --import tsx src/index.ts -WorkingDirectory <root> -WindowStyle Hidden -PassThru` |
 | 7 | Record | pid → `data/milebook-live.pid`; one line appended to `data/milebook-deploy.log` |
-| 8 | Verify | gateway `/health`, web `/health` (must report `"gateway":"ok"`), web `/login`, web `/static/app.css`; `/login` must contain `app.css?v=<APP_CSS_VERSION>` (read from `src/web.ts`, currently 33) and `Milebook`; the stylesheet body must be at least 10 000 characters; exit 0. On failure: 40-line tails of both live logs and exit 1 |
+| 8 | Verify | gateway `/health`, web `/health` (must report `"gateway":"ok"` **and** `"db":"ok"`), web `/login`, web `/static/app.css`; `/login` must contain `app.css?v=<APP_CSS_VERSION>` (read from source) and the brand |
 
 **Parameters** (default): `-WebPort` (0 → 8093), `-GatewayPort` (0 → 8092), `-Database` ('' → env),
 `-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-GarminKeyFile` (`data/milebook-garmin.secret`), `-ModelBaseUrl` ('' → env),
@@ -172,30 +173,51 @@ rehearsal on the live file uses the same steps inside a window.
 
 | Endpoint | Server | Returns | Auth | Proves |
 |---|---|---|---|---|
-| `/health` | web | `{"status":"ok","gateway":"ok"}` (503 `degraded` when the gateway is unreachable) | none — answered before the session read | the listener accepts connections **and** the web→gateway path works; the probe is cached for 5 s |
+| `/health` | web | `{"status":"ok","gateway":"ok","db":"ok"}` (503 `degraded` with the failing field `down`) | none — answered before the session read | the listener accepts connections, the coach gateway is reachable, **and** a trivial `SELECT 1` succeeds |
 | `/health` | gateway | `{"status":"ok","model":"<MODEL_NAME>"}` | none — answered before the internal-token check, so it also reveals the model name | the process bound |
 | `/login` | web | 200 HTML | none | the real deploy gate: brand plus the `APP_CSS_VERSION` reference |
 
-**What `/health` proves, and what it does not.** The web `/health` answers `{"status":"ok","gateway":"ok"}` when
-the process is up **and** it can reach the coach gateway (the probe is cached for 5 s); it answers `503` with
-`"status":"degraded"` when the gateway is unreachable. It still does **not** prove: a database query (a locked
-or corrupt file answers 200), model reachability (a bad base URL or key answers 200), token agreement between
-the two servers, or any latency/queue signal. A green deploy therefore means "the process is up, the login page
-renders, and the coach gateway is reachable" — nothing more.
+**What `/health` proves, and what it does not.** The web `/health` answers `{"status":"ok","gateway":"ok","db":"ok"}`
+when the process is up, it can reach the coach gateway (the probe is cached for 5 s) and a database query answers; it
+answers `503` with `"status":"degraded"` and the failing field set to `"down"` otherwise `(src/store.ts · ping)`. It
+still does **not** prove model reachability (a bad base URL or key answers 200), token agreement between the two servers,
+or any latency/queue signal.
+
+## 8. Logs
+
+Every request, coach turn and boot line is a **JSON object on one line** `(src/log.ts · createLogger)`:
+
+```json
+{"ts":"2026-11-23T02:00:00.000Z","level":"info","event":"http.request","component":"web","method":"GET","path":"/calendar","status":200,"ms":12}
+{"ts":"2026-11-23T02:00:01.000Z","level":"info","event":"coach.turn","component":"gateway","requestId":"req-1","status":"completed","attempts":1,"outcome":"committed","validationCode":null,"replyChars":812}
+```
+
+| Event | Level | When |
+|---|---|---|
+| `boot` | info | one line per server once it is listening, carrying the port and the log level |
+| `http.request` | info | one line per non-asset response, with status and duration |
+| `http.asset` | debug | one line per `/static/*` or favicon response, so info stays readable |
+| `http.failed` | error | the handler threw; carries the message and stack, never the runner's text |
+| `coach.turn` / `coach.turn.failed` | info / error | one line per turn with attempts, outcome, validation code and reply size |
+
+**Redaction is by field name, not by value.** A field whose name matches `pass`, `secret`, `token`, `key`,
+`authorization`, `cookie` or `session` is written as `[redacted]`, so a renamed key still cannot leak; values longer than
+300 characters are truncated so one request cannot become a megabyte of log. The runner's message text is never logged.
 
 | Log | Written by | Holds | Caveat |
 |---|---|---|---|
-| `data/milebook-live.out.log` | `Start-Process` stdout | two listen lines, the first-boot database line, shutdown lines | deleted at every deploy |
-| `data/milebook-live.err.log` | stderr | unhandled rejection / uncaught exception text | deleted at every deploy |
+| `data/milebook-live.out.log` | `Start-Process` stdout | boot lines plus the JSON event lines | rotated past 10 MB, five generations kept, then replaced at each deploy |
+| `data/milebook-live.err.log` | stderr | unhandled rejection / uncaught exception text | replaced at each deploy |
 | `data/milebook-deploy.log` | `deploy.ps1`, appended | one line per deploy | the only history that survives |
 | `data/milebook-deploy-task.log` / `.err.log` | the scheduled-task wrapper | deploy console, including refusals | only on the task path |
 
-**Logging limitation.** The app prints two startup lines and nothing per request. `tools/lint.mjs` rejects
+**What is still missing.** No metrics endpoint, no error aggregator and no alerting: an operator tails the log, greps for
+`"level":"error"`, and watches `/health` from outside. The 5xx rate is visible in the log but nothing pages a human.
 `console.log`/`console.debug` anywhere in `src/` except `src/index.ts`, so the only in-`src` channel for new diagnostics is
 `console.error` (which lands in `.err.log`) or a line in `src/index.ts`. No request id, no timing, no error counter, no
 rotation — and a failed coach turn prints nothing: it shows only as the HTTP response (502/504) and the SQLite turn row.
 
-## 8. Rollback
+## 9. Rollback
 
 - **Code.** Read the last good line of `data/milebook-deploy.log`, `git checkout <commit>`, then `pnpm deploy:live` — the
   deploy backs up first, so a rollback is itself reversible. This checkout has no tags yet (`git tag --list` is empty); the
@@ -205,7 +227,7 @@ rotation — and a failed coach turn prints nothing: it shows only as the HTTP r
   process running but unverified — pid recorded, deploy-log line already appended — exit code 1, and 40-line log tails
   printed. Nothing rolls back automatically: fix and redeploy, or restore.
 
-## 9. Routine runbook
+## 10. Routine runbook
 
 | Task | How | Consequence / note |
 |---|---|---|
@@ -216,7 +238,7 @@ rotation — and a failed coach turn prints nothing: it shows only as the HTTP r
 | Prune backups | automatic on every backup run; manual: the §6 command | keeps the newest 14 by default; never delete the newest |
 | Check disk | `src/vendor/anatomy-muscles.glb` is 11 271 460 B (10.75 MiB), served from memory | pressure comes from the database, its `-wal` and `data/backups` (up to 14 × database size) |
 
-## 10. Incident playbook
+## 11. Incident playbook
 
 | Symptom | First checks | Likely cause | Action |
 |---|---|---|---|

@@ -16,7 +16,7 @@ in this branch and re-verified with `pnpm check`.
 **No-go for real users.** Eight blockers: no TLS, fail-open configuration, no credential throttling, an open gateway
 trust boundary, no data erasure, a deployment that was not one (and whose gate failed), no observability, and missing
 web hardening. The product logic itself was in good shape: consistent per-user scoping, strong escaping, a
-server-validated coach contract, 645 tests.
+server-validated coach contract, and a green suite at that point.
 
 ## 1. Fixed in this release
 
@@ -54,13 +54,13 @@ server-validated coach contract, 645 tests.
 | PR-25 | **Medium** | Schema migrations were ad-hoc, with no `user_version` and no ordered list | Ordered steps in `src/migrations.ts`, each in its own transaction and recorded in `PRAGMA user_version`; a pre-versioning file runs the idempotent steps once on first boot, a failure rolls back and leaves the previous version, and the boot log names what ran (`(src/migrations.ts · runMigrations)`) |
 | PR-26 | **Medium** | Garmin keys were stored plaintext in SQLite | AES-256-GCM with a fresh nonce per value and a self-describing `enc:v1:` envelope when `MILEBOOK_GARMIN_KEY` is set; legacy plaintext rows are sealed on boot, a wrong key reads as "no key" instead of failing pages, and the deploy validates the key before starting (`(src/secrets.ts · createSecretBox)`) |
 | PR-23 | **High** | No Content-Security-Policy: ~3.2k lines of inline client JavaScript | A hash-based policy is computed per response from the exact inline script bodies: `script-src 'self'` plus one `sha256-` hash each, no `unsafe-inline`/`unsafe-eval`; the test recomputes the hashes from the body and the smoke pass checks ten pages (`(src/web.ts · contentSecurityPolicy)`) |
+| PR-24 | **High** | No observability: two startup log lines, a static `/health`, no metrics, no error reporting | JSON event lines for every request, asset, coach turn and boot, with redaction by field name and truncation (`(src/log.ts · createLogger)`); `/health` now runs a `SELECT 1` and reports `db` beside `gateway` (`(src/store.ts · ping)`); the deploy refuses a red `db` and rotates the live log. Metrics, an error aggregator and alerting stay operator work |
 
 ## 2. Open blockers — must close before real users
 
 | ID | Severity | Finding | Why it blocks | Remediation | Effort |
 |---|---|---|---|---|---|
 | PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; redirect 80→443; verify HSTS | S |
-| PR-24 | **High** | No observability: two startup log lines, a static `/health`, no metrics, no error reporting | You cannot see a production incident until a runner reports it | Structured JSON logs to a file with rotation; `/health` checks the DB with a trivial query; add uptime monitoring on `/health` and a 5xx alert; optional Sentry-style error sink | M |
 | PR-27 | **Medium** | `src/web.ts` is ~6.9k lines holding view builders, ~3.2k lines of inline client JS, and a 44-branch route dispatcher | Every change risks the whole surface; no linting, typing or unit testing of client code | Split into `web/routes/*`, `web/views/*`, `web/client/*.ts` with an esbuild step; add a route table | L |
 
 ## 3. Fast-follow — should close soon after release

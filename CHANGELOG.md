@@ -14,6 +14,32 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.5.0] — 2026-11-23
+
+Observability: structured logs and a health check that proves the database.
+
+### Added
+
+- **JSON event log.** One line per request, asset, coach turn and boot `(src/log.ts · createLogger)`:
+  `{ts, level, event, ...fields}`. Credential-shaped field names (`pass`, `secret`, `token`, `key`, `authorization`,
+  `cookie`, `session`) are redacted **by name**, values over 300 characters are truncated, and the runner's message
+  text is never logged. `MILEBOOK_LOG_LEVEL` selects the threshold; assets log at `debug` so `info` stays readable.
+- **`/health` proves the database.** It now runs a trivial `SELECT 1` and answers
+  `{"status":"ok","gateway":"ok","db":"ok"}`, or `503 degraded` with the failing field set to `down`
+  `(src/store.ts · ping)`. The deploy refuses a red `db` as well as a red gateway.
+
+### Changed
+
+- The deploy rotates `data/milebook-live.out.log` past 10 MB and keeps five generations instead of deleting the only
+  incident record at every start.
+- The request-failure handler logs `http.failed` with the message and stack instead of writing to stderr.
+
+### Notes
+
+- Still missing, and now stated plainly in `docs/OPERATIONS.md`: no metrics endpoint, no error aggregator and no
+  alerting. An operator tails the log, greps for `"level":"error"` and watches `/health` from outside.
+
+
 ## [1.4.0] — 2026-11-23
 
 Content-Security-Policy without extracting the client scripts.

@@ -67,6 +67,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Internal token | generated per start, or `MILEBOOK_INTERNAL_TOKEN` | in-process only |
 | Garmin personal key | sealed with AES-256-GCM (fresh 96-bit nonce, authenticated) when `MILEBOOK_GARMIN_KEY` is set; plaintext otherwise, and the boot log warns (**open** in that case) | masked to last 4 characters in the UI, never returned by export; legacy plaintext rows are sealed on the first boot after the key appears |
 | Password hash | scrypt string in `users.payload` | never returned by any route |
+| Logs | one JSON line per request, asset, coach turn and boot; credential-shaped field names are redacted by name and values over 300 characters truncated; the runner's message text is never logged | `(src/log.ts · createLogger)` |
 
 `.gitignore` covers `data/`, `.env*`, `*.sqlite`, `*.db` and logs; the lint gate fails on Garmin-style and
 OpenAI-style key patterns. The Garmin key is protected by database-file permissions and, when `MILEBOOK_GARMIN_KEY`

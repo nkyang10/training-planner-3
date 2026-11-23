@@ -13,6 +13,7 @@ import { createAuth } from "./auth";
 import { createGateway } from "./gateway";
 import { createStore } from "./store";
 import { createSecretBox, parseSecretKey } from "./secrets";
+import { createLogger, parseLogLevel } from "./log";
 import { createWeb } from "./web";
 
 /**
@@ -112,6 +113,7 @@ if (handle.migrations.applied.length > 0) {
     `milebook: schema ${handle.migrations.from} -> ${handle.migrations.to} (${handle.migrations.applied.join("; ")})`,
   );
 }
+const log = createLogger({ level: parseLogLevel(readEnv("LOG_LEVEL")) });
 const auth = createAuth({ store: handle.store, secret: authSecret, secureCookies: cookieSecure });
 
 const gateway = createGateway({
@@ -124,6 +126,7 @@ const gateway = createGateway({
   maxAttempts,
   autoStates,
   internalToken,
+  logger: log.child({ component: "gateway" }),
 });
 
 const web = createWeb({
@@ -134,13 +137,16 @@ const web = createWeb({
   modelId: readEnv("MODEL_ID") ?? "milebook-coach",
   autoStates,
   cookieSecure,
+  logger: log.child({ component: "web" }),
 });
 
 gateway.server.listen(gatewayPort, "127.0.0.1", () => {
   console.log(`milebook gateway: listening on 127.0.0.1:${gatewayPort} (model: ${modelName})`);
+  log.info("boot", { component: "gateway", port: gatewayPort, model: modelName, logLevel: parseLogLevel(readEnv("LOG_LEVEL")) });
 });
 web.server.listen(webPort, "0.0.0.0", () => {
   console.log(`milebook calendar: listening on 0.0.0.0:${webPort}`);
+  log.info("boot", { component: "web", port: webPort });
 });
 
 let shuttingDown = false;

@@ -1179,6 +1179,16 @@ class SqliteStore implements Store {
     });
   }
 
+  ping(): boolean {
+    if (this.closed) return false;
+    try {
+      this.db.prepare("SELECT 1 AS ok").get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
