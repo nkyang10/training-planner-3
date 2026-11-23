@@ -154,6 +154,19 @@ if ((Get-ListeningProcessIds).Count -gt 0) { throw "Ports $webPortValue/$gateway
 # --- 3. Start ---------------------------------------------------------------------------------------------------
 $commit = (& git rev-parse --short HEAD 2>$null)
 if (-not $commit) { $commit = 'unknown' }
+
+# Rotate the live log before truncating it: a long-lived host would otherwise grow one file until the disk fills.
+# Keep five generations; the JSON lines are the incident record, so they outlive a restart.
+if (Test-Path $outLog) {
+    $outLogSize = (Get-Item -LiteralPath $outLog).Length
+    if ($outLogSize -gt 10MB) {
+        $stamp = (Get-Date).ToString('yyyyMMdd-HHmmss')
+        Move-Item -LiteralPath $outLog -Destination (Join-Path $root "data/milebook-live.$stamp.log") -Force
+        $oldLogs = Get-ChildItem -Path (Join-Path $root 'data') -Filter 'milebook-live.*.log' |
+            Sort-Object LastWriteTime -Descending | Select-Object -Skip 5
+        foreach ($old in $oldLogs) { Remove-Item -LiteralPath $old.FullName -Force -ErrorAction SilentlyContinue }
+    }
+}
 Remove-Item $outLog, $errLog -ErrorAction SilentlyContinue
 
 $env:MILEBOOK_AUTH_SECRET = $secret
@@ -206,11 +219,15 @@ try {
     $login = Wait-HttpOk "http://127.0.0.1:$webPortValue/login" $TimeoutSeconds
     $css = Wait-HttpOk "http://127.0.0.1:$webPortValue/static/app.css" $TimeoutSeconds
 
-    # The web health reports whether it can reach the coach gateway; a green gateway and a red web→gateway path is a
-    # deploy that answers pages while every coach turn fails.
+    # The web health reports whether it can reach the coach gateway and whether its database answers: a green
+    # gateway with a red database, or a red web-to-gateway path, is a deploy that answers pages while every
+    # coach turn fails.
     $webHealthBody = [string]$webHealth.Content
     if ($webHealthBody -notmatch '"gateway"\s*:\s*"ok"') {
         throw "The web surface cannot reach the gateway: $webHealthBody"
+    }
+    if ($webHealthBody -notmatch '"db"\s*:\s*"ok"') {
+        throw "The web surface cannot reach its database: $webHealthBody"
     }
 
     $loginText = [string]$login.Content

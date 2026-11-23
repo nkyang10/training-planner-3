@@ -13,6 +13,7 @@ import { applyRevert } from "./history";
 import { buildCalendarIcs, buildExportBundle } from "./export";
 import { buildManualActivity } from "./manual-activity";
 import { createRateLimiter } from "./rate-limit";
+import { silentLogger, type Logger } from "./log";
 import { createGarminClient, type GarminClient } from "./garmin";
 import { describeGarminError } from "./garmin-errors";
 import { createGarminSync, type GarminSyncOutcome } from "./garmin-sync";
@@ -133,6 +134,8 @@ export interface WebOptions {
   /** Deterministic auto-state detection; manual/chat states still work when this is off. */
   autoStates?: boolean;
   now?: () => string;
+  /** Structured event log; defaults to silent so a test never writes to stdout. */
+  logger?: Logger;
 }
 
 export interface WebApp {
@@ -5033,6 +5036,7 @@ export function createWeb(options: WebOptions): WebApp {
   const sessionSync = options.sessionSync ?? true;
   const cookieSecure = options.cookieSecure === true;
   const gatewayToken = options.gatewayToken;
+  const log = options.logger ?? silentLogger;
   /** Failed-credential throttle: a key is blocked after 10 failures in 15 minutes; a success clears it. */
   const authLimiter = createRateLimiter({ limit: 10, windowMs: 15 * 60_000 });
   /** Model-spend throttle: at most 40 coach turns per runner per 5 minutes. */
@@ -5178,13 +5182,22 @@ export function createWeb(options: WebOptions): WebApp {
   };
 
   const server = createServer((request, response) => {
+    const startedAt = Date.now();
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const method = request.method ?? "GET";
+    const isAsset = url.pathname.startsWith("/static/") || url.pathname === "/favicon.ico";
+    const requestLog = log.child({ component: "web", method, path: url.pathname });
+    response.on("finish", () => {
+      const line = { status: response.statusCode, ms: Date.now() - startedAt };
+      if (isAsset) requestLog.debug("http.asset", line);
+      else requestLog.info("http.request", line);
+    });
     let requestUser: AuthUser | undefined;
     void (async (): Promise<void> => {
-      const url = new URL(request.url ?? "/", "http://localhost");
-      const method = request.method ?? "GET";
 
-      // Baseline hardening for every response. The app is same-origin only and is never framed; a CSP is the next
-      // step (it needs nonces for the inline client scripts, see docs/PRODUCTION-READINESS.md).
+      // Baseline hardening for every response. The page policy itself is computed in sendHtml, where the exact inline
+      // scripts of the response are known; these headers cover every response kind, including JSON and assets.
+
       response.setHeader("x-content-type-options", "nosniff");
       response.setHeader("referrer-policy", "same-origin");
       response.setHeader("x-frame-options", "DENY");
@@ -5274,10 +5287,13 @@ export function createWeb(options: WebOptions): WebApp {
         return;
       }
       if (url.pathname === "/health") {
-        // A green web health must not hide a dead coach: the deploy and the uptime monitor read `gateway` too.
+        // A green web health must not hide a dead coach, and must not hide a dead database either: the deploy and the
+        // uptime monitor read both fields.
         const gateway = await gatewayHealth();
-        response.writeHead(gateway === "ok" ? 200 : 503, { "content-type": "application/json" });
-        response.end(JSON.stringify({ status: gateway === "ok" ? "ok" : "degraded", gateway }));
+        const db = options.store.ping();
+        const healthy = gateway === "ok" && db;
+        response.writeHead(healthy ? 200 : 503, { "content-type": "application/json" });
+        response.end(JSON.stringify({ status: healthy ? "ok" : "degraded", gateway, db: db ? "ok" : "down" }));
         return;
       }
       if (url.pathname === "/credits") {
@@ -7096,7 +7112,10 @@ export function createWeb(options: WebOptions): WebApp {
       sendHtml(response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
     })().catch((error: unknown) => {
       // The failure is logged for the operator; the runner gets a stable page, never an internal message.
-      console.error("milebook web: request failed", error);
+      requestLog.error("http.failed", {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? (error.stack ?? "") : "",
+      });
       if (!response.headersSent) sendHtml(response, 500, layout(defaultTranslator.t("error.serverError"), `<p class="error">${escapeHtml(defaultTranslator.t("error.serverErrorBody"))}</p>`, requestUser, "none", unreadFor(requestUser)));
       else response.end();
     });

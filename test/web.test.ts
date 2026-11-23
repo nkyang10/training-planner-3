@@ -19,6 +19,7 @@ import type {
 import type { MuscleCheckIn } from "../src/muscles";
 import type { MuscleStatusControl } from "../src/muscle-status";
 import { createWeb } from "../src/web";
+import { createLogger, type Logger } from "../src/log";
 
 const TODAY = "2026-11-05";
 const SECRET = "web-test-secret";
@@ -53,6 +54,7 @@ interface StartOptions {
   /** Shared secret the proxy must present to the gateway. */
   gatewayToken?: string;
   cookieSecure?: boolean;
+  logger?: Logger;
   seed?: (store: Store, user: AuthUser) => void;
 }
 
@@ -213,6 +215,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     ...(options.gatewayUrl === undefined ? {} : { gatewayUrl: options.gatewayUrl }),
     ...(options.gatewayToken === undefined ? {} : { gatewayToken: options.gatewayToken }),
     ...(options.cookieSecure === undefined ? {} : { cookieSecure: options.cookieSecure }),
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.garmin === undefined ? {} : { garmin: options.garmin }),
     ...(options.garminFactory === undefined ? {} : { garminFactory: options.garminFactory }),
     ...(options.autoSyncMinutes === undefined ? {} : { autoSyncMinutes: options.autoSyncMinutes }),
@@ -4887,6 +4890,34 @@ describe("production hardening", () => {
       const hash = createHash("sha256").update(body, "utf8").digest("base64");
       expect(csp).toContain(`'sha256-${hash}'`);
     }
+  });
+
+  it("logs one JSON line per request and keeps assets at debug", async () => {
+    const lines: Array<Record<string, unknown>> = [];
+    const logger = createLogger({ level: "debug", sink: (line) => lines.push(JSON.parse(line) as Record<string, unknown>) });
+    const { base, cookie } = await start({ logger });
+
+    await (await fetch(`${base}/calendar`, { headers: { cookie } })).text();
+    const request = lines.find((line) => line["event"] === "http.request");
+    expect(request).toMatchObject({ component: "web", method: "GET", path: "/calendar", status: 200 });
+    expect(typeof request?.["ms"]).toBe("number");
+
+    await (await fetch(`${base}/static/app.css`)).text();
+    const asset = lines.find((line) => line["event"] === "http.asset");
+    expect(asset).toMatchObject({ path: "/static/app.css", status: 200 });
+    // The asset line is debug-only, so an info-level logger would never write it.
+    expect(lines.some((line) => line["event"] === "http.request" && line["path"] === "/static/app.css")).toBe(false);
+  });
+
+  it("reports the database beside the gateway in health", async () => {
+    // An unreachable gateway makes the gateway half deterministic; the database half is always "ok" here.
+    const { base } = await start({ gatewayUrl: "http://127.0.0.1:1" });
+    const response = await fetch(`${base}/health`);
+    const body = (await response.json()) as { status: string; gateway: string; db: string };
+    expect(body.db).toBe("ok");
+    expect(body.gateway).toBe("down");
+    expect(body.status).toBe("degraded");
+    expect(response.status).toBe(503);
   });
 
   it("adds Secure and HSTS only when the deployment is secure", async () => {

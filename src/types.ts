@@ -607,5 +607,7 @@ export interface Store {
    * soft-delete state to restore afterwards.
    */
   deleteAccount(userId: string): ErasureReport;
+  /** True when a trivial query succeeds; false once the connection is closed or broken. Backs the health check. */
+  ping(): boolean;
   close(): void;
 }

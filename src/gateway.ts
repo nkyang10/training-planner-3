@@ -61,6 +61,7 @@ import type {
   TrainingSession,
 } from "./types";
 import { addDays, localDay, safeTimeZone } from "./time";
+import { silentLogger, type Logger } from "./log";
 
 export interface GatewayOptions {
   store: Store;
@@ -82,6 +83,8 @@ export interface GatewayOptions {
    * Unset in unit tests that drive the gateway directly.
    */
   internalToken?: string;
+  /** Structured event log; defaults to silent so a test never writes to stdout. */
+  logger?: Logger;
 }
 
 export interface Gateway {
@@ -928,6 +931,7 @@ export function createGateway(options: GatewayOptions): Gateway {
   const modelId = options.modelId ?? "milebook-coach";
   const maxAttempts = Math.max(1, options.maxAttempts ?? 2);
   const internalToken = options.internalToken;
+  const log = options.logger ?? silentLogger;
   const server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const url = new URL(request.url ?? "/", "http://localhost");
@@ -1450,7 +1454,19 @@ export function createGateway(options: GatewayOptions): Gateway {
         });
       }
       sendJson(response, 200, completion);
+      log.info("coach.turn", {
+        requestId,
+        status: "completed",
+        attempts: meta.attempts,
+        outcome: meta.outcome,
+        validationCode: meta.validationCode,
+        replyChars: reply.length,
+      });
       } catch (error) {
+        log.error("coach.turn.failed", {
+          requestId,
+          message: error instanceof Error ? error.message : String(error),
+        });
         if (requestId !== null) {
           try {
             options.store.failCoachTurn(userId, requestId, now());
