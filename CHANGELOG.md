@@ -11,11 +11,32 @@ it described a product that no longer exists in this shape. This changelog start
 ### Planned before the next release
 
 - TLS termination, cookie `Secure` and HSTS verified on the live host.
-- Account deletion and a privacy policy.
 - Content-Security-Policy after extracting the inline client scripts.
 - Schema migrations with `PRAGMA user_version`.
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
+
+## [1.2.0] — 2026-11-23
+
+Account erasure and the privacy statement: the last legal blocker before real users can hold an account.
+
+### Added
+
+- **Account deletion.** `POST /profile/delete` requires the current password and the username typed exactly, then
+  deletes all 18 user-scoped tables and the account row in one transaction, drops every in-memory page session for
+  the account and clears both cookies. The confirmation page carries no account detail, and a repeated delete is a
+  no-op rather than an error.
+- **`/privacy`.** A public, server-rendered statement written against the schema: what is stored, who else receives
+  it (the configured model endpoint and Garmin), how long it lives (the pruning constants), the export and sign-out
+  choices, and what deletion actually removes - including the honest note that a host backup can hold a copy until
+  it is pruned. Linked from every footer and from the sign-in page.
+
+### Notes
+
+- The erasure test seeds one row per table for two accounts, deletes one through the store and audits the file with
+  a second connection, so a table added without joining the erasure list fails the gate instead of leaking rows.
+- `/privacy` names no contact address: the deployment owner publishes one.
+
 
 ## [1.1.0] — 2026-11-23
 

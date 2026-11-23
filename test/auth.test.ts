@@ -303,6 +303,16 @@ describe("profile", () => {
     const fresh = auth.login({ username: SIGNUP.username, password: SIGNUP.password });
     expect(auth.read(request(cookieFrom(fresh.cookie)))).toEqual(fresh.user);
   });
+
+  it("confirms a password without exposing the hash", () => {
+    const { auth } = start();
+    const signup = auth.signup(SIGNUP);
+
+    expect(auth.confirmPassword(signup.user.userId, SIGNUP.password)).toBe(true);
+    expect(auth.confirmPassword(signup.user.userId, "not-the-password")).toBe(false);
+    expect(auth.confirmPassword(signup.user.userId, "")).toBe(false);
+    expect(auth.confirmPassword("missing-user", SIGNUP.password)).toBe(false);
+  });
 });
 
 describe("validation", () => {

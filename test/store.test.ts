@@ -31,7 +31,7 @@ const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as {
   DatabaseSync: new (path: string) => {
     exec(sql: string): void;
-    prepare(sql: string): { run(...params: unknown[]): unknown };
+    prepare(sql: string): { run(...params: unknown[]): unknown; get(...params: unknown[]): unknown };
     close(): void;
   };
 };
@@ -1274,6 +1274,85 @@ describe("muscle status controls", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ muscleId: "calves", hold: true, resolvedDay: null });
     reopened.close();
+    rmSync(directory, { recursive: true, force: true });
+  });
+});
+
+/**
+ * Account erasure. The test seeds one row per table for two accounts through a second connection, then erases one and
+ * audits every table independently of the store's own report: the point is that no table is forgotten, not that a
+ * method returns the number it computed.
+ */
+describe("account erasure", () => {
+  const AT = "2026-11-01T09:00:00.000Z";
+  const seedRows: ReadonlyArray<{ table: string; sql: string; params: (id: string) => unknown[] }> = [
+    { table: "messages", sql: "INSERT INTO messages (message_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)", params: (id) => [`msg-${id}`, id, AT, "{}"] },
+    { table: "memories", sql: "INSERT INTO memories (memory_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)", params: (id) => [`mem-${id}`, id, AT, "{}"] },
+    { table: "sessions", sql: "INSERT INTO sessions (session_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)", params: (id) => [`ses-${id}`, id, "2026-11-02", AT, "{}"] },
+    { table: "activities", sql: "INSERT INTO activities (activity_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)", params: (id) => [`act-${id}`, id, "2026-11-02", AT, "{}"] },
+    { table: "activity_workouts", sql: "INSERT INTO activity_workouts (user_id, activity_id, day, status, attempts, fetched_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)", params: (id) => [id, `act-${id}`, "2026-11-02", "ok", 0, AT, "{}"] },
+    { table: "sync_state", sql: "INSERT INTO sync_state (user_id, last_synced_at) VALUES (?, ?)", params: (id) => [id, AT] },
+    { table: "garmin_keys", sql: "INSERT INTO garmin_keys (user_id, saved_at, api_key) VALUES (?, ?, ?)", params: (id) => [id, AT, "garmin-key-value"] },
+    { table: "notifications", sql: "INSERT INTO notifications (notification_id, user_id, created_at, read_at, payload) VALUES (?, ?, ?, ?, ?)", params: (id) => [`notif-${id}`, id, AT, null, "{}"] },
+    { table: "muscle_checkins", sql: "INSERT INTO muscle_checkins (check_in_id, user_id, day, created_at, payload) VALUES (?, ?, ?, ?, ?)", params: (id) => [`check-${id}`, id, "2026-11-02", AT, "{}"] },
+    { table: "muscle_status_controls", sql: "INSERT INTO muscle_status_controls (user_id, muscle_id, updated_at, payload) VALUES (?, ?, ?, ?)", params: (id) => [id, "calves", AT, "{}"] },
+    { table: "muscle_proposals", sql: "INSERT INTO muscle_proposals (proposal_id, user_id, status, created_at, updated_at, decided_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?)", params: (id) => [`prop-${id}`, id, "proposed", AT, AT, null, "{}"] },
+    { table: "change_sets", sql: "INSERT INTO change_sets (change_set_id, user_id, created_at, reverted_at, payload) VALUES (?, ?, ?, ?, ?)", params: (id) => [`cs-${id}`, id, AT, null, "{}"] },
+    { table: "coach_turns", sql: "INSERT INTO coach_turns (request_id, user_id, created_at, completed_at, status, attempts, validation_code, outcome, response_json, directive_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params: (id) => [`req-${id}`, id, AT, null, "in_progress", 0, null, null, null, null] },
+    { table: "coach_directives", sql: "INSERT INTO coach_directives (directive_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)", params: (id) => [`dir-${id}`, id, AT, "{}"] },
+    { table: "coach_states", sql: "INSERT INTO coach_states (state_id, user_id, state_key, status, source, updated_at, expires_at, resolved_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", params: (id) => [`state-${id}`, id, "knee-pain", "active", "coach", AT, null, null, "{}"] },
+    { table: "coach_state_events", sql: "INSERT INTO coach_state_events (event_id, user_id, state_id, state_key, action, from_status, to_status, source, confidence, evidence, created_at, payload) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", params: (id) => [`evt-${id}`, id, `state-${id}`, "knee-pain", "propose", null, "active", "coach", 0.5, "felt it after the long run", AT, "{}"] },
+    { table: "coach_preferences", sql: "INSERT INTO coach_preferences (user_id, updated_at, payload) VALUES (?, ?, ?)", params: (id) => [id, AT, "{}"] },
+    { table: "prompt_snapshots", sql: "INSERT INTO prompt_snapshots (snapshot_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)", params: (id) => [`snap-${id}`, id, AT, "{}"] },
+  ];
+
+  it("empties every table for one account and leaves the other runner intact", () => {
+    const directory = mkdtempSync(join(tmpdir(), "milebook-erasure-"));
+    const dbPath = join(directory, "erasure.sqlite");
+    const handle = createStore(`sqlite:${dbPath}`);
+    handles.push(handle);
+    const store = handle.store;
+
+    const owner: UserProfile = {
+      userId: "user-owner",
+      username: "owner_1",
+      displayName: "Owner",
+      passwordHash: "scrypt$1$aa$bb",
+      timezone: "UTC",
+      goal: null,
+      createdAt: AT,
+    };
+    const other: UserProfile = { ...owner, userId: "user-other", username: "other_1", displayName: "Other" };
+    store.createUser(owner);
+    store.createUser(other);
+
+    const audit = new DatabaseSync(dbPath);
+    for (const id of [owner.userId, other.userId]) {
+      for (const row of seedRows) audit.prepare(row.sql).run(...row.params(id));
+    }
+
+    const report = store.deleteAccount(owner.userId);
+
+    expect(report.total).toBe(seedRows.length + 1);
+    expect(report.tables["users"]).toBe(1);
+    for (const row of seedRows) {
+      expect(report.tables[row.table]).toBe(1);
+      const mine = audit.prepare(`SELECT COUNT(*) AS n FROM ${row.table} WHERE user_id = ?`).get(owner.userId) as { n: number };
+      const kept = audit.prepare(`SELECT COUNT(*) AS n FROM ${row.table} WHERE user_id = ?`).get(other.userId) as { n: number };
+      expect(mine.n).toBe(0);
+      expect(kept.n).toBe(1);
+    }
+    const account = audit.prepare("SELECT COUNT(*) AS n FROM users WHERE user_id = ?").get(owner.userId) as { n: number };
+    expect(account.n).toBe(0);
+    expect(store.getUser(owner.userId)).toBeUndefined();
+    expect(store.getUser(other.userId)?.username).toBe("other_1");
+
+    // A second erasure is a no-op rather than an error: the confirmation page can be retried.
+    expect(store.deleteAccount(owner.userId).total).toBe(0);
+
+    audit.close();
+    handle.close();
+    handles.pop();
     rmSync(directory, { recursive: true, force: true });
   });
 });

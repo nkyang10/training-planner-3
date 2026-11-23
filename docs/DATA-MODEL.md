@@ -234,9 +234,11 @@ Deliberately excluded, and the list is a decision rather than an omission:
 - The Garmin key — no export path reads `garmin_keys`; the secret never leaves in a bundle.
 - Messages, memories, notifications, `coach_turns`, `coach_directives`, `coach_states`, `coach_state_events`, `coach_preferences`, `prompt_snapshots` — the coach's private working set, including the hidden-directive audit and the rendered prompt bodies.
 - `activity_workouts` and `sync_state` — derived operational overlays, rebuildable from Garmin.
+
+Erasure is the complement of export: export deliberately omits the coach's working set, while deletion removes everything, including what export never carried.
 - The ICS carries no activities and no change history: it is a calendar import, not a data export.
 
-**Erasure gap:** there is no account deletion. `Store` exposes no delete for a user, no statement deletes from `users`, and no route offers it `(src/types.ts · Store)`. The only deletes in the data layer are `deleteSession`, `deleteGarminKey` and the pruning rules in §5 `(src/store.ts · SqliteStore.deleteGarminKey)`. Deleting the Garmin key is therefore the only erasure the app performs; a full account erasure is a manual operator task, and with no foreign keys there is no cascade to help — every table must be cleared by `user_id` by hand. Export has no import counterpart either, so a bundle cannot be restored into another account.
+**Erasure path:** `POST /profile/delete` requires the current password and the username typed exactly, then calls `deleteAccount`, which removes every row the account owns - all 18 user-scoped tables, then the `users` row - inside one `BEGIN IMMEDIATE` transaction, and finally clears both cookies and every in-memory page session for that account `(src/store.ts · deleteAccount)`, `(src/web.ts · createWeb)`. The table list is a constant, so a table added without being listed fails the erasure test rather than leaking rows; the test seeds one row per table for two accounts, erases one through the store, and audits the file with a second connection `(test/store.test.ts)`. There is no soft-delete state to restore and a second call is a no-op.
 
 ## 8. Sizing and limits
 
