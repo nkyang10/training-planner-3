@@ -201,7 +201,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     ...(options.cookieSecure === undefined ? {} : { secureCookies: options.cookieSecure }),
     now: () => `${TODAY}T08:00:00.000Z`,
   });
-  const signup = auth.signup({
+  const signup = await auth.signup({
     username: USERNAME,
     password: PASSWORD,
     displayName: DISPLAY_NAME,
@@ -211,7 +211,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
   const user = signup.user;
   seedSession(handle.store, user.userId, "session:easy", "2026-11-06", "Easy 5 km", "easy", 5);
   options.seed?.(handle.store, user);
-  const login = auth.login({ username: USERNAME, password: PASSWORD });
+  const login = await auth.login({ username: USERNAME, password: PASSWORD });
   const web = createWeb({
     store: handle.store,
     auth,
@@ -720,7 +720,7 @@ describe("authentication pages", () => {
 describe("private calendar", () => {
   it("shows the authenticated runner's month, day and data only", async () => {
     const { base, auth, handle, user, cookie } = await start();
-    const otherSignup = auth.signup({
+    const otherSignup = await auth.signup({
       username: "other_runner",
       password: "other-password-123",
       displayName: "Other Runner",
@@ -728,7 +728,7 @@ describe("private calendar", () => {
     });
     const other = otherSignup.user;
     seedSession(handle.store, other.userId, "session:other", "2026-11-07", "Other secret long run", "long", 18);
-    const otherCookie = cookieFrom(auth.login({ username: "other_runner", password: "other-password-123" }).cookie);
+    const otherCookie = cookieFrom((await auth.login({ username: "other_runner", password: "other-password-123" })).cookie);
 
     const ownPage = await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } });
     expect(ownPage.status).toBe(200);
@@ -1100,7 +1100,7 @@ describe("calendar run peek", () => {
     };
     expect(ownBody.peek.plan).toEqual({ status: "unplanned", label: "Unplanned", title: null, planned: null });
 
-    const otherSignup = auth.signup({
+    const otherSignup = await auth.signup({
       username: "other_peek",
       password: "other-password-123",
       displayName: "Other Peek",
@@ -1330,7 +1330,7 @@ describe("calendar session peek", () => {
   it("scopes the session peek to the signed-in runner and rejects bad requests", async () => {
     const { base, auth, handle, cookie } = await start();
 
-    const otherSignup = auth.signup({
+    const otherSignup = await auth.signup({
       username: "other_session_peek",
       password: "other-password-123",
       displayName: "Other Session Peek",
@@ -1729,12 +1729,12 @@ describe("training log", () => {
         });
       },
     });
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "log_other",
       password: "other-password-123",
       displayName: "Log Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     seedActivity(handle.store, other.userId, "garmin:foreign", "2026-11-03", "Foreign secret run", 9);
 
     const html = await (await fetch(`${base}/history`, { headers: { cookie } })).text();
@@ -1807,7 +1807,7 @@ describe("training log", () => {
     expect(html).toContain('id="coach-minimize"');
     expect(html).not.toContain("Foreign secret run");
 
-    const otherLogin = auth.login({ username: "log_other", password: "other-password-123" });
+    const otherLogin = await auth.login({ username: "log_other", password: "other-password-123" });
     const otherHtml = await (await fetch(`${base}/history`, { headers: { cookie: cookieFrom(otherLogin.cookie) } })).text();
     expect(otherHtml).toContain("Foreign secret run");
     expect(otherHtml).not.toContain("Morning run");
@@ -2257,12 +2257,12 @@ describe("training log", () => {
 
   it("does not expose another runner's activity detail", async () => {
     const { base, auth, handle, cookie } = await start();
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "detail_other",
       password: "other-password-123",
       displayName: "Detail Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     seedActivity(handle.store, other.userId, "garmin:foreign", "2026-11-03", "Foreign run", 5);
     const foreign = await fetch(`${base}/activity/${encodeURIComponent("garmin:foreign")}`, { headers: { cookie } });
     expect(foreign.status).toBe(404);
@@ -3489,12 +3489,12 @@ describe("coach audit", () => {
       text: "mode: legacy race week",
       createdAt: `${TODAY}T08:00:00.000Z`,
     });
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "audit_other",
       password: "other-password-123",
       displayName: "Audit Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     handle.store.appendCoachDirective({
       directiveId: "directive:other",
       userId: other.userId,
@@ -3582,12 +3582,12 @@ describe("coach audit", () => {
 describe("conversation history after refresh", () => {
   it("returns the user's recent messages oldest first and never another runner's", async () => {
     const { base, handle, user, cookie, auth } = await start();
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "history_other",
       password: "other-password-123",
       displayName: "History Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     handle.store.appendMessage({ messageId: "m1", userId: user.userId, role: "user", text: "first", createdAt: `${TODAY}T01:00:00.000Z` });
     handle.store.appendMessage({ messageId: "m2", userId: user.userId, role: "assistant", text: "second", createdAt: `${TODAY}T02:00:00.000Z` });
     handle.store.appendMessage({ messageId: "m3", userId: other.userId, role: "user", text: "foreign", createdAt: `${TODAY}T03:00:00.000Z` });
@@ -3717,12 +3717,12 @@ describe("coach states page", () => {
         });
       },
     });
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "state_other",
       password: "other-password-123",
       displayName: "State Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     seedCoachState(handle.store, other.userId, "illness", { stateId: "state:other", evidence: ["Other secret"] });
 
     const response = await fetch(`${base}/coach-states`, { headers: { cookie } });
@@ -3939,12 +3939,12 @@ describe("coach states page", () => {
         });
       },
     });
-    const other = auth.signup({
+    const other = (await auth.signup({
       username: "confirm_other",
       password: "other-password-123",
       displayName: "Confirm Other",
       timezone: "UTC",
-    }).user;
+    })).user;
     seedCoachState(handle.store, other.userId, "illness", {
       stateId: "state:foreign",
       status: "observing",
@@ -4318,8 +4318,8 @@ describe("honest demo slice", () => {
   it("keeps reported runs scoped to the runner who logged them", async () => {
     const { base, auth, cookie } = await start();
     await postForm(`${base}/activities`, cookie, { day: "2026-11-04", title: "Private treadmill", distanceKm: "5", durationMin: "30", requestId: "request-private1", next: "/day/2026-11-04" });
-    auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
-    const otherCookie = cookieFrom(auth.login({ username: "other_runner", password: "other-password-123" }).cookie);
+    await auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
+    const otherCookie = cookieFrom((await auth.login({ username: "other_runner", password: "other-password-123" })).cookie);
     const otherCalendar = await (await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie: otherCookie } })).text();
     expect(otherCalendar).not.toContain("Private treadmill");
   });
@@ -4840,8 +4840,8 @@ describe("honest demo slice", () => {
     expect(ics).toContain("BEGIN:VCALENDAR");
     expect(ics).toContain("DTSTART;VALUE=DATE:20261106");
 
-    auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
-    const otherCookie = cookieFrom(auth.login({ username: "other_runner", password: "other-password-123" }).cookie);
+    await auth.signup({ username: "other_runner", password: "other-password-123", displayName: "Other Runner", timezone: "UTC" });
+    const otherCookie = cookieFrom((await auth.login({ username: "other_runner", password: "other-password-123" })).cookie);
     const other = await (await fetch(`${base}/export.json`, { headers: { cookie: otherCookie } })).json() as { sessions: unknown[]; activities: unknown[] };
     expect(other.sessions).toHaveLength(0);
     expect(other.activities).toHaveLength(0);

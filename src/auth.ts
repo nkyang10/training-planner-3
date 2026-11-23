@@ -12,7 +12,8 @@
  * version (signing out every other device) and reissues a cookie for the device
  * that made the change.
  */
-import { createHmac, randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
+import { promisify } from "node:util";
 import type { IncomingMessage } from "node:http";
 import type { Store, UserProfile, UserProfilePatch } from "./types";
 
@@ -97,20 +98,20 @@ export interface AuthOptions {
 }
 
 export interface Auth {
-  signup(input: SignupInput): AuthResult;
-  login(input: LoginInput): AuthResult;
+  signup(input: SignupInput): Promise<AuthResult>;
+  login(input: LoginInput): Promise<AuthResult>;
   read(request: IncomingMessage): AuthUser | undefined;
   setCookie(user: CookieUser): string;
   clearCookie(): string;
   /** Applies a profile patch; a password change reissues `cookie` for the calling device. */
-  updateProfile(userId: string, patch: ProfileUpdate): AuthResult;
+  updateProfile(userId: string, patch: ProfileUpdate): Promise<AuthResult>;
   /** Invalidates every outstanding cookie for the user, including the caller's. */
   signOutEverywhere(userId: string): void;
   /**
    * True when `password` matches the account's stored hash. Used to re-authenticate before irreversible actions
    * (password change, account erasure) without exposing the hash itself.
    */
-  confirmPassword(userId: string, password: string): boolean;
+  confirmPassword(userId: string, password: string): Promise<boolean>;
 }
 
 function invalid(message: string): AuthError {
@@ -165,13 +166,19 @@ function normalizeGoal(value: string | null | undefined): string | null {
   return goal.length === 0 ? null : goal;
 }
 
-function hashPassword(password: string): string {
+/**
+ * scrypt runs on the libuv thread pool, not the event loop: a burst of sign-ins must not stall every other request while
+ * a 16 MB-memory hash is computed. The sync variant is deliberately gone from this module.
+ */
+const scryptAsync = promisify(scrypt) as (password: string, salt: Buffer, keylen: number) => Promise<Buffer>;
+
+async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_BYTES);
-  const hash = scryptSync(password, salt, HASH_BYTES);
+  const hash = await scryptAsync(password, salt, HASH_BYTES);
   return `${HASH_PREFIX}$${salt.toString("hex")}$${hash.toString("hex")}`;
 }
 
-function verifyPassword(password: string, encoded: string): boolean {
+async function verifyPassword(password: string, encoded: string): Promise<boolean> {
   if (typeof password !== "string" || typeof encoded !== "string") return false;
   const parts = encoded.split("$");
   if (parts.length !== 3) return false;
@@ -181,7 +188,7 @@ function verifyPassword(password: string, encoded: string): boolean {
   if (hashHex.length !== HASH_BYTES * 2 || !HEX_PATTERN.test(hashHex)) return false;
   try {
     const expected = Buffer.from(hashHex, "hex");
-    const actual = scryptSync(password, Buffer.from(saltHex, "hex"), HASH_BYTES);
+    const actual = await scryptAsync(password, Buffer.from(saltHex, "hex"), HASH_BYTES);
     return actual.length === expected.length && timingSafeEqual(actual, expected);
   } catch {
     return false;
@@ -286,7 +293,7 @@ export function createAuth(options: AuthOptions): Auth {
   const clearCookie = (): string =>
     `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secureAttribute}; Max-Age=0`;
 
-  const signup = (input: SignupInput): AuthResult => {
+  const signup = async (input: SignupInput): Promise<AuthResult> => {
     const username = normalizeUsername(input.username);
     const password = validatePassword(input.password);
     const displayName = normalizeDisplayName(input.displayName);
@@ -302,7 +309,7 @@ export function createAuth(options: AuthOptions): Auth {
       userId: randomUUID(),
       username,
       displayName,
-      passwordHash: hashPassword(password),
+      passwordHash: await hashPassword(password),
       timezone,
       goal,
       createdAt: createdAt.toISOString(),
@@ -320,11 +327,11 @@ export function createAuth(options: AuthOptions): Auth {
     return { user: toAuthUser(profile), cookie: cookieFor(profile.userId, createdAt, profile.tokenVersion ?? 0) };
   };
 
-  const login = (input: LoginInput): AuthResult => {
+  const login = async (input: LoginInput): Promise<AuthResult> => {
     const username = typeof input.username === "string" ? input.username.trim().toLowerCase() : "";
     const password = typeof input.password === "string" ? input.password : "";
     const profile = username.length === 0 ? undefined : store.getUserByUsername(username);
-    if (profile === undefined || !verifyPassword(password, profile.passwordHash)) {
+    if (profile === undefined || !(await verifyPassword(password, profile.passwordHash))) {
       throw new AuthError("invalid-credentials", "invalid username or password");
     }
     return { user: toAuthUser(profile), cookie: setCookie(profile) };
@@ -352,7 +359,7 @@ export function createAuth(options: AuthOptions): Auth {
     return toAuthUser(profile);
   };
 
-  const updateProfile = (userId: string, input: ProfileUpdate): AuthResult => {
+  const updateProfile = async (userId: string, input: ProfileUpdate): Promise<AuthResult> => {
     if (typeof userId !== "string" || userId.length === 0) {
       throw new AuthError("not-found", "user not found");
     }
@@ -370,10 +377,10 @@ export function createAuth(options: AuthOptions): Auth {
       // a hijacked session must not become a permanent takeover.
       const nextPassword = validatePassword(input.password);
       const current = typeof input.currentPassword === "string" ? input.currentPassword : "";
-      if (current.length === 0 || !verifyPassword(current, existing.passwordHash)) {
+      if (current.length === 0 || !(await verifyPassword(current, existing.passwordHash))) {
         throw new AuthError("invalid-current-password", "current password is incorrect");
       }
-      patch.passwordHash = hashPassword(nextPassword);
+      patch.passwordHash = await hashPassword(nextPassword);
       patch.tokenVersion = (existing.tokenVersion ?? 0) + 1;
     }
 
@@ -388,11 +395,11 @@ export function createAuth(options: AuthOptions): Auth {
     store.updateUser(userId, { tokenVersion: (existing.tokenVersion ?? 0) + 1 });
   };
 
-  const confirmPassword = (userId: string, password: string): boolean => {
+  const confirmPassword = async (userId: string, password: string): Promise<boolean> => {
     const existing = store.getUser(userId);
     if (existing === undefined) return false;
     if (typeof password !== "string" || password.length === 0) return false;
-    return verifyPassword(password, existing.passwordHash);
+    return await verifyPassword(password, existing.passwordHash);
   };
 
   return { signup, login, read, setCookie, clearCookie, updateProfile, signOutEverywhere, confirmPassword };

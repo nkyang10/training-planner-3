@@ -14,6 +14,27 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.10.0] — 2026-11-23
+
+Password hashing off the event loop.
+
+### Changed
+
+- **`crypto.scrypt` replaces `scryptSync`.** `hashPassword` and `verifyPassword` are async and run on the libuv thread
+  pool, so a burst of sign-ins no longer freezes every other request; `signup`, `login`, `updateProfile` and
+  `confirmPassword` return promises and the web handlers await them `(src/auth.ts · hashPassword)`.
+
+### Measured
+
+- One hash: ~56 ms. Eight parallel verifications: 65 ms total. `/health` during the burst: 2 ms median, 11 ms worst —
+  the same requests against `scryptSync` would have queued behind ~450 ms of blocked loop.
+
+### Notes
+
+- The auth throttle is still in-memory and per-process; that half of PR-31 stays a known limit for a multi-process
+  deployment, which this host is not.
+
+
 ## [1.9.0] — 2026-11-23
 
 Compression on the wire, measured rather than assumed.

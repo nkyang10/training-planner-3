@@ -91,7 +91,7 @@ in-place refresh). Forms work without JavaScript: the same routes accept a POST 
 | `src/training.ts` | Load/ACWR, plan matching, best efforts | types, time |
 | `src/garmin.ts`, `src/garmin-sync.ts`, `src/garmin-workout.ts`, `src/garmin-errors.ts` | Garmin client, sync, workout overlay, error mapping | store, time |
 | `src/store.ts` | Schema, migrations, every query | `node:sqlite` |
-| `src/auth.ts` | Accounts, scrypt hashes, signed cookies | store |
+| `src/auth.ts` | Accounts, scrypt hashes on the thread pool, signed cookies | store |
 | `src/rate-limit.ts` | Failed-credential and model-spend throttles | — |
 | `src/i18n.ts` | Two catalogs, locale resolution, date formatting, client strings | — |
 | `src/styles.ts` | The whole stylesheet as one string | — |
