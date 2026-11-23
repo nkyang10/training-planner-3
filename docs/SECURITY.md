@@ -16,7 +16,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Timezone validation | pattern plus a real `Intl.DateTimeFormat` check | `(src/auth.ts · normalizeTimezone)` |
 | Password change | requires the current password, verified against the stored hash before the hash is rotated; a wrong or missing value returns `invalid-current-password` and changes nothing | `(src/auth.ts · updateProfile)`, `(src/web.ts · createWeb)` profile POST |
 | Login throttle | 10 failures per (client, route, username) per 15 min → `429`; a success clears the key | `(src/rate-limit.ts · createRateLimiter)`, `(src/web.ts · createWeb)` |
-| Credential stuffing at scale | throttled per client address only; behind a proxy every runner shares the proxy address (**open**) | `(src/web.ts · clientKey)` |
+| Credential stuffing at scale | throttled per client address; behind a reverse proxy set `MILEBOOK_TRUST_PROXY=true` so the first `X-Forwarded-For` entry is used instead of the shared proxy address `(src/web.ts · clientKey)`. A malformed header falls back to the socket, and the header is ignored entirely unless the switch is on |
 | Hashing cost | synchronous `scryptSync` blocks the single event loop for tens of milliseconds per attempt (**open**) | `(src/auth.ts · hashPassword)` |
 
 ## 2. Sessions

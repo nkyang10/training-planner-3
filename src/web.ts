@@ -134,6 +134,8 @@ export interface WebOptions {
   /** Deterministic auto-state detection; manual/chat states still work when this is off. */
   autoStates?: boolean;
   now?: () => string;
+  /** Trust the first `X-Forwarded-For` entry for throttling; enable only behind a reverse proxy you control. */
+  trustProxy?: boolean;
   /** Structured event log; defaults to silent so a test never writes to stdout. */
   logger?: Logger;
 }
@@ -336,8 +338,21 @@ function clearSessionCookie(secure: boolean): string {
   return `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/${secureAttribute}; Max-Age=0`;
 }
 
-/** A coarse client identity for throttling: the socket peer, never a spoofable header. */
-function clientKey(request: IncomingMessage): string {
+/**
+ * A coarse client identity for throttling.
+ *
+ * By default it is the socket peer, never a spoofable header. When the deployment sets `trustProxy`, the first entry of
+ * `X-Forwarded-For` is used instead, because behind a reverse proxy every runner shares the proxy's address and one
+ * runner's failures would otherwise throttle everyone. Only an address-shaped value is accepted, so a malformed header
+ * falls back to the socket rather than becoming a free-form throttle key.
+ */
+function clientKey(request: IncomingMessage, trustProxy: boolean): string {
+  if (trustProxy) {
+    const header = request.headers["x-forwarded-for"];
+    const raw = Array.isArray(header) ? header[0] : header;
+    const first = raw?.split(",")[0]?.trim();
+    if (first !== undefined && /^[0-9a-fA-F:.]{3,45}$/.test(first)) return first;
+  }
   return request.socket.remoteAddress ?? "unknown";
 }
 
@@ -5037,6 +5052,7 @@ export function createWeb(options: WebOptions): WebApp {
   const cookieSecure = options.cookieSecure === true;
   const gatewayToken = options.gatewayToken;
   const log = options.logger ?? silentLogger;
+  const trustProxy = options.trustProxy === true;
   /** Failed-credential throttle: a key is blocked after 10 failures in 15 minutes; a success clears it. */
   const authLimiter = createRateLimiter({ limit: 10, windowMs: 15 * 60_000 });
   /** Model-spend throttle: at most 40 coach turns per runner per 5 minutes. */
@@ -5346,7 +5362,7 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "POST") {
           const form = await readForm(request);
           const username = (form.get("username") ?? "").trim().toLowerCase();
-          const attemptKey = `${clientKey(request)}|login|${username}`;
+          const attemptKey = `${clientKey(request, trustProxy)}|login|${username}`;
           if (authLimiter.blocked(attemptKey)) {
             sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
             return;
@@ -5383,7 +5399,7 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "POST") {
           const form = await readForm(request);
           const signupName = (form.get("username") ?? "").trim().toLowerCase();
-          const attemptKey = `${clientKey(request)}|signup|${signupName}`;
+          const attemptKey = `${clientKey(request, trustProxy)}|signup|${signupName}`;
           if (authLimiter.blocked(attemptKey)) {
             sendHtml(response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
             return;
@@ -6020,7 +6036,6 @@ export function createWeb(options: WebOptions): WebApp {
           response.end(JSON.stringify({ error: { detail: "too many coach messages, try again in a few minutes" } }));
           return;
         }
-        chatLimiter.fail(spendKey);
         let body: unknown;
         try {
           body = await readJsonBody(request);
@@ -6060,6 +6075,9 @@ export function createWeb(options: WebOptions): WebApp {
         });
         const gatewayUrl = (options.gatewayUrl ?? "http://127.0.0.1:8090").replace(/\/$/, "");
         const requestId = request.headers["x-milebook-request-id"];
+        // Count only turns that reach the model: a malformed body, an unknown intent or a missing activity must not burn
+        // the runner's spend budget. This is a rate cap, not a failure counter, so it is not reset on success.
+        chatLimiter.fail(spendKey);
         // A coach turn may take two model attempts; the gateway aborts its own upstream call at 120 s. The proxy
         // budget stays slightly above that so a slow-but-valid turn is not cut off, and a hung gateway cannot pin a
         // browser request indefinitely.

@@ -19,6 +19,7 @@ param(
     [string]$GarminKeyFile = 'data/milebook-garmin.secret',
     [string]$ModelBaseUrl = '',
     [string]$ModelName = '',
+    [switch]$TrustProxy,
     [int]$MaxAttempts = 2,
     [int]$TimeoutSeconds = 60,
     [int]$BackupKeep = 14,
@@ -63,6 +64,9 @@ $modelNameValue = if ($ModelName) { $ModelName } elseif ($env:MILEBOOK_MODEL_NAM
 if (-not $modelNameValue) { throw 'Model name missing: set MILEBOOK_MODEL_NAME.' }
 
 $cookieSecureValue = if ($CookieSecure -or $env:MILEBOOK_COOKIE_SECURE -eq 'true') { 'true' } else { 'false' }
+
+# Behind a reverse proxy every runner shares the proxy address; trust the forwarded address only on request.
+$trustProxyValue = if ($TrustProxy -or $env:MILEBOOK_TRUST_PROXY -eq 'true') { 'true' } else { 'false' }
 
 # At-rest key for Garmin credentials. Optional: without it the app keeps keys plaintext and says so at boot.
 $garminKeyValue = if ($env:MILEBOOK_GARMIN_KEY) {
@@ -179,6 +183,7 @@ $env:MILEBOOK_MODEL_API_KEY = $modelKey
 $env:MILEBOOK_MODEL_NAME = $modelNameValue
 $env:MILEBOOK_MAX_ATTEMPTS = [string]$maxAttemptsValue
 $env:MILEBOOK_COOKIE_SECURE = $cookieSecureValue
+$env:MILEBOOK_TRUST_PROXY = $trustProxyValue
 if ($garminKeyValue) {
     $env:MILEBOOK_GARMIN_KEY = $garminKeyValue
 } else {

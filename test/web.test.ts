@@ -55,6 +55,7 @@ interface StartOptions {
   gatewayToken?: string;
   cookieSecure?: boolean;
   logger?: Logger;
+  trustProxy?: boolean;
   seed?: (store: Store, user: AuthUser) => void;
 }
 
@@ -216,6 +217,7 @@ const start = async (options: StartOptions = {}): Promise<Harness> => {
     ...(options.gatewayToken === undefined ? {} : { gatewayToken: options.gatewayToken }),
     ...(options.cookieSecure === undefined ? {} : { cookieSecure: options.cookieSecure }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
+    ...(options.trustProxy === undefined ? {} : { trustProxy: options.trustProxy }),
     ...(options.garmin === undefined ? {} : { garmin: options.garmin }),
     ...(options.garminFactory === undefined ? {} : { garminFactory: options.garminFactory }),
     ...(options.autoSyncMinutes === undefined ? {} : { autoSyncMinutes: options.autoSyncMinutes }),
@@ -4839,7 +4841,7 @@ describe("honest demo slice", () => {
     });
     const html = await (await fetch(`${base}/history?view=month&period=2026-11`, { headers: { cookie } })).text();
     expect(html).toContain("The trend plots the last 12 runs with the selected metric");
-    expect(html).toContain("within your stored history");
+    expect(html).toContain("computed from the activities stored for the period you are viewing");
   });
 
   it("serves reduced-motion CSS and session intent copy", async () => {
@@ -4918,6 +4920,50 @@ describe("production hardening", () => {
     expect(body.gateway).toBe("down");
     expect(body.status).toBe("degraded");
     expect(response.status).toBe(503);
+  });
+
+  it("throttles per forwarded address only when the proxy is trusted", async () => {
+    const trusted = await start({ trustProxy: true });
+    const attempt = (address: string) =>
+      fetch(`${trusted.base}/login`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": address },
+        body: formBody({ username: "ghost_runner", password: "wrong-password-1" }),
+        redirect: "manual",
+      });
+
+    for (let index = 0; index < 10; index += 1) await attempt("203.0.113.7");
+    expect((await attempt("203.0.113.7")).status).toBe(429);
+    // A different forwarded address behind the same proxy keeps its own budget.
+    expect((await attempt("203.0.113.8")).status).not.toBe(429);
+  });
+
+  it("ignores the forwarded address when the proxy is not trusted", async () => {
+    const { base } = await start();
+    const attempt = (address: string) =>
+      fetch(`${base}/login`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", "x-forwarded-for": address },
+        body: formBody({ username: "ghost_runner", password: "wrong-password-1" }),
+        redirect: "manual",
+      });
+
+    for (let index = 0; index < 10; index += 1) await attempt(`198.51.100.${index + 1}`);
+    // Every request shares the socket peer, so rotating the header buys nothing.
+    expect((await attempt("198.51.100.99")).status).toBe(429);
+  });
+
+  it("does not spend the coach budget on rejected requests", async () => {
+    const { base, cookie } = await start();
+    for (let index = 0; index < 45; index += 1) {
+      const response = await fetch(`${base}/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({}),
+      });
+      // 45 rejected bodies is past the 40-turn limit; only model-bound turns may consume it.
+      expect(response.status).toBe(400);
+    }
   });
 
   it("adds Secure and HSTS only when the deployment is secure", async () => {
