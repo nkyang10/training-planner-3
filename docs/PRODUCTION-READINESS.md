@@ -60,6 +60,7 @@ server-validated coach contract, and a green suite at that point.
 | PR-34 | **Medium** | The best-efforts copy said "last 90 days, up to 100 activities" while the code scans the selected period | The string now says the numbers come from the activities stored for the period being viewed, in both locales (`(src/i18n.ts · besteffort.scope)`) |
 | PR-36 | **Medium** | No coverage measurement or threshold in CI | `vitest --coverage` over `src/` only, with floors (statements 90, branches 78, functions 95, lines 90) enforced by `pnpm test:coverage` and its own CI job; the lcov report is uploaded as an artifact (`vitest.config.ts`) |
 | PR-40 | **Medium** | No `CODEOWNERS`, issue templates or release notes process | `.github/CODEOWNERS` routes the contract-bearing files, `.github/pull_request_template.md` asks for the gate and the docs, and `docs/RELEASE.md` is the release checklist (`(docs/RELEASE.md)`) |
+| PR-35 | **Medium** | No compression for HTML/CSS/JS; the 11 MB GLB is uncompressed | Textual responses are gzipped when the client accepts it, with the encoding folded into the ETag and `vary: accept-encoding` (`(src/compress.ts · encodeBody)`); measured on a scratch instance: CSS 123,857 → 23,342 B, `/login` 30,908 → 8,681 B. Binary assets stay as-is |
 
 ## 2. Open blockers — must close before real users
 
@@ -73,7 +74,6 @@ server-validated coach contract, and a green suite at that point.
 | ID | Finding | Remediation | Effort |
 |---|---|---|---|
 | PR-31 | `scryptSync` blocks the single event loop; the throttle is per-process and in-memory | Async `scrypt` on a worker, or a small connection pool with a shared limiter store | M |
-| PR-35 | No compression for HTML/CSS/JS; the 11 MB GLB is uncompressed | `gzip`/`brotli` for text assets, and consider Draco or gzip for the GLB | S-M |
 | PR-37 | CI runs `pnpm audit` on every push and Dependabot opens grouped weekly updates (`.github/dependabot.yml`); a CycloneDX SBOM per release is still missing | Generate the SBOM in the release job and attach it to the tag | S |
 | PR-38 | Backups live on the same host; the automated restore drill now proves they restore (`pnpm restore-drill`), but no copy leaves the machine | Copy the newest backup to a second disk or an off-host share after each deploy, and keep the monthly rehearsal in `docs/OPERATIONS.md` §6 | S |
 | PR-39 | Deploy stops the process before starting the new one: a failed start leaves the site down | Blue/green on a second port behind the proxy, or start-then-swap with a health gate | M |

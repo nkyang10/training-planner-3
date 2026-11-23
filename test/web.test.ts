@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { createServer } from "node:http";
+import { createServer, request } from "node:http";
+import { gunzipSync } from "node:zlib";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -251,6 +252,29 @@ interface MockGatewayOptions {
   failures?: unknown[];
   milebook?: Record<string, unknown>;
 }
+
+/** A raw request, because `fetch` decompresses a gzip body and hides the headers this test needs to see. */
+const rawGet = (
+  base: string,
+  path: string,
+  headers: Record<string, string>,
+  method = "GET",
+): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }> =>
+  new Promise((resolve, reject) => {
+    const url = new URL(path, base);
+    const clientRequest = request(
+      { hostname: url.hostname, port: url.port, path: `${url.pathname}${url.search}`, method, headers },
+      (response) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () =>
+          resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks) }),
+        );
+      },
+    );
+    clientRequest.on("error", reject);
+    clientRequest.end();
+  });
 
 const startMockGateway = async (options: MockGatewayOptions = {}): Promise<MockGateway> => {
   let seenUser: string | undefined;
@@ -4969,6 +4993,54 @@ describe("production hardening", () => {
     for (let index = 0; index < 10; index += 1) await attempt(`198.51.100.${index + 1}`);
     // Every request shares the socket peer, so rotating the header buys nothing.
     expect((await attempt("198.51.100.99")).status).toBe(429);
+  });
+
+  it("compresses a page for a client that accepts gzip, and only then", async () => {
+    const { base } = await start();
+    const gzipped = await rawGet(base, "/login", { "accept-encoding": "gzip" });
+    expect(gzipped.status).toBe(200);
+    expect(gzipped.headers["content-encoding"]).toBe("gzip");
+    expect(String(gzipped.headers["vary"] ?? "")).toContain("accept-encoding");
+    const html = gunzipSync(gzipped.body).toString("utf8");
+    expect(html).toContain("Milebook");
+
+    // The CSP is computed from the markup, not the transport, so every hash still matches after decompression.
+    const csp = String(gzipped.headers["content-security-policy"] ?? "");
+    const bodies = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map((match) => match[1] ?? "")
+      .filter((body) => body.length > 0);
+    for (const body of bodies) {
+      expect(csp).toContain(`'sha256-${createHash("sha256").update(body, "utf8").digest("base64")}'`);
+    }
+
+    const plain = await rawGet(base, "/login", {});
+    expect(plain.headers["content-encoding"]).toBeUndefined();
+    expect(plain.body.toString("utf8")).toContain("Milebook");
+
+    const refused = await rawGet(base, "/login", { "accept-encoding": "gzip;q=0" });
+    expect(refused.headers["content-encoding"]).toBeUndefined();
+  });
+
+  it("compresses a static asset once and revalidates the gzip variant", async () => {
+    const { base } = await start();
+    const first = await rawGet(base, "/static/app.css", { "accept-encoding": "gzip" });
+    expect(first.status).toBe(200);
+    expect(first.headers["content-encoding"]).toBe("gzip");
+    expect(String(first.headers["etag"] ?? "")).toMatch(/-gzip"$/);
+    const css = gunzipSync(first.body).toString("utf8");
+    expect(css.length).toBeGreaterThan(10_000);
+
+    const again = await rawGet(base, "/static/app.css", {
+      "accept-encoding": "gzip",
+      "if-none-match": String(first.headers["etag"]),
+    });
+    expect(again.status).toBe(304);
+    expect(again.body.length).toBe(0);
+
+    // A binary asset is served as-is: gzipping a GLB costs CPU for a few percent.
+    const glb = await rawGet(base, "/static/anatomy-muscles.glb", { "accept-encoding": "gzip" }, "HEAD");
+    expect(glb.status).toBe(200);
+    expect(glb.headers["content-encoding"]).toBeUndefined();
   });
 
   it("does not spend the coach budget on rejected requests", async () => {

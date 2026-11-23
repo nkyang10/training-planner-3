@@ -38,7 +38,10 @@ Citations are symbol anchors (`(src/web.ts · createWeb)`), never line numbers; 
 
 - `sendHtml`/`sendJson` send `cache-control: no-store`; the exports add `content-disposition: attachment`. `(src/web.ts · sendJson)`
 - Web `GET /health` is the one JSON response without `cache-control`, and its type is bare `application/json`. `(src/web.ts · createWeb)`
-- `sendAsset` sends a strong `etag` and answers a matching `if-none-match` with `304`. app.css is
+- `sendAsset` sends a strong `etag` and answers a matching `if-none-match` with `304`. Textual assets are gzipped when
+  the client sends `accept-encoding: gzip`; the response then carries `content-encoding: gzip`, `vary: accept-encoding` and
+  a validator with `-gzip` inside the quotes, so a revalidating client gets a `304` only for the variant it holds.
+  Binary assets (WebP, GLB) are never compressed. `(src/compress.ts · encodeBody)`, `(src/web.ts · sendAsset)`
   `public, max-age=31536000, immutable`; three.js builds `no-cache`; WebP `public, max-age=86400`; the GLB `max-age=3600`.
   `(src/web.ts · sendAsset)`
 - HTML links the sheet as `/static/app.css?v=${APP_CSS_VERSION}` (`33`); the server ignores the query. `(src/web.ts · APP_CSS_VERSION)`
@@ -164,7 +167,7 @@ prefill}`: the gateway's `milebook` block, with states and proposals re-read fro
 
 ### 3.8 Static assets
 
-All twelve go through `sendAsset` with an ETag; the table gives the cache policy. `(src/web.ts · sendAsset)`
+All twelve go through `sendAsset` with an ETag; the table gives the cache policy. Textual ones (CSS, JS, SVG) are gzipped on request; WebP and the GLB are not. `(src/web.ts · sendAsset)`
 
 | Path | `content-type` | `cache-control` |
 |---|---|---|
