@@ -118,12 +118,20 @@ node --import tsx src/index.ts
 | 6 | Start | rotate the live log past 10 MB (five generations kept), then delete both live logs, export the environment, `Start-Process node.exe --import tsx src/index.ts -WorkingDirectory <root> -WindowStyle Hidden -PassThru` |
 | 7 | Record | pid → `data/milebook-live.pid`; one line appended to `data/milebook-deploy.log` |
 | 8 | Verify | gateway `/health`, web `/health` (must report `"gateway":"ok"` **and** `"db":"ok"`), web `/login`, web `/static/app.css`; `/login` must contain `app.css?v=<APP_CSS_VERSION>` (read from source) and the brand |
+| 9 | Smoke | `node tools/smoke.mjs http://127.0.0.1:<web>` — health, CSP hashes against the served markup, Secure/HttpOnly cookie, signup, six gated pages, the coach, and account erasure (the smoke account deletes itself). A coach that cannot answer is a warning, fatal with `-RequireCoach`; any other failure aborts |
 
 **Parameters** (default): `-WebPort` (0 → 8093), `-GatewayPort` (0 → 8092), `-Database` ('' → env),
 `-SecretFile` (`data/milebook-auth.secret`), `-ModelKeyFile` (`data/milebook-model.secret`), `-GarminKeyFile` (`data/milebook-garmin.secret`), `-ModelBaseUrl` ('' → env),
 `-ModelName` ('' → env), `-MaxAttempts` (2, exported), `-TimeoutSeconds` (60), `-BackupKeep` (14), `-CookieSecure` (off),
 `-SkipBackup` (off), `-TrustProxy` (off, exports `MILEBOOK_TRUST_PROXY=true`), `-WebHost` ('' → `0.0.0.0`),
-`-ModelTimeoutSeconds` (120), `-ProxyTimeoutSeconds` (130).
+`-ModelTimeoutSeconds` (120), `-ProxyTimeoutSeconds` (130), `-RequireCoach` (off).
+
+**Calling it from a pipeline hangs.** The long-running child keeps an inherited pipe open, so `pnpm deploy:live | Select-Object`
+never returns even though the deploy finished. Redirect to a file instead:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1 <args> *> data/deploy-run.log
+```
 
 **Deploy log line** — appended, never rewritten, the only surviving deploy history:
 
@@ -185,7 +193,13 @@ rehearsal on the live file uses the same steps inside a window.
 **What `/health` proves, and what it does not.** The web `/health` answers `{"status":"ok","gateway":"ok","db":"ok"}`
 when the process is up, it can reach the coach gateway (the probe is cached for 5 s) and a database query answers; it
 answers `503` with `"status":"degraded"` and the failing field set to `"down"` otherwise `(src/store.ts · ping)`. It
-still does **not** prove model reachability (a bad base URL or key answers 200), token agreement between the two servers,
+still does **not** prove model reachability (a bad base URL or key answers 200), token agreement between the two servers
+
+**One command for a running deployment.** `pnpm smoke` (or `node tools/smoke.mjs <base>`) checks the live instance the
+way an operator would: health fields, the stylesheet version the source declares, the CSP hashes against the markup
+actually served, the `Secure`/`HttpOnly` cookie, signup, six gated pages, one coach turn, and account erasure — the
+throwaway account deletes itself, so the database is left as it was. Exit `0` all good, `1` a check failed, `2` usage;
+`--allow-coach-failure` turns a dead model into a warning. The deploy runs it as step 9.,
 or any latency/queue signal.
 
 ## 8. Logs

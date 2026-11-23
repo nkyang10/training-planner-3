@@ -11,6 +11,7 @@ Milebook has no build step, so the suite is the only executable spec. This page 
 | `pnpm typecheck` | `tsc -p tsconfig.json --noEmit` (tsconfig.json) | `src/**/*.ts`, `test/**/*.ts`, `tools/**/*.ts` | any `strict` + `noUncheckedIndexedAccess` error; nothing is emitted |
 | `pnpm test` | `vitest run` (vitest.config.ts) | `test/**/*.test.ts`, node environment, 15 s per test | any failing assertion or unhandled rejection |
 | `pnpm check` | `pnpm lint && pnpm typecheck && pnpm test` (package.json) | all of the above | the first failing step; `&&` stops the rest |
+| `pnpm smoke` | `node tools/smoke.mjs` (tools/smoke.mjs) | a running instance, default `http://127.0.0.1:8093` | the process, its headers or its pages disagree with the source; a coach failure is a warning unless `--allow-coach-failure` is absent |
 
 **Rule: never quote a test count in prose; run `pnpm check`.** Counts drift faster than docs: the HEAD commit message for the all-changes work says 627 tests, while `pnpm test` reported **626 tests in 22 files** on 2026-11-22 (~9 s wall, re-run twice; `pnpm typecheck` exit 0). A number copied into a doc, a PR body or a screenshot caption is stale by the next commit.
 

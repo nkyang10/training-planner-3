@@ -6,6 +6,10 @@
 #   3. Stop only a process that is provably this app (command line or recorded pid ancestry).
 #   4. Start the app from the current checkout and record the commit, the pid and the stylesheet version.
 #   5. Verify /health, /login and the stylesheet against the version the source actually declares.
+#   6. Run the smoke check (tools/smoke.mjs) against the new process.
+#
+# Redirect this script's output to a file when calling it from a pipeline: the long-running child keeps an inherited
+# pipe open, so `... | Select-Object` never returns even though the deploy finished. Use: *> data/deploy-run.log
 #
 # Secrets are read from data/milebook-auth.secret, MILEBOOK_MODEL_API_KEY (or data/milebook-model.secret) and
 # MILEBOOK_GARMIN_KEY (or data/milebook-garmin.secret, the optional at-rest key for Garmin credentials).
@@ -29,6 +33,8 @@ param(
     [string]$WebHost = '',
     [int]$BackupKeep = 14,
     [switch]$CookieSecure,
+    # Make a coach that cannot answer fatal at the post-deploy smoke instead of a warning.
+    [switch]$RequireCoach,
     [switch]$SkipBackup
 )
 
@@ -251,7 +257,22 @@ try {
     $cssText = [string]$css.Content
     if ($cssText.Length -lt 10000) { throw 'The deployed stylesheet is suspiciously small.' }
 
-    Write-Host "Deploy OK: commit $commit, gateway $($health.StatusCode) ($([string]$health.Content)), calendar $($login.StatusCode), css v$cssVersion, pid $($process.Id)."
+    # The smoke check exercises what the checks above cannot: Secure/HttpOnly cookie flags, the CSP hashes against
+    # the markup actually served, signup, the pages behind the gate and account erasure (the smoke account removes
+    # itself). A dead model endpoint fails only the coach check; that is a warning unless -RequireCoach is set.
+    $smokeOutput = & node tools/smoke.mjs "http://127.0.0.1:$webPortValue" 2>&1
+    $smokeCode = $LASTEXITCODE
+    $smokeText = ($smokeOutput | Out-String)
+    $otherFailures = @($smokeOutput | Where-Object { $_ -match '^FAIL\s' -and $_ -notmatch '^FAIL\s+/chat' })
+    if ($otherFailures.Count -gt 0) {
+        throw "Post-deploy smoke failed:`n$smokeText"
+    }
+    $smokeState = if ($smokeCode -eq 0) { 'ok' } else { 'coach-down' }
+    if ($smokeCode -ne 0) {
+        if ($RequireCoach) { throw "The coach did not answer and -RequireCoach was set:`n$smokeText" }
+        Write-Warning 'Post-deploy smoke: the coach did not answer; every other check passed.'
+    }
+    Write-Host "Deploy OK: commit $commit, gateway $($health.StatusCode) ($([string]$health.Content)), calendar $($login.StatusCode), css v$cssVersion, smoke $smokeState, pid $($process.Id)."
     Write-Host "  http://127.0.0.1:$webPortValue/login"
     Write-Host "  http://127.0.0.1:$gatewayPortValue/health"
     Write-Host '  logs: data/milebook-live.out.log, data/milebook-live.err.log'
