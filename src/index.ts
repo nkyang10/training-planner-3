@@ -137,6 +137,7 @@ const web = createWeb({
   modelId: readEnv("MODEL_ID") ?? "milebook-coach",
   autoStates,
   cookieSecure,
+  trustProxy: readBoolean("TRUST_PROXY", false),
   logger: log.child({ component: "web" }),
 });
 

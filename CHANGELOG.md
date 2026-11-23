@@ -14,6 +14,30 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.6.0] — 2026-11-23
+
+Throttling that survives a reverse proxy, and a chat budget that counts only real turns.
+
+### Added
+
+- **`MILEBOOK_TRUST_PROXY`.** Behind a reverse proxy every runner shares the proxy address, so a single runner's failed
+  logins would throttle everyone. With the switch on, the throttle key is the first `X-Forwarded-For` entry; a malformed
+  header falls back to the socket and the header is ignored entirely unless the switch is on `(src/web.ts · clientKey)`.
+  The deploy exposes it as `-TrustProxy`.
+
+### Changed
+
+- **The coach budget counts only model-bound turns.** The counter is incremented after the body, intent and activity
+  validate, so a malformed or unauthorised request can no longer spend the runner's 40-turn budget.
+- **Best-efforts copy matches the code.** It said "last 90 days, up to 100 activities" while the numbers come from the
+  activities stored for the period being viewed; both locales now say so.
+
+### Notes
+
+- The remaining fast-follow list is honest about what is left: CI audits dependencies but ships no SBOM and no automated
+  dependency updates (`docs/PRODUCTION-READINESS.md` §3).
+
+
 ## [1.5.0] — 2026-11-23
 
 Observability: structured logs and a health check that proves the database.

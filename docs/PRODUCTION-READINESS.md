@@ -55,12 +55,15 @@ server-validated coach contract, and a green suite at that point.
 | PR-26 | **Medium** | Garmin keys were stored plaintext in SQLite | AES-256-GCM with a fresh nonce per value and a self-describing `enc:v1:` envelope when `MILEBOOK_GARMIN_KEY` is set; legacy plaintext rows are sealed on boot, a wrong key reads as "no key" instead of failing pages, and the deploy validates the key before starting (`(src/secrets.ts · createSecretBox)`) |
 | PR-23 | **High** | No Content-Security-Policy: ~3.2k lines of inline client JavaScript | A hash-based policy is computed per response from the exact inline script bodies: `script-src 'self'` plus one `sha256-` hash each, no `unsafe-inline`/`unsafe-eval`; the test recomputes the hashes from the body and the smoke pass checks ten pages (`(src/web.ts · contentSecurityPolicy)`) |
 | PR-24 | **High** | No observability: two startup log lines, a static `/health`, no metrics, no error reporting | JSON event lines for every request, asset, coach turn and boot, with redaction by field name and truncation (`(src/log.ts · createLogger)`); `/health` now runs a `SELECT 1` and reports `db` beside `gateway` (`(src/store.ts · ping)`); the deploy refuses a red `db` and rotates the live log. Metrics, an error aggregator and alerting stay operator work |
+| PR-32 | **Medium** | The chat throttle counted every coach POST, including rejected ones, and never reset | The counter is incremented only after the body, intent and activity validate, so a malformed or unauthorised request cannot burn the budget; it stays a rate cap, not a failure counter (`(src/web.ts · chatLimiter)`) |
+| PR-33 | **Medium** | Behind a reverse proxy every runner shares one client address, so throttling collapses to one budget | `MILEBOOK_TRUST_PROXY=true` (deploy `-TrustProxy`) makes the throttle key the first `X-Forwarded-For` entry; a malformed header falls back to the socket, and the header is ignored unless the switch is on (`(src/web.ts · clientKey)`) |
+| PR-34 | **Medium** | The best-efforts copy said "last 90 days, up to 100 activities" while the code scans the selected period | The string now says the numbers come from the activities stored for the period being viewed, in both locales (`(src/i18n.ts · besteffort.scope)`) |
 
 ## 2. Open blockers — must close before real users
 
 | ID | Severity | Finding | Why it blocks | Remediation | Effort |
 |---|---|---|---|---|---|
-| PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; redirect 80→443; verify HSTS | S |
+| PR-19 | **Blocker** | No TLS: the web surface speaks plain HTTP on `0.0.0.0` | Credentials, cookies, Garmin keys and health data cross the LAN in clear text | Terminate TLS at a reverse proxy (IIS/Caddy/nginx) in front of `:8093`; set `MILEBOOK_COOKIE_SECURE=true`; set `MILEBOOK_TRUST_PROXY=true` so throttling stays per runner behind the proxy; redirect 80→443; verify HSTS | S |
 | PR-27 | **Medium** | `src/web.ts` is ~6.9k lines holding view builders, ~3.2k lines of inline client JS, and a 44-branch route dispatcher | Every change risks the whole surface; no linting, typing or unit testing of client code | Split into `web/routes/*`, `web/views/*`, `web/client/*.ts` with an esbuild step; add a route table | L |
 
 ## 3. Fast-follow — should close soon after release
@@ -68,12 +71,9 @@ server-validated coach contract, and a green suite at that point.
 | ID | Finding | Remediation | Effort |
 |---|---|---|---|
 | PR-31 | `scryptSync` blocks the single event loop; the throttle is per-process and in-memory | Async `scrypt` on a worker, or a small connection pool with a shared limiter store | M |
-| PR-32 | The chat throttle counts every coach POST (including rejected ones) and never resets | Count only turns that reach the model; reset on success | S |
-| PR-33 | Behind a reverse proxy every runner shares one client address for throttling | Trust `X-Forwarded-For` only when `MILEBOOK_TRUST_PROXY=true`, then throttle on the real address | S |
-| PR-34 | The best-efforts copy says "last 90 days, up to 100 activities"; the code scans the selected period from stored rows | Fix the catalog string in both locales to describe the period scan | S |
 | PR-35 | No compression for HTML/CSS/JS; the 11 MB GLB is uncompressed | `gzip`/`brotli` for text assets, and consider Draco or gzip for the GLB | S-M |
 | PR-36 | No coverage measurement or threshold in CI | Add `@vitest/coverage-v8`, publish the report, set a floor near today's number | S |
-| PR-37 | CI does not run `pnpm audit`, has no SBOM and no dependency updates | Add `pnpm audit --prod`, a CycloneDX SBOM per release, Dependabot/Renovate | S |
+| PR-37 | CI runs `pnpm audit` on every push (the dependency-audit job); there is still no SBOM per release and no automated dependency updates | Add a CycloneDX SBOM to the release job and Dependabot/Renovate | S |
 | PR-38 | Backups live on the same host and no restore drill exists | Copy backups off-host (or to a second disk), and run a monthly restore drill into a scratch file | S |
 | PR-39 | Deploy stops the process before starting the new one: a failed start leaves the site down | Blue/green on a second port behind the proxy, or start-then-swap with a health gate | M |
 | PR-40 | No `CODEOWNERS`, issue templates or release notes process | Add `CODEOWNERS`, issue forms, and a release checklist (see [RELEASE.md](RELEASE.md)) | S |

@@ -16,7 +16,7 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Upstream timeout | 120 s per model call; proxy aborts at 130 s | `(src/gateway.ts · createGateway)`, `(src/web.ts · createWeb)` | `504` with "the coach did not answer in time" | Raise both budgets together |
 | Provider cache | external; the app only guarantees a byte-stable prefix | `(src/coach.ts · buildCoachSystemPrompt)` | A loading line naming the re-prefill reason | Needs a provider with a measurable cache-hit signal |
 | Model key absent | no local check: the gateway sends an empty bearer and the provider decides | `(src/index.ts · readEnv)`, `(src/gateway.ts · callModel)` | A provider rejection surfaces as the gateway's "the model call failed" detail | Configure `MILEBOOK_MODEL_API_KEY` |
-| Coach turns per runner | 40 per 5 minutes | `(src/rate-limit.ts · createRateLimiter)` | `429` JSON on the bubble | Raise the limit; it exists to bound model spend |
+| Coach turns per runner | 40 per 5 minutes, counted only when a turn reaches the model | `(src/rate-limit.ts · createRateLimiter)` | `429` JSON on the bubble; a rejected body or unknown intent does not spend the budget | Raise the limit; it exists to bound model spend |
 
 ## 2. Calendar and changes
 

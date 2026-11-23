@@ -248,7 +248,7 @@ also slides the page session: `resolveSession` issues a fresh `milebooksid` when
 | 404 | unknown path, unknown activity, malformed day | HTML page |
 | 404 | peeks, `/chat` with an unknown `review-activity` id, proposal JSON | JSON `{error:{detail}}` or `{ok:false, detail}` |
 | 405 | wrong method on `/login`, `/signup`, `/logout`, `/profile`, `/profile/sign-out-everywhere`, `/profile/delete`, `/credits`, `/privacy`, `/goodbye`, `/coach-audit`, `/coach-states`, `/coach-states/refresh`, `/coach-states/:id/*`, `/muscle`, `/changes`, or either peek | HTML page, or JSON `{error:{detail:"method not allowed"}}` for the peeks |
-| 429 | 10 failed logins per 15 min per IP+username; 40 coach messages per 5 min per user | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
+| 429 | 10 failed logins per 15 min per IP+username; 40 coach messages per 5 min per user (only turns that reach the model) | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
 | 500 | any uncaught handler error | HTML page; the message is `error.message` interpolated into the page (HTML-escaped), so internal text can reach the browser |
 | 502 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |
 | 504 | `/chat` when the proxy's 130 s budget expires | JSON `{error:{detail:"the coach did not answer in time"}}` |
