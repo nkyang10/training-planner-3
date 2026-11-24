@@ -3572,9 +3572,11 @@ function renderChatBubble(tx: Translator): string {
           // the gateway replays the cached turn instead of booking it twice.
           response = await postChat();
         }
-        const data = await response.json();
+        // A proxy in front of the app can answer with its own HTML page; reading the body must not turn that into a
+        // network error, so a body that is not JSON leaves data null and lands in the failure branch below.
+        const data = await response.json().catch(() => null);
         typing.remove();
-        if (!response.ok) {
+        if (!response.ok || data === null) {
           const reason = response.status === 404
             ? tr('errNotFound', 'That run could not be found.')
             : response.status === 400
@@ -6247,7 +6249,8 @@ export function createWeb(options: WebOptions): WebApp {
           };
           const reply = payload.choices?.[0]?.message?.content;
           if (!upstream.ok || typeof reply !== "string") {
-            response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+          // 503 keeps Cloudflare from swapping in its own error page; the detail names the upstream status.
+            response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
             response.end(JSON.stringify({ error: { detail: payload.error?.detail ?? `coach answered ${upstream.status}` } }));
             return;
           }
@@ -6363,12 +6366,15 @@ export function createWeb(options: WebOptions): WebApp {
               : null,
           }));
         } catch (error) {
+          // 503, not 502 or 504: Cloudflare (and trycloudflare quick tunnels) replace an origin 502/504 with its own HTML
+          // error page, which the bubble then reads as a network failure. 503 passes through, and the detail still says
+          // which of the two failures it was.
           const aborted = error instanceof Error && error.name === "AbortError";
           if (aborted) {
-            response.writeHead(504, { "content-type": "application/json; charset=utf-8" });
+            response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
             response.end(JSON.stringify({ error: { detail: "the coach did not answer in time" } }));
           } else {
-            response.writeHead(502, { "content-type": "application/json; charset=utf-8" });
+            response.writeHead(503, { "content-type": "application/json; charset=utf-8" });
             response.end(JSON.stringify({ error: { detail: "the coach service is unavailable" } }));
           }
         } finally {

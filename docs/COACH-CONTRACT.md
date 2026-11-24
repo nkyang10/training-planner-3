@@ -10,7 +10,7 @@ Related: [ARCHITECTURE.md](ARCHITECTURE.md) · [HTTP-API.md](HTTP-API.md) · [CO
 
 | Hop | Call | Payload / headers | Failure surface |
 |---|---|---|---|
-| Browser → web | `POST /chat` | `{ message, intent? }` plus `x-milebook-request-id` | 400 message not 1..1000 chars, 400 bad intent, 404 activity not found, 502/504 upstream |
+| Browser → web | `POST /chat` | `{ message, intent? }` plus `x-milebook-request-id` | 400 message not 1..1000 chars, 400 bad intent, 404 activity not found, 503 upstream |
 | Web → gateway | `POST /v1/chat/completions` | `x-milebook-user`, `x-milebook-internal-token` when configured, `x-milebook-request-id`; body `{ model, stream:false, messages:[{role:"user",content}], milebook:{directive}? }` | 130 s abort → 504 `the coach did not answer in time`; other failure → 502 `the coach service is unavailable` |
 | Gateway → model | `POST {MILEBOOK_MODEL_BASE_URL}/chat/completions` | `temperature: 0.3`, `tools: [COACH_TOOL]`, `tool_choice: "auto"`, `parallel_tool_calls: false`, optional bearer `MILEBOOK_MODEL_API_KEY` | 120 s abort by default (`MILEBOOK_MODEL_TIMEOUT_SECONDS`); non-2xx or empty message → 502 `model-failed` |
 | Gateway surfaces | `GET /health` (open), `GET /v1/models`, `POST /v1/chat/completions` | `x-milebook-internal-token` on everything except `/health` | 401 `unauthorized`, 404 `not-found` |
@@ -110,7 +110,7 @@ calendar change. `(src/gateway.ts · createGateway)`
   `{ ok:false, code, issues[], context{today, timezone, weekday, tomorrow, horizonEnd}, attempt, maxAttempts, policy }`.
   A tool call receives it as a `role:"tool"` message with the instruction inside; plain text receives an assistant turn
   plus a user instruction. `(src/coach.ts · buildValidationFeedbackForCode)` `(src/gateway.ts · appendRepair)`
-- Transport failure is not repaired: the turn is marked failed, the client receives 502 `model-failed`, and the
+- Transport failure is not repaired: the turn is marked failed, the gateway answers 502 `model-failed` and the browser sees 503 with stable copy, and the
   fallback text follows the surviving code. `(src/gateway.ts · fallbackFor)`
 
 Idempotency, keyed by `x-milebook-request-id` (or body `request_id`), pattern `^[A-Za-z0-9._:-]{1,100}$`, disabled when

@@ -14,6 +14,29 @@ it described a product that no longer exists in this shape. This changelog start
 
 See [docs/PRODUCTION-READINESS.md](docs/PRODUCTION-READINESS.md) for the ordered plan.
 
+## [1.12.0] — 2026-11-24
+
+Security hardening from the 2026-11-24 audit, and a coach failure the tunnel used to hide.
+
+### Security
+
+- Model output can no longer resolve runner-set or sensitive coaching states; prompt notes are JSON-encoded and
+  directive ids are charset-validated; the credential limiter is bounded and verifies the password before counting;
+  the erasure marker stops an in-flight sync or turn from resurrecting rows; real-day validation and ICS escaping;
+  `secure_delete`/`VACUUM` hardening. Full list in `SECURITY-AUDIT-2026-11-24.md` (721 tests).
+
+### Fixed
+
+- **The coach failure copy now survives Cloudflare.** An origin `502`/`504` is replaced by Cloudflare with its own HTML
+  error page, so behind the tunnel a failed turn read as a network error. Both coach failures answer `503` with distinct
+  details, and the bubble treats a non-JSON body as the failure branch instead of "Network error".
+
+### Verified
+
+- Status passthrough probed through a fresh quick tunnel: `200`, `400`, `404`, `500` and `503` arrive unchanged; `502`
+  and `504` become Cloudflare pages.
+
+
 ## [1.11.0] — 2026-11-23
 
 A backup that leaves the host, an SBOM per build, and a deploy path that accepts absolute paths.

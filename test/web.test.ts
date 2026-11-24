@@ -5193,7 +5193,7 @@ describe("production hardening", () => {
     }
   });
 
-  it("answers 504 itself when the gateway outlasts the proxy budget", async () => {
+  it("answers 503 itself when the gateway outlasts the proxy budget", async () => {
     // A gateway that accepts the connection and never answers: only the proxy budget can end this request.
     const silent = createServer(() => undefined);
     await new Promise<void>((resolve) => silent.listen(0, "127.0.0.1", resolve));
@@ -5208,7 +5208,7 @@ describe("production hardening", () => {
         body: JSON.stringify({ message: "how did my week go?" }),
       });
       const elapsed = Date.now() - startedAt;
-      expect(response.status).toBe(504);
+      expect(response.status).toBe(503);
       expect(elapsed).toBeLessThan(3000);
     } finally {
       silent.closeAllConnections();
@@ -5326,14 +5326,14 @@ describe("production hardening", () => {
     expect(gateway.seenUser()).toBeDefined();
   });
 
-  it("answers 502 with stable copy when the coach service fails", async () => {
+  it("answers 503 with stable copy when the coach service fails", async () => {
     const { base, cookie } = await start({ gatewayUrl: "http://127.0.0.1:1" });
     const response = await fetch(`${base}/chat`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie },
       body: JSON.stringify({ message: "Book two runs" }),
     });
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(503);
     const payload = (await response.json()) as { error?: { detail?: string } };
     expect(payload.error?.detail).toBe("the coach service is unavailable");
   });

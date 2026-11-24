@@ -60,7 +60,7 @@ so any CORS allowance would only help an attacker.
 5. The gateway persists the assistant message, the turn record, directives and any proposals, then returns the reply and
    a `milebook` meta block. The web surface returns it to the bubble, which refreshes the grid in place.
 
-The proxy aborts at 130 s by default (both budgets are configurable) so a hung gateway cannot pin a browser request; the browser sees `504` (timeout) or `502`
+The proxy aborts at 130 s by default (both budgets are configurable) so a hung gateway cannot pin a browser request; the browser sees `503` with a detail that names the failure (timeout or upstream)
 (upstream failure) with a stable message, never an internal error string.
 
 ## 4. Request flow: a page render

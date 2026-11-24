@@ -37,9 +37,9 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Twen
 | `MILEBOOK_WEB_PORT` | no | `8091` | calendar port | non-integer or outside 1–65535 → exits |
 | `MILEBOOK_WEB_HOST` | no | `0.0.0.0` | bind address for the calendar surface `(src/index.ts)` | set `127.0.0.1` when a tunnel is the only intended path in, so the LAN cannot bypass TLS |
 | `MILEBOOK_GATEWAY_PORT` | no | `8090` | gateway port | same validation |
-| `MILEBOOK_GATEWAY_URL` | no | `http://127.0.0.1:${GATEWAY_PORT}` | where the web surface sends `/chat` | wrong value → every coach turn 502 or 504 |
+| `MILEBOOK_GATEWAY_URL` | no | `http://127.0.0.1:${GATEWAY_PORT}` | where the web surface sends `/chat` | wrong value → every coach turn 503 |
 | `MILEBOOK_MODEL_BASE_URL` | **yes** | — | OpenAI-compatible base; `/chat/completions` appended | process exits |
-| `MILEBOOK_MODEL_API_KEY` | no | `""` | `Authorization: Bearer` on model calls | empty bearer; the provider rejects → 502 |
+| `MILEBOOK_MODEL_API_KEY` | no | `""` | `Authorization: Bearer` on model calls | empty bearer; the provider rejects → 502 from the gateway, 503 at the browser |
 | `MILEBOOK_MODEL_NAME` | **yes** | — | `model` field of every model call | process exits |
 | `MILEBOOK_MODEL_ID` | no | `milebook-coach` | id advertised on `/v1/models` and in payloads | cosmetic only |
 | `MILEBOOK_MAX_ATTEMPTS` | no | `2` | initial call plus repairs; floored at 1 | non-numeric → 2 |
@@ -47,7 +47,7 @@ Read once at boot by `readEnv`/`requireEnv` `(src/index.ts · requireEnv)`. Twen
 | `MILEBOOK_LOG_LEVEL` | no | `info` | `debug`, `info`, `warn`, `error` or `silent`; lines below it are dropped `(src/log.ts · parseLogLevel)` | an unknown value falls back to `info` rather than silencing the log |
 | `MILEBOOK_TRUST_PROXY` | no | `false` | `true` takes the last `X-Forwarded-For` hop your proxy appended as the throttle key, for a host behind a reverse proxy `(src/web.ts · clientKey)` | leave it off unless a proxy you control overwrites the header; otherwise a client could rotate its own budget |
 | `MILEBOOK_MODEL_TIMEOUT_SECONDS` | no | `120` | per-call model abort `(src/gateway.ts · callModel)` | lower it when an edge proxy cuts the response earlier |
-| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | no | `130` | how long the web proxy waits before answering its own `504` `(src/web.ts · createWeb)` | keep it above model timeout × attempts and below any edge timeout |
+| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | no | `130` | how long the web proxy waits before answering its own `503` `(src/web.ts · createWeb)` | keep it above model timeout × attempts and below any edge timeout |
 | `MILEBOOK_AUTO_STATES` | no | `true` | deterministic coaching-state detection; `false` keeps manual/chat states | any value but `true`/`1` reads false |
 | `MILEBOOK_DEFAULT_USER` | no | `system` | identity for a gateway request with no `x-milebook-user` header | never fails; a headerless turn lands under an id with no account |
 | `MILEBOOK_INTERNAL_TOKEN` | no | random 32 bytes per start | shared web→gateway secret | a restart rotates it; set it only to pin the value |
@@ -82,7 +82,7 @@ database and logs `milebook: creating a new database at …` `(src/index.ts)`.
 
 **Demo expectations.** There is no seed script in the shipped app: a fresh database is empty and the demo runner is the one
 you create at `/signup`. The calendar shows its empty state until the coach books sessions, and booking needs a reachable
-`MILEBOOK_MODEL_BASE_URL` and `MILEBOOK_MODEL_NAME` — without them the app is a calendar and every `/chat` returns 502.
+`MILEBOOK_MODEL_BASE_URL` and `MILEBOOK_MODEL_NAME` — without them the app is a calendar and every `/chat` returns 503.
 Seeded fixtures (`start({ seed })`, `seedSession`, user `demo_runner`) exist only under `test/` `(docs/TESTING.md)`.
 
 ## 4. Production start
@@ -253,7 +253,7 @@ Every request, coach turn and boot line is a **JSON object on one line** `(src/l
 `"level":"error"`, and watches `/health` from outside. The 5xx rate is visible in the log but nothing pages a human.
 `console.log`/`console.debug` anywhere in `src/` except `src/index.ts`, so the only in-`src` channel for new diagnostics is
 `console.error` (which lands in `.err.log`) or a line in `src/index.ts`. No request id, no timing, no error counter, no
-rotation — and a failed coach turn prints nothing: it shows only as the HTTP response (502/504) and the SQLite turn row.
+rotation — and a failed coach turn prints nothing: it shows only as the HTTP response (503) and the SQLite turn row.
 
 ## 9. Public access through Cloudflare Tunnel
 
@@ -274,10 +274,11 @@ the first public URL — it needs no port forward, no certificate on the host, a
 | `MILEBOOK_COOKIE_SECURE` | `true` | session cookies carry `Secure` and the app sends HSTS |
 | `MILEBOOK_TRUST_PROXY` | `true` | throttling keys on the last `X-Forwarded-For` hop, which is the viewer, not the tunnel |
 | `MILEBOOK_MODEL_TIMEOUT_SECONDS` | `40` | two attempts fit in 80 s, under the edge limit |
-| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | `95` | the app answers its own `504` before Cloudflare's **100 s** edge timeout turns it into a `524` |
+| `MILEBOOK_PROXY_TIMEOUT_SECONDS` | `95` | the app answers its own `503` before Cloudflare's **100 s** edge timeout turns it into a `524`; `503` also survives Cloudflare, which masks origin `502`/`504` with its own page |
 
 **What the runner sees when the model is slow.** With the two budgets above, the bubble receives the app's JSON
-`504` ("the coach did not answer in time") instead of a Cloudflare error page, and the turn row records the failure.
+`503` ("the coach did not answer in time") instead of a Cloudflare error page, and the turn row records the failure.
+This is why the proxy never answers `504` itself: the edge would replace it.
 
 **Edge limits to respect.** Cloudflare cuts a proxied response at 100 s; a full turn is `MODEL_TIMEOUT_SECONDS ×
 `MAX_ATTEMPTS` plus overhead. Raising either budget past that ceiling moves the failure from the app to the edge, where
@@ -313,7 +314,7 @@ unexpected signups, and add an invite gate before the audience widens.
 | Symptom | First checks | Likely cause | Action |
 |---|---|---|---|
 | Site down, connection refused | pid file plus `Get-Process -Id`; `Get-NetTCPConnection -State Listen -LocalPort 8093`; tail `data/milebook-live.err.log`; last deploy-log line | process exited (uncaught exception → shutdown, exit 1), port taken, or a failed deploy stopped it | `pnpm deploy:live` (backs up first) |
-| Coach silent / 504 | gateway `/health`; one direct gateway call with the internal token; provider status; `MILEBOOK_MODEL_BASE_URL` reachable from the host | `/chat` aborts at 130 s `(src/web.ts · createWeb)`, the gateway aborts its model call at 120 s; with `MAX_ATTEMPTS=2` a slow attempt plus a repair can pass the proxy budget, so 504 while the gateway still works | lower attempts, fix provider latency, retry |
+| Coach silent / 503 | gateway `/health`; one direct gateway call with the internal token; provider status; `MILEBOOK_MODEL_BASE_URL` reachable from the host | `/chat` aborts at 130 s `(src/web.ts · createWeb)`, the gateway aborts its model call at 120 s; with `MAX_ATTEMPTS=2` a slow attempt plus a repair can pass the proxy budget, so 504 while the gateway still works | lower attempts, fix provider latency, retry |
 | Gateway 401 | body `{"error":{"code":"unauthorized","detail":"missing or invalid internal token"}}` `(src/gateway.ts · createGateway)`; list processes listening on 8092 | impossible inside the single deployed process: two processes with different `MILEBOOK_INTERNAL_TOKEN` (a stale generation still on the port) or a stray client | kill the duplicate, redeploy; the deploy's `/health` gate cannot see this |
 | Login 429 | throttle page on `/login`; client address; whether a proxy fronts the site | 10 failures per (client address, route, username) per 15 min `(src/web.ts · createWeb)`; a success clears the key; behind a proxy every runner shares one bucket `(docs/SECURITY.md)` | wait out the window, or restart the process (the map is in memory) |
 | DB locked / slow | duplicate listeners; `Get-ChildItem data\milebook.sqlite*` for a large `-wal`; a concurrent backup | `busy_timeout = 5000` only covers short waits `(src/store.ts · SqliteStore)`; a second process on the file is the usual cause | enforce one process per file; a large `-wal` means a long-lived reader — restart cleanly |

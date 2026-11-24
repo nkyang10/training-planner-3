@@ -217,7 +217,7 @@ stylesheet version read from `APP_CSS_VERSION` in `src/web.ts`. Full runbook, ba
 | Typecheck | pass (`pnpm typecheck`) |
 | Docs gate | pass (`pnpm docs:check`) |
 | CI | `.github/workflows/ci.yml` runs `pnpm check` on Linux and Windows, Node 24 |
-| Release | **1.11.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
+| Release | **1.12.0** — see [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASE.md](docs/RELEASE.md) |
 
 ## License
 

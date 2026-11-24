@@ -8,7 +8,7 @@ top to bottom: §2 is the rearrangement checklist, §3 is the release itself, §
 ## 1. Versioning
 
 - Semantic versioning on `package.json`; the tag is `v<version>` and the CHANGELOG entry is the same version.
-- `1.0.0` was the first production release; `1.0.1` added the anatomy pipeline, `1.1.0` added session revocation, current-password re-entry, abandoned-turn recovery and the credits page; `1.2.0` added account erasure and the privacy page; `1.3.0` added versioned migrations and sealed Garmin keys; `1.4.0` added a hash-based Content-Security-Policy; `1.5.0` added JSON event logs and a health check that proves the database; `1.6.0` added proxy-aware throttling; `1.6.1` fixed its key to the hop the proxy appended; `1.7.0` made the surface tunnel-ready; `1.7.1` added the post-deploy smoke check; `1.8.0` added a restore drill, coverage floors and Dependabot; `1.9.0` added gzip for textual responses; `1.10.0` moved password hashing off the event loop; `1.11.0` added the off-host backup copy and the SBOM. Pre-1.0 history is the PoC era and stays in git history only.
+- `1.0.0` was the first production release; `1.0.1` added the anatomy pipeline, `1.1.0` added session revocation, current-password re-entry, abandoned-turn recovery and the credits page; `1.2.0` added account erasure and the privacy page; `1.3.0` added versioned migrations and sealed Garmin keys; `1.4.0` added a hash-based Content-Security-Policy; `1.5.0` added JSON event logs and a health check that proves the database; `1.6.0` added proxy-aware throttling; `1.6.1` fixed its key to the hop the proxy appended; `1.7.0` made the surface tunnel-ready; `1.7.1` added the post-deploy smoke check; `1.8.0` added a restore drill, coverage floors and Dependabot; `1.9.0` added gzip for textual responses; `1.10.0` moved password hashing off the event loop; `1.11.0` added the off-host backup copy and the SBOM; `1.12.0` carries the 2026-11-24 audit hardening and the `503` coach failure. Pre-1.0 history is the PoC era and stays in git history only.
 - A release is a commit on `main` that passed `pnpm check`, plus a tag. Nothing else identifies a release — no branch
   names, no build numbers, no "the build from Tuesday".
 - Record the deployed commit in `data/milebook-deploy.log` (the deploy does this automatically).
@@ -69,7 +69,7 @@ top to bottom: §2 is the rearrangement checklist, §3 is the release itself, §
 - [ ] Walk the first-run path as a new runner: signup → empty calendar → first plan → log a run → review → muscle
       check-in. Fix anything that reads like an internal tool.
 - [ ] Confirm both locales on every screen you touched (`zh-HK` is not a translation afterthought).
-- [ ] Re-read the failure copy: `Could not apply`, `502`, `504`, `429`, empty states.
+- [ ] Re-read the failure copy: `Could not apply`, `503`, `429`, empty states.
 - [ ] Confirm the medical disclaimer is reachable (licence + muscle/state copy).
 - [ ] Decide what "support" means for the first users, and where they report a problem.
 
@@ -107,7 +107,7 @@ top to bottom: §2 is the rearrangement checklist, §3 is the release itself, §
 | The new process will not start | Deploy keeps the previous process stopped only after the backup; start the previous tagged commit with the same env, or restore the previous tag and redeploy |
 | Health is fine but pages are broken | Roll back the code first (previous tag), because the schema did not change |
 | The release changed the schema and data is wrong | Stop the process, restore the pre-release backup (`data/backups`), then deploy the previous tag |
-| Only the model provider is down | Nothing to roll back: the coach returns `502`; the calendar keeps working |
+| Only the model provider is down | Nothing to roll back: the coach returns `503`; the calendar keeps working |
 
 A rollback is a deploy of a previous tag — never a hand-edit on the live host. After a rollback, write down what failed
 and add a row to [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) so it is fixed before the next attempt.
