@@ -128,7 +128,7 @@ same, and the POST also passes `isSameOriginPost`.
 
 | Method | Path | Auth | Input | Output / redirect | Notes | Source |
 |---|---|---|---|---|---|---|
-| POST | `/chat` | cookie+SO | JSON `{message, intent?}` | `200` JSON (keys below), or `400`/`404`/`429`/`502`/`504` | `message` must be 1–1000 chars; `intent` is a typed `CoachIntent`; 40 messages per 5 min per user get `429`; 130 s proxy budget | `(src/web.ts · createWeb)`, `(src/web.ts · chatLimiter)` |
+| POST | `/chat` | cookie+SO | JSON `{message, intent?}` | `200` JSON (keys below), or `400`/`404`/`429`/`503` | `message` must be 1–1000 chars; `intent` is a typed `CoachIntent`; 40 messages per 5 min per user get `429`; 130 s proxy budget | `(src/web.ts · createWeb)`, `(src/web.ts · chatLimiter)` |
 | GET | `/chat/history` | cookie | — | `200 {messages, states, changes, muscleProposals}` | 40 visible messages oldest-first; a server-authored greeting is added when the log is empty; hidden directives are never included | `(src/web.ts · createWeb)` |
 | GET | `/coach-states` | cookie | query `tab` (`current`/`set`/`history`), `error` | `200` states page | GET never writes | `(src/web.ts · createWeb)` |
 | POST | `/coach-states` | cookie+SO | form `key`, `ttlDays`, `note` | `303 /coach-states`, else `303 /coach-states?error=<code>` | codes: `invalid-key`, `invalid-ttl` (1–365), `invalid-note` (>200 chars) | `(src/coach-states.ts · setManualCoachState)` |
@@ -233,7 +233,7 @@ metadata. `(src/gateway.ts · streamChunk)`
 | 502 | `model-failed` | the upstream model call threw or was aborted |
 | 500 | `gateway-failed` | the handler failed before replying |
 
-**Upstream abort** — `callModel` aborts the model request after **120 s** by default (`MILEBOOK_MODEL_TIMEOUT_SECONDS`); the abort surfaces as `502 model-failed`. `(src/gateway.ts · callModel)`
+**Upstream abort** — `callModel` aborts the model request after **120 s** by default (`MILEBOOK_MODEL_TIMEOUT_SECONDS`); the abort surfaces as `502 model-failed` from the gateway, which the web proxy relays to the browser as `503`. `(src/gateway.ts · callModel)`
 
 ## 5. Auth model
 
@@ -258,8 +258,12 @@ also slides the page session: `resolveSession` issues a fresh `milebooksid` when
 | 405 | wrong method on `/login`, `/signup`, `/logout`, `/profile`, `/profile/sign-out-everywhere`, `/profile/delete`, `/credits`, `/privacy`, `/goodbye`, `/coach-audit`, `/coach-states`, `/coach-states/refresh`, `/coach-states/:id/*`, `/muscle`, `/changes`, or either peek | HTML page, or JSON `{error:{detail:"method not allowed"}}` for the peeks |
 | 429 | 10 failed logins per 15 min per IP+username (the correct password still passes); 10 wrong current passwords on `/profile` or `/profile/delete`; 10 failed Garmin key checks; 21 manual syncs per 5 min; 40 coach messages per 5 min per user (only turns that reach the model) | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
 | 500 | any uncaught handler error | HTML page with stable copy (`error.serverError`); the internal message and stack go to the server log only, never to the browser |
-| 502 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |
-| 504 | `/chat` when the proxy's budget expires (default 130 s, `MILEBOOK_PROXY_TIMEOUT_SECONDS`) | JSON `{error:{detail:"the coach did not answer in time"}}` |
+| 503 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |
+| 503 | `/chat` when the proxy's budget expires (default 130 s, `MILEBOOK_PROXY_TIMEOUT_SECONDS`) | JSON `{error:{detail:"the coach did not answer in time"}}` |
+
+Both coach failures are `503`, never `502`/`504`: Cloudflare (including trycloudflare quick tunnels) replaces an origin
+`502`/`504` with its own HTML error page, which the bubble would report as a network failure. `503` passes through
+unchanged. `(src/web.ts · createWeb)`
 
 A non-POST to `/chat`, `/sync`, `/garmin/key`, `/garmin/key/delete`, `/activities`, `/notifications/read`, `/calendar/data`, `/export.json`, `/export.ics` or `/muscle/attention.json` is not a 405 — it falls to the final 404. `(src/web.ts · createWeb)`
 

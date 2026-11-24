@@ -113,7 +113,7 @@ Verified by grepping `test/` and `src/` on 2026-11-22; absence of a test here is
 |---|---|---|
 | CSRF beyond the Origin check | `isSameOriginPost` (src/web.ts) allows a request with no `Origin`; one test covers one route (`rejects a cross-origin state POST`) | a non-browser client or an untested POST route has no token defence |
 | web→gateway proxy timeout | 130 s `AbortController` in `createWeb`, 120 s in `createGateway`; no test drives either budget | a hung gateway pins a browser request for two minutes with no regression alarm |
-| 504 page | the `/chat` proxy's timeout branch in `createWeb`; the 502 branch is tested, the 504 branch is not | a hung coach shows unverified copy in the bubble |
+| 503 page | both `/chat` failure branches in `createWeb`: a silent gateway that outlasts the proxy budget, and an unreachable gateway | a coach failure shows the app's own copy instead of a proxy page |
 | migrations beyond one | `migrateActivitiesTable` has a legacy-DB test; `migrateCoachTurnsDirectiveHash` (src/store.ts) has none | an old live database can lose directive-hash idempotency records with a green gate |
 | session eviction | `pruneSessions` / `SESSION_TTL_MS` in `createWeb`; auth tests cover cookie expiry and revocation, not the in-memory page-session map | unbounded session-map growth is untested |
 | CSP hashes | `contentSecurityPolicy` in `createWeb` hashes the inline scripts of each response; the test recomputes one hash per script from the body and asserts it appears, but no browser is run, so a policy that blocks a real page would only show up in the smoke pass | a policy that silently blocks a script breaks the page with no server error |

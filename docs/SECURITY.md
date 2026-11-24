@@ -55,7 +55,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Security headers | `x-content-type-options: nosniff`, `referrer-policy: same-origin`, `x-frame-options: DENY`, `cross-origin-opener-policy: same-origin`, `permissions-policy`, plus HSTS when `cookieSecure` | `(src/web.ts · createWeb)` |
 | Content-Security-Policy | hash-based, computed per response: `default-src 'self'`, `script-src 'self'` plus one `sha256-` hash per inline script actually sent, `style-src 'self' 'unsafe-inline'` for the markup's style attributes, `img-src 'self' data:`, `connect-src 'self'`, `form-action 'self'`, `frame-ancestors 'none'`, `base-uri 'none'`, `object-src 'none'`. No inline event handlers, no `eval`, no workers, no third-party origins, so no `unsafe-inline` or `unsafe-eval` in `script-src` | `(src/web.ts · contentSecurityPolicy)` |
 | Error disclosure | the `500` page returns stable copy; the internal message goes to the server log only | `(src/web.ts · createWeb)` |
-| Proxy failure | `504` on timeout, `502` on upstream failure, stable detail strings | `(src/web.ts · createWeb)` |
+| Proxy failure | `503` on timeout and on upstream failure, with stable detail strings that never echo the upstream message | `(src/web.ts · createWeb)` |
 | Open redirect | `/language` accepts only a same-origin path; `next` params are allow-listed | `(src/web.ts · safeLanguageNext)`, `(src/web.ts · safeNext)` |
 | Output escaping | every interpolated value goes through `escapeHtml`; inline JSON through `jsonForScript` | `(src/web-html.ts · escapeHtml)` |
 | Gateway CORS | no grant at all; `OPTIONS` returns a bare `204` | `(src/gateway.ts · createGateway)` |
