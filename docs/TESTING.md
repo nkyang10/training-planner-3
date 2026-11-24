@@ -26,12 +26,12 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 
 | Domain | File | Tests | Protects |
 |---|---|---|---|
-| web HTTP surface | `test/web.test.ts` | 155 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, request logging, health with db, throttling identity, gzip with CSP intact, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
+| web HTTP surface | `test/web.test.ts` | 156 | auth pages, private calendar, run/session peek, account menu, erasure and privacy pages, request logging, health with db, throttling identity, gzip with CSP intact, Garmin connect/notifications/session sync, training log, workout surfaces, metric trend picker, in-calendar bubble, coach audit, history after refresh, month navigation/picker, coach-states page, involve-the-coach actions, page titles, honest demo slice |
 | gateway contract | `test/gateway.test.ts` | 90 | completions, a hung upstream at the configured timeout, schedule CRUD, batched CRUD, change history/revert, schema echo repair, validation feedback loop, idempotent turns, hidden and discuss directives, coaching states, muscle check-ins, muscle-condition suggestions, prefill cache + snapshots (LL-3), silent preference profile (LL-5), trust boundary |
 | coach prompt/parsing | `test/coach.test.ts` | 71 | turn parsing, reply-style contract (LL-1), prompt segment A, context snapshot B/C, turn suffix E, conversation assembly, prompt epoch (LL-3), silent profile updates (LL-5), suggestions, schedule actions, revert, state proposals, muscle-condition suggestions, extended race horizon |
 | coach prompt/parsing | `test/directives.test.ts` | 15 | coach intents, directives, muscle-review intents/directives, directive-hash stability |
 | store | `test/store.test.ts` | 61 | messages, memories, account erasure across all 19 tables, sealed Garmin keys, coach preferences, prompt snapshots, sessions, activities, activity workouts, sync state, Garmin keys, notifications, persistence, user isolation, session CRUD for coach actions, users, change sets, transactions, coach turn audit, muscle check-ins/proposals/status controls |
-| auth | `test/auth.test.ts` | 16 | signup and login, profile, validation, password-hash exposure, session versioning and revocation |
+| auth | `test/auth.test.ts` | 17 | signup and login, profile, validation, password-hash exposure, session versioning and revocation |
 | coach states | `test/coach-states.test.ts` | 34 | catalog, deterministic detection, lifecycle, state proposals, guardrails |
 | muscles · domain | `test/muscles.test.ts` | 23 | catalog, check-in validation, interpretation rules, drill suggestions, muscles worked, coach prompt facts, condition catalog |
 | muscles · status | `test/muscle-status.test.ts` | 25 | day helpers, soreness decay curve, current statuses, shared status line, coach prompt facts |
@@ -54,7 +54,7 @@ One row per test file, grouped by the domain it protects. Read a file's `describ
 | structured logs | `test/log.test.ts` | 8 | JSON shape, level filter, redaction by name, truncation, child bindings, unserializable field, level parsing, silent |
 | compression | `test/compress.test.ts` | 6 | textual-only rule, accept-encoding parsing with refusals, round-trip, small/binary/refusing clients untouched, asset cache, ETag variant |
 
-**27 files, 721 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, `test/migrations.test.ts` opens a real legacy file, `test/log.test.ts` pins the log contract and `test/compress.test.ts` pins the encoding rules; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets are injected rather than read from source.
+**27 files, 723 tests.** `test/rate-limit.test.ts` exercises the limiter directly, `test/store.test.ts` audits an erasure table by table with a second connection, `test/migrations.test.ts` opens a real legacy file, `test/log.test.ts` pins the log contract and `test/compress.test.ts` pins the encoding rules; no test runs a browser, a real model or a real Garmin account, and the two proxy budgets are injected rather than read from source.
 
 ## 3. Test conventions
 

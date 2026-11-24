@@ -129,6 +129,17 @@ describe("signup and login", () => {
     expect(auth.read(request(cookieFrom(login.cookie)))).toEqual(signup.user);
   });
 
+  it("accepts dots, hyphens, at-signs and uppercase, folding the name to lowercase", async () => {
+    const { auth, store } = start();
+    const signup = await auth.signup({ ...SIGNUP, username: "Case.User-1@Corp" });
+
+    expect(signup.user.username).toBe("case.user-1@corp");
+    expect(store.getUserByUsername("CASE.USER-1@CORP")?.userId).toBe(signup.user.userId);
+
+    const login = await auth.login({ username: "CASE.USER-1@CORP", password: SIGNUP.password });
+    expect(login.user).toEqual(signup.user);
+  });
+
   it("defaults the timezone to UTC when signup omits it", async () => {
     const { auth } = start();
     const result = await auth.signup({
@@ -322,6 +333,9 @@ describe("validation", () => {
     const cases: Array<{ field: string; input: typeof SIGNUP }> = [
       { field: "username", input: { ...SIGNUP, username: "ab" } },
       { field: "username", input: { ...SIGNUP, username: "bad name" } },
+      { field: "username", input: { ...SIGNUP, username: "bad/name" } },
+      { field: "username", input: { ...SIGNUP, username: "bad!name" } },
+      { field: "username", input: { ...SIGNUP, username: "x".repeat(25) } },
       { field: "displayName", input: { ...SIGNUP, displayName: "   " } },
       { field: "displayName", input: { ...SIGNUP, displayName: "x".repeat(61) } },
       { field: "password", input: { ...SIGNUP, password: "short" } },

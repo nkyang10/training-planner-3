@@ -11,7 +11,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Control | State | Evidence |
 |---|---|---|
 | Password hashing | scrypt, 16-byte salt, 64-byte hash, constant-time compare, run on the libuv thread pool `(src/auth.ts · hashPassword)` | `(src/auth.ts · verifyPassword)` |
-| Username policy | lowercase letters/digits/underscore, 3–24 chars, case-insensitive unique | `(src/auth.ts · normalizeUsername)` |
+| Username policy | letters of either case (folded to lowercase), digits, dot, underscore, hyphen or at-sign, 3–24 chars, case-insensitive unique | `(src/auth.ts · normalizeUsername)` |
 | Password policy | minimum 8 characters, no upper bound, no complexity rule | `(src/auth.ts · validatePassword)` |
 | Timezone validation | pattern plus a real `Intl.DateTimeFormat` check | `(src/auth.ts · normalizeTimezone)` |
 | Password change | requires the current password, verified against the stored hash before the hash is rotated; a wrong or missing value returns `invalid-current-password` and changes nothing | `(src/auth.ts · updateProfile)`, `(src/web.ts · createWeb)` profile POST |

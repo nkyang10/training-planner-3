@@ -8,6 +8,12 @@ it described a product that no longer exists in this shape. This changelog start
 
 ## [Unreleased]
 
+### Changed
+
+- **Usernames accept a wider character set.** Letters of either case (folded to lowercase), numbers, dot, underscore,
+  hyphen and at-sign; the 3–24 length, case-insensitive uniqueness and the password policy are unchanged. The signup
+  hint, browser pattern, client-side check and server message all follow the same rule `(src/auth.ts · normalizeUsername)`.
+
 ### Planned before the next release
 
 - TLS termination, cookie `Secure` and HSTS verified on the live host.

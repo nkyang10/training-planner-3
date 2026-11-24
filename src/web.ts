@@ -4566,7 +4566,7 @@ function renderAuthPanel(mode: "login" | "signup", info: AuthErrorInfo | undefin
   const fields = [
     `<div class="auth-field">
       <div class="auth-label-row"><label for="username">${usernameLabel}</label></div>
-      <input id="username" name="username" type="text" required autocomplete="username" minlength="3" maxlength="24"${isSignup ? ' pattern="[a-z0-9_]{3,24}"' : ""} spellcheck="false" autocapitalize="none" autocorrect="off" enterkeyhint="next" data-auth-persist="username"${usernameServerInvalid}${authInvalid(info, "username")}${usernameDescribedBy}>
+      <input id="username" name="username" type="text" required autocomplete="username" minlength="3" maxlength="24"${isSignup ? ' pattern="[A-Za-z0-9._@\\-]{3,24}"' : ""} spellcheck="false" autocapitalize="none" autocorrect="off" enterkeyhint="next" data-auth-persist="username"${usernameServerInvalid}${authInvalid(info, "username")}${usernameDescribedBy}>
       ${usernameHint}
       ${usernameError}
     </div>`,
@@ -4823,8 +4823,8 @@ function renderAuthScript(): string {
           if (usernameHint) usernameHint.hidden = false;
           return;
         }
-        const valid = /^[a-z0-9_]{3,24}$/.test(value);
-        usernameError.textContent = valid ? '' : tr('authUsernameInvalid', 'Use 3–24 lowercase letters, numbers or underscores.');
+        const valid = /^[A-Za-z0-9._@-]{3,24}$/.test(value);
+        usernameError.textContent = valid ? '' : tr('authUsernameInvalid', 'Use 3–24 letters, numbers, dots, underscores, hyphens or at-signs.');
         usernameError.hidden = valid;
         if (usernameHint) usernameHint.hidden = !valid;
         if (valid) username.removeAttribute('aria-invalid');
@@ -4899,8 +4899,8 @@ function renderAuthScript(): string {
       };
       required(username, usernameError, tr('authUsernameRequired', 'Enter a username.'));
       if (mode === 'signup') {
-        if (username && username.value.trim().length > 0 && !/^[a-z0-9_]{3,24}$/.test(username.value.trim())) {
-          showFieldError(username, usernameError, tr('authUsernameInvalid', 'Use 3–24 lowercase letters, numbers or underscores.'));
+        if (username && username.value.trim().length > 0 && !/^[A-Za-z0-9._@-]{3,24}$/.test(username.value.trim())) {
+          showFieldError(username, usernameError, tr('authUsernameInvalid', 'Use 3–24 letters, numbers, dots, underscores, hyphens or at-signs.'));
           if (!firstInvalid) firstInvalid = username;
         }
         required(displayName, displayNameError, tr('authDisplayNameRequired', 'Enter a display name.'));

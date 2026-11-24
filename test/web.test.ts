@@ -386,6 +386,9 @@ describe("authentication pages", () => {
     expect(signupHtml).toContain('id="password-strength"');
     expect(signupHtml).toContain('role="meter"');
     expect(signupHtml).toContain('aria-describedby="username-hint username-error"');
+    expect(signupHtml).toContain('pattern="[A-Za-z0-9._@\\-]{3,24}"');
+    expect(signupHtml).toContain("/^[A-Za-z0-9._@-]{3,24}$/");
+    expect(signupHtml).toContain("3–24 characters: letters, numbers, dot, underscore, hyphen or at-sign.");
     expect(signupHtml).toContain('aria-describedby="goal-hint"');
   });
 
@@ -502,6 +505,24 @@ describe("authentication pages", () => {
     expect(logout.status).toBe(303);
     expect(logout.headers.get("location")).toBe("/login");
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
+  });
+
+  it("signs up with dots, hyphens, at-signs and uppercase in the username", async () => {
+    const { base, handle } = await start();
+    const response = await fetch(`${base}/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({
+        username: "Case.User-1@Corp",
+        displayName: "Case Runner",
+        password: "case-password-123",
+        timezone: "Asia/Taipei",
+      }),
+      redirect: "manual",
+    });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/calendar");
+    expect(handle.store.getUserByUsername("case.user-1@corp")?.displayName).toBe("Case Runner");
   });
 
   it("shows the username read-only and updates the profile and password", async () => {

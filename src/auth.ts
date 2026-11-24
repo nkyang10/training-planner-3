@@ -31,7 +31,12 @@ const DUMMY_PASSWORD_HASH =
   "scrypt$245826cc344a900ffde02e5c1ffa38a3$a4f8d901375e73be69546a929dc0b5bcfb6f78ed115395400259203a5b641641ee976a9a191f1b246cc6536228e8725655658474f9d2d7050d0d82a2811c146c";
 /** The longest username the policy allows; anything longer is not an account, so it never reaches the store. */
 const MAX_USERNAME_CHARS = 24;
-const USERNAME_PATTERN = /^[a-z0-9_]{3,24}$/;
+/**
+ * Usernames accept letters of either case (folded to lowercase for storage and uniqueness), digits, dot, underscore,
+ * hyphen and at-sign. Spaces, slashes, quotes and other punctuation stay out, so a name is still safe to echo in a
+ * heading, a URL query and a throttle key.
+ */
+const USERNAME_PATTERN = /^[a-z0-9._@\-]{3,24}$/;
 const HEX_PATTERN = /^[0-9a-f]+$/i;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
 const TIMEZONE_PATTERN = /^[A-Za-z][A-Za-z0-9_+\-]*(?:\/[A-Za-z0-9_+\-]+)*$/;
@@ -130,7 +135,7 @@ function normalizeUsername(value: string): string {
   if (typeof value !== "string") throw invalid("username is required");
   const username = value.trim().toLowerCase();
   if (!USERNAME_PATTERN.test(username)) {
-    throw invalid("username must be 3-24 characters: lowercase letters, digits or underscore");
+    throw invalid("username must be 3-24 characters: letters, numbers, dot, underscore, hyphen or at-sign");
   }
   return username;
 }
