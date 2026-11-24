@@ -493,7 +493,42 @@ describe("state proposals", () => {
       evidence: ["Fever"],
     });
     expect(handle.store.getCoachState(USER, userSet.stateId)?.evidence).not.toContain("Maybe ill");
-    expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "set" && event.key === "illness")).toBe(true);
+  });
+
+  it("refuses to let model output resolve a runner-set or sensitive state", () => {
+    const handle = makeStore();
+    const userSet = setManualCoachState(handle.store, USER, "medical_red_flag", 14, "Cardiac warning", NOW);
+    const cleared = applyStateProposals(
+      handle.store,
+      USER,
+      [proposal({ key: "medical_red_flag", action: "resolve", evidence: ["runner says they are fine"] })],
+      NOW,
+    );
+    expect(cleared).toHaveLength(0);
+    expect(handle.store.getCoachState(USER, userSet.stateId)).toMatchObject({ status: "active", source: "user" });
+    expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "resolve")).toBe(false);
+
+    // A sensitive state the coach proposed and the runner confirmed is equally the runner's to clear.
+    const proposed = applyStateProposals(
+      handle.store,
+      USER,
+      [proposal({ key: "pain_injury", confidence: 0.9, evidence: ["knee pain"] })],
+      NOW,
+    );
+    expect(proposed[0]).toMatchObject({ status: "observing" });
+    expect(confirmCoachState(handle.store, USER, proposed[0]?.stateId ?? "", NOW)).toBe(true);
+    const afterConfirm = applyStateProposals(
+      handle.store,
+      USER,
+      [proposal({ key: "pain_injury", action: "resolve", evidence: ["feels better"] })],
+      NOW,
+    );
+    expect(afterConfirm).toHaveLength(0);
+    expect(handle.store.getActiveCoachStates(USER, NOW).some((state) => state.key === "pain_injury")).toBe(true);
+
+    // The runner's own route still resolves it.
+    expect(resolveCoachState(handle.store, USER, userSet.stateId, NOW)).toBe(true);
+    expect(handle.store.getCoachState(USER, userSet.stateId)?.status).toBe("resolved");
   });
 });
 

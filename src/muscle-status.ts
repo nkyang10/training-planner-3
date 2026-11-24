@@ -246,7 +246,9 @@ export function renderMuscleStatusFactsForPrompt(input: {
     return `- ${name}: ${status.current}/10 ${sorenessLabel(status.current).toLowerCase()} (${story})${conditions.length === 0 ? "" : ` ${conditions}`}${side}${warmUp}`;
   });
   const latest = input.checkIns[0] ?? null;
-  const note = latest?.note === null || latest?.note === undefined ? "" : `- Latest check-in note: "${latest.note}"`;
+  // JSON-encoded, like every other runner-supplied value in the prompt: a note is free text and must never be able to
+  // close its quotes and add lines the model reads as app-authored instructions.
+  const note = latest?.note === null || latest?.note === undefined ? "" : `- Latest check-in note: ${JSON.stringify(latest.note)}`;
   const about = latest === null || latest.activityId === null ? "" : " (about the linked run)";
   const recentCutoff = addStatusDays(input.today, -STATUS_RECENT_DAYS);
   const recentCount = input.checkIns.filter((checkIn) => checkIn.day >= recentCutoff).length;

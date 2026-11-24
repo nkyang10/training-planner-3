@@ -100,6 +100,14 @@ export function runMigrations(
       throw new Error(`migration version must be a positive integer: ${migration.version}`);
     }
   }
+  // A file stamped by a newer build may already use a shape this build does not know. Refuse to touch it: downgrading
+  // silently is how a rollback corrupts data that the newer build wrote.
+  const newest = migrations.reduce((highest, migration) => Math.max(highest, migration.version), 0);
+  if (from > newest) {
+    throw new Error(
+      `database schema version ${from} is newer than this build supports (${newest}); start the newer Milebook build or restore a backup`,
+    );
+  }
   const pending = migrations
     .filter((migration) => migration.version > from)
     .sort((left, right) => left.version - right.version);
@@ -113,7 +121,13 @@ export function runMigrations(
       db.exec(`PRAGMA user_version = ${migration.version}`);
       db.exec("COMMIT");
     } catch (error) {
-      db.exec("ROLLBACK");
+      // A step may have rolled its own transaction back (or SQLite may already have done it); the original error is the
+      // one that matters, so a failing ROLLBACK must not replace it.
+      try {
+        db.exec("ROLLBACK");
+      } catch {
+        // Already rolled back; nothing left to undo.
+      }
       const reason = error instanceof Error ? error.message : String(error);
       throw new Error(`migration ${migration.version} (${migration.name}) failed: ${reason}`);
     }

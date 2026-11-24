@@ -186,7 +186,11 @@ The wider threat model, cookie policy and deployment secrets are in [SECURITY.md
 | Calendar render time budget | 2 500 ms | `(src/web.ts · enrichCalendarWorkouts)` |
 | Calendar fill throttle | 60 s per runner | `(src/web.ts · enrichCalendarWorkouts)` |
 | Automatic page-load pull floor | 10 minutes | `(src/web.ts · autoSync)` |
-| App-level throttle on manual sync | **none** — every `/sync` POST pulls; only the in-flight join and Garmin's own 429/block bound it | `(src/web.ts · createWeb)` |
+| App-level throttle on manual sync | 20 attempts per 5 minutes per runner → `429`; the in-flight join also collapses concurrent calls | `(src/web.ts · syncLimiter)` |
+| Outbound request timeout | 15 s per Garmin call (`AbortSignal.timeout`) | `(src/garmin.ts · createGarminClient)` |
+| Redirects | refused (`redirect: "error"`), so a bearer never follows a redirect to another host | `(src/garmin.ts · createGarminClient)` |
+| Response body ceiling | 2 MB; error bodies are kept to 500 characters | `(src/garmin.ts · cappedText)` |
+| Stored label caps | activity title 120, training-effect label 80, raw activity id 64, workout name 120, notes 1000; control characters stripped | `(src/garmin.ts · mapGarminActivity)`, `(src/garmin-workout.ts · mapGarminWorkout)` |
 | JWT cache | 20 minutes | `(src/garmin.ts · createGarminClient)` |
 | Workout steps kept | 60 | `(src/garmin-workout.ts · mapGarminWorkout)` |
 | Workout summary / label | 320 / 64 characters | `(src/garmin-workout.ts · mapGarminWorkout)` |

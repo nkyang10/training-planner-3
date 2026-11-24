@@ -292,7 +292,9 @@ export function renderMuscleProposalsForPrompt(pending: readonly MuscleProposal[
   if (pending.length === 0) return "";
   const listed = pending.slice(0, MAX_PROMPT_MUSCLE_PROPOSALS);
   const lines = listed.map((proposal) => {
-    const note = proposal.note === null ? "" : ` — the runner's note: "${proposal.note}"`;
+    // The note is free text and is JSON-encoded for the same reason every other runner value is: quotes and newlines
+    // must not be able to forge a new prompt line.
+    const note = proposal.note === null ? "" : ` — the runner's note: ${JSON.stringify(proposal.note)}`;
     return `- ${muscleProposalLine(proposal)} (suggested ${proposal.day}, not confirmed yet)${note}`;
   });
   const older = pending.length - listed.length;

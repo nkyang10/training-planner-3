@@ -140,7 +140,7 @@ Known gaps, all real and all still open:
 
 | Gap | Detail |
 |---|---|
-| No CSP | Only `x-content-type-options`, `referrer-policy`, `x-frame-options`, `cross-origin-opener-policy`, `permissions-policy`; HSTS only when `cookieSecure`. A CSP needs nonces for the inline scripts (`(src/web.ts · createWeb)`). |
+| `style-src 'unsafe-inline'` | Scripts carry a hash-based CSP (`script-src 'self'` plus one `sha256-` per inline block), but the markup's inline `style` attributes keep `style-src` unlocked; moving them to classes would tighten the policy (`(src/web.ts · contentSecurityPolicy)`). |
 | Soreness slider has no `aria-valuetext` | The editor's `#ed-soreness` range announces "7"; the `.muscle-ed-readout` output that says "7/10 sore to touch" is not associated with it (`(src/web-muscle.ts · muscleScript)`). |
 | Legend ramp coarser than the heat function | `renderMuscleLegend` draws six swatches (0, 2, 4, 6, 8, 10); `sorenessFill` has nine stops (0, 2, 4, 5, 6, 7, 8, 9, 10), so the figure can paint a shade the legend never shows (`(src/muscle-map.ts · renderMuscleLegend)`, `(src/muscles.ts · sorenessFill)`). |
 | Nested interactive markup | A day cell is an `<a>` that contains `role="button"` rows; script intercepts both and handles Enter/Space, but assistive tech sees a link containing buttons (`(src/calendar-items.ts · renderCalendarItem)`). |

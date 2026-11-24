@@ -521,6 +521,10 @@ export function applyStateProposals(
     if (proposal.action === "resolve") {
       const existing = byKey.get(proposal.key);
       if (existing === undefined) continue;
+      // A resolve clears a safety guardrail, so only the runner may do it. A state the runner set themselves, and any
+      // sensitive/confirmation-gated state, cannot be resolved by model output: otherwise a model mistake or an injected
+      // instruction silently switches off the guardrail and the journal records the resolve as the runner's own.
+      if (existing.source === "user" || definition.sensitive || definition.requiresConfirmation) continue;
       store.updateCoachState(userId, existing.stateId, {
         status: "resolved",
         resolvedAt: now,

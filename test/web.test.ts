@@ -495,7 +495,10 @@ describe("authentication pages", () => {
     expect(page.status).toBe(200);
     expect(await page.text()).toContain("Welcome back, Demo Runner");
 
-    const logout = await fetch(`${base}/logout`, { headers: { cookie }, redirect: "manual" });
+    // Sign-out is a POST; a GET must not be able to end the session from a cross-site link.
+    const getLogout = await fetch(`${base}/logout`, { headers: { cookie }, redirect: "manual" });
+    expect(getLogout.status).toBe(405);
+    const logout = await fetch(`${base}/logout`, { method: "POST", headers: { cookie }, redirect: "manual" });
     expect(logout.status).toBe(303);
     expect(logout.headers.get("location")).toBe("/login");
     expect(logout.headers.get("set-cookie")).toContain("Max-Age=0");
@@ -550,7 +553,7 @@ describe("authentication pages", () => {
     const updatedHtml = await updatedPage.text();
     expect(updatedHtml).toContain("Profile saved.");
     expect(updatedHtml).toContain("Updated Runner");
-    expect(updatedHtml).toContain('href="/logout"');
+    expect(updatedHtml).toContain('action="/logout"');
 
     const oldLogin = await fetch(`${base}/login`, {
       method: "POST",
@@ -710,6 +713,114 @@ describe("authentication pages", () => {
     expect(await goodbye.text()).toContain("Your account is gone");
   });
 
+  it("erases a runner whose Garmin sync is in flight and leaves a deletion marker", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const gated: GarminClient = {
+      async token() {
+        return "jwt";
+      },
+      async listActivities() {
+        await gate;
+        return [garminActivity];
+      },
+    };
+    const { base, handle, user, cookie } = await start({
+      sessionSync: true,
+      garminFactory: () => gated,
+      seed: (store, seeded) => {
+        store.saveGarminKey({ userId: seeded.userId, apiKey: "valid-key-123", savedAt: `${TODAY}T07:00:00.000Z` });
+      },
+    });
+
+    // A page request without the page-session cookie starts a background sync and returns immediately.
+    const notifications = await fetch(`${base}/notifications`, { headers: { cookie } });
+    expect(notifications.status).toBe(200);
+
+    const deletion = fetch(`${base}/profile/delete`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ currentPassword: PASSWORD, confirm: USERNAME }),
+      redirect: "manual",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    const deleted = await deletion;
+    expect(deleted.status).toBe(303);
+    expect(handle.store.getUser(user.userId)).toBeUndefined();
+    // The sync's rows were erased with the account, and the marker stops any late writer from recreating them.
+    expect(handle.store.listActivities(user.userId)).toHaveLength(0);
+    expect(handle.store.isUserDeleted(user.userId)).toBe(true);
+  });
+
+  it("throttles wrong current-password attempts on the profile but not profile edits", async () => {
+    const { base, cookie } = await start();
+    const attempt = (currentPassword: string) =>
+      fetch(`${base}/profile`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+        body: formBody({ password: "a-new-password-value", currentPassword }),
+        redirect: "manual",
+      });
+    for (let index = 0; index < 10; index += 1) {
+      const response = await attempt("wrong-" + index);
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toContain("error=invalid-current-password");
+    }
+    const blocked = await attempt("wrong-again");
+    expect(blocked.status).toBe(429);
+
+    // A display-name edit carries no credential, so the throttle must not apply to it.
+    const edit = await fetch(`${base}/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+      body: formBody({ displayName: "Renamed Runner" }),
+      redirect: "manual",
+    });
+    expect(edit.status).toBe(303);
+    expect(edit.headers.get("location")).toBe("/profile?saved=1");
+  });
+
+  it("throttles Garmin key validation attempts", async () => {
+    const { base, cookie } = await start({ garminFactory: fakeGarminFactory() });
+    const attempt = () =>
+      fetch(`${base}/garmin/key`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+        body: formBody({ key: "not-a-valid-garmin-key", next: "/calendar" }),
+        redirect: "manual",
+      });
+    for (let index = 0; index < 10; index += 1) {
+      const response = await attempt();
+      expect(response.status).toBe(303);
+      expect(response.headers.get("location")).toContain("garmin=setup");
+    }
+    const blocked = await attempt();
+    expect(blocked.status).toBe(429);
+  });
+
+  it("throttles repeated manual syncs", async () => {
+    const { base, cookie } = await start({
+      garminFactory: fakeGarminFactory({ activities: [] }),
+      seed: (store, user) => {
+        store.saveGarminKey({ userId: user.userId, apiKey: "valid-key-123", savedAt: `${TODAY}T07:00:00.000Z` });
+      },
+    });
+    let last = 0;
+    for (let index = 0; index < 21; index += 1) {
+      const response = await fetch(`${base}/sync`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie },
+        body: formBody({ next: "/calendar" }),
+        redirect: "manual",
+      });
+      last = response.status;
+    }
+    expect(last).toBe(429);
+  });
+
   it("serves a no-content favicon so the console stays clean", async () => {
     const { base } = await start();
     const response = await fetch(`${base}/favicon.ico`);
@@ -737,7 +848,7 @@ describe("private calendar", () => {
     expect(ownHtml).not.toContain("Other secret long run");
     expect(ownHtml).toContain("Welcome back, Demo Runner");
     expect(ownHtml).toContain('href="/profile"');
-    expect(ownHtml).toContain('href="/logout"');
+    expect(ownHtml).toContain('action="/logout"');
     expect(ownHtml).toContain("November 2026");
     expect(ownHtml).toContain('data-active="calendar"');
     expect(ownHtml).toContain('href="/history"');
@@ -1420,15 +1531,15 @@ describe("account menu", () => {
     expect(html).toContain("data-sync-form");
     expect(html).toContain('aria-label="Sync Garmin"');
     expect(html).toContain('href="/calendar?garmin=setup"');
-    expect(html).toContain('href="/logout"');
+    expect(html).toContain('action="/logout"');
     expect(html).toContain("getElementById('account-menu')");
-    expect(html).not.toContain('<a href="/logout">Sign out</a>');
+    expect(html).not.toContain('href="/logout"');
     expect(html).not.toContain('class="profile"');
     expect(html).not.toContain('href="/coach-audit"');
 
     const profile = await (await fetch(`${base}/profile`, { headers: { cookie } })).text();
     expect(profile).toContain('id="account-btn"');
-    expect(profile).toContain('href="/logout"');
+    expect(profile).toContain('action="/logout"');
   });
 
   it("renders the dedicated auth shell without account chrome", async () => {
@@ -1670,6 +1781,32 @@ describe("Garmin connection, notifications and session sync", () => {
     await web.whenSynced();
     expect(handle.store.listActivities(user.userId)).toHaveLength(1);
     expect(calls.count).toBe(1);
+  });
+
+  it("never adopts another runner's page session", async () => {
+    const { base, auth, cookie } = await start();
+    await auth.signup({
+      username: "session_other",
+      password: PASSWORD,
+      displayName: "Other Runner",
+      timezone: "Asia/Hong_Kong",
+      goal: "Run a half marathon",
+    });
+    const otherLogin = await auth.login({ username: "session_other", password: PASSWORD });
+    const otherCookie = cookieFrom(otherLogin.cookie);
+
+    const page = await fetch(`${base}/calendar?month=2026-11`, { headers: { cookie } });
+    const foreignPageSession = sessionCookieFrom(page);
+    expect(foreignPageSession).not.toBe("");
+
+    // The other runner's auth cookie paired with the first runner's page-session id must start a fresh session.
+    const crossed = await fetch(`${base}/calendar?month=2026-11`, {
+      headers: { cookie: `${otherCookie}; ${foreignPageSession}` },
+    });
+    expect(crossed.status).toBe(200);
+    const fresh = sessionCookieFrom(crossed);
+    expect(fresh).not.toBe("");
+    expect(fresh).not.toBe(foreignPageSession);
   });
 
   it("does not start a session sync when no key is connected", async () => {
@@ -5135,6 +5272,45 @@ describe("production hardening", () => {
       redirect: "manual",
     });
     expect(other.status).toBe(303);
+  });
+
+  it("still accepts the correct password after the failure budget is spent", async () => {
+    const { base } = await start();
+    const attempt = (password: string) =>
+      fetch(`${base}/login`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: formBody({ username: USERNAME, password }),
+        redirect: "manual",
+      });
+    for (let index = 0; index < 11; index += 1) await attempt("wrong-password");
+    // The throttle verifies first and counts after, so the real credential is never locked out.
+    const good = await attempt(PASSWORD);
+    expect(good.status).toBe(303);
+    expect(good.headers.get("location")).toBe("/calendar");
+  });
+
+  it("ignores a malformed cookie value instead of failing the request", async () => {
+    const { base } = await start();
+    const response = await fetch(`${base}/calendar`, {
+      headers: { cookie: "milebook_session=%" },
+      redirect: "manual",
+    });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe("/login");
+  });
+
+  it("does not confirm a username through the signup error", async () => {
+    const { base } = await start();
+    const response = await fetch(`${base}/signup`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: formBody({ username: USERNAME, displayName: "Someone Else", password: "another-password-value" }),
+      redirect: "manual",
+    });
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toContain("error=signup-unavailable");
+    expect(response.headers.get("location")).not.toContain("username-taken");
   });
 
   it("sends the internal token to the gateway and keeps the runner header", async () => {

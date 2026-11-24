@@ -516,10 +516,13 @@ function renderMuscleViewerScript(
     if (reset !== null) reset.addEventListener('click', () => tweenTo(defaultView.azimuth));
 
     const clock = new THREE.Clock();
+    let frame = 0;
+    let elapsed = 0;
     const animate = () => {
-      requestAnimationFrame(animate);
+      frame = 0;
+      // Stop scheduling entirely while the tab is hidden: a background tab should not keep a 3D scene rendering.
       if (document.hidden) return;
-      const elapsed = clock.getElapsedTime();
+      elapsed += clock.getDelta();
       if (orbitTween !== null) {
         orbitTween.at = Math.min(1, orbitTween.at + 0.035);
         const eased = orbitTween.at * orbitTween.at * (3 - 2 * orbitTween.at);
@@ -546,7 +549,15 @@ function renderMuscleViewerScript(
         controls.update();
       }
       renderer.render(scene, camera);
+      frame = requestAnimationFrame(animate);
     };
+    const resume = () => {
+      if (document.hidden || frame !== 0) return;
+      // Drop the time spent hidden so the breathing phase does not jump when the tab returns.
+      clock.getDelta();
+      frame = requestAnimationFrame(animate);
+    };
+    document.addEventListener('visibilitychange', resume);
     animate();
 
     const resize = () => {

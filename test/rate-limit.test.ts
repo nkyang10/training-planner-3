@@ -55,6 +55,32 @@ describe("the failure limiter", () => {
     expect(limiter.blocked("b")).toBe(false);
   });
 
+  it("evicts the oldest window once the key ceiling is reached", () => {
+    const clock = fixedClock();
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000, maxKeys: 3, now: clock.now });
+    limiter.fail("a");
+    limiter.fail("b");
+    limiter.fail("c");
+    expect(limiter.size()).toBe(3);
+    limiter.fail("d");
+    expect(limiter.size()).toBe(3);
+    // "a" was the oldest and is gone, so it holds no failure state any more.
+    expect(limiter.blocked("a")).toBe(false);
+    expect(limiter.fail("a")).toBe(1);
+    expect(limiter.size()).toBe(3);
+  });
+
+  it("retains only the first 128 characters of a key", () => {
+    const clock = fixedClock();
+    const limiter = createRateLimiter({ limit: 1, windowMs: 60_000, now: clock.now });
+    const prefix = "k".repeat(200);
+    expect(limiter.fail(prefix + "a")).toBe(1);
+    // Both keys truncate to the same 128 characters, so they share one budget.
+    expect(limiter.blocked(prefix + "b")).toBe(true);
+    limiter.reset(prefix + "c");
+    expect(limiter.blocked(prefix + "d")).toBe(false);
+  });
+
   it("treats a non-positive limit or window as one attempt / one second", () => {
     const clock = fixedClock();
     const limiter = createRateLimiter({ limit: 0, windowMs: 0, now: clock.now });

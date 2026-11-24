@@ -8,6 +8,7 @@
  * No secret is exported: the profile omits the password hash and the Garmin key is never included.
  */
 import type { Activity, ChangeSet, MuscleCheckIn, MuscleProposal, MuscleStatusControl, TrainingSession } from "./types";
+import { isRealDay } from "./time";
 
 export interface ExportProfile {
   userId: string;
@@ -69,22 +70,28 @@ const ICS_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function icsDay(day: string): string {
   const match = ICS_DAY.exec(day);
-  if (match === null) return day.replace(/-/g, "");
-  return `${match[1]}${match[2]}${match[3]}`;
+  // A value that is not a real day cannot become a calendar line; fall back to a fixed date instead of echoing the text.
+  return match === null || !isRealDay(day) ? "19700101" : `${match[1]}${match[2]}${match[3]}`;
 }
 
 function addOneDay(day: string): string {
   const date = new Date(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return day;
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Escape one TEXT value. Control characters are stripped and every line-break form — including a lone CR, which the
+ * old `\r?\n` pattern let through — becomes the iCalendar `\n` escape, so a value can never start a new content line.
+ */
 function icsText(value: string): string {
   return value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n");
+    .replace(/\r\n|\r|\n/g, "\\n");
 }
 
 function icsLine(name: string, value: string): string {
@@ -129,7 +136,7 @@ export function buildCalendarIcs(input: {
   for (const session of ordered) {
     lines.push(
       "BEGIN:VEVENT",
-      icsLine("UID", `${session.sessionId}@milebook`),
+      icsLine("UID", icsText(`${session.sessionId}@milebook`)),
       icsLine("DTSTAMP", stamp),
       `DTSTART;VALUE=DATE:${icsDay(session.day)}`,
       `DTEND;VALUE=DATE:${icsDay(addOneDay(session.day))}`,

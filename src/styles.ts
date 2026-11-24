@@ -611,6 +611,7 @@ body.calendar-fx-active main { animation: page-shake .55s cubic-bezier(.36,.07,.
 .account-item:focus-visible { outline: 2px solid var(--ember); outline-offset: -2px; }
 .account-signout { color: var(--danger); }
 .account-signout:hover { background: #fdeceb; color: var(--danger); }
+.account-signout-form { margin: 0; }
 .account-sep { margin: 6px 0; border: 0; border-top: 1px solid var(--line); }
 .sync-btn span { display: inline-block; line-height: 1; font-size: 15px; }
 .sync-btn:active span { transform: rotate(180deg); transition: transform .15s ease; }

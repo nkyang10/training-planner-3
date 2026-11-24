@@ -1189,6 +1189,7 @@ const en = {
   "error.tooManyAttempts": "Too many attempts. Wait a few minutes and try again.",
   "authErr.invalidCredentials": "Invalid username or password.",
   "authErr.usernameTaken": "That username is already taken.",
+  "authErr.signupUnavailable": "That username can't be used. Try a different one.",
   "authErr.invalidInput": "Please check the fields and try again.",
   "authErr.notFound": "Account not found.",
   "authErr.invalidCurrentPassword": "Current password is incorrect.",
@@ -2580,6 +2581,7 @@ const zhHK: Messages = {
   "error.tooManyAttempts": "嘗試次數過多，請等幾分鐘再試。",
   "authErr.invalidCredentials": "使用者名稱或密碼不正確。",
   "authErr.usernameTaken": "此使用者名稱已被使用。",
+  "authErr.signupUnavailable": "此使用者名稱無法使用，請試另一個。",
   "authErr.invalidInput": "請檢查各欄位後再試一次。",
   "authErr.notFound": "找不到帳戶。",
   "authErr.invalidCurrentPassword": "目前密碼不正確。",
@@ -2865,8 +2867,14 @@ export interface DateFormat {
   monthNames(): string[];
 }
 
+/**
+ * A date formatter must never throw on a stored value: a row written before the real-day validation existed can still
+ * carry an impossible day, and one bad row must not turn the page that lists it into a 500. An unparseable day renders
+ * as the Unix epoch rather than taking the page down.
+ */
 function parseDay(day: string): Date {
-  return new Date(`${day}T00:00:00.000Z`);
+  const date = new Date(`${day}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? new Date(Date.UTC(1970, 0, 1)) : date;
 }
 
 /**

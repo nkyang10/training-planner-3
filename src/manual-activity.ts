@@ -13,6 +13,7 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import type { Activity } from "./types";
+import { isRealDay } from "./time";
 
 export interface ManualActivityInput {
   day: string;
@@ -36,6 +37,8 @@ export type ManualActivityResult =
   | { ok: false; error: string };
 
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** Amounts are plain decimal text; `Number()` alone would also accept `0x10`, `1e2` and `0b11`. */
+const DECIMAL = /^\d+(?:\.\d+)?$/;
 const MAX_TITLE_CHARS = 80;
 const MAX_DISTANCE_KM = 100;
 const MAX_DURATION_MIN = 600;
@@ -44,7 +47,9 @@ const MAX_RPE = 10;
 
 function parseAmount(raw: string | null | undefined, min: number, max: number): number | null | undefined {
   if (raw === null || raw === undefined || raw.trim().length === 0) return null;
-  const value = Number(raw.trim());
+  const text = raw.trim();
+  if (!DECIMAL.test(text)) return undefined;
+  const value = Number(text);
   if (!Number.isFinite(value) || value < min || value > max) return undefined;
   return value;
 }
@@ -55,14 +60,17 @@ function parseAmount(raw: string | null | undefined, min: number, max: number): 
  */
 function parseRpe(raw: string | null | undefined): number | null | undefined {
   if (raw === null || raw === undefined || raw.trim().length === 0) return null;
-  const value = Number(raw.trim());
+  const text = raw.trim();
+  if (!DECIMAL.test(text)) return undefined;
+  const value = Number(text);
   if (!Number.isFinite(value) || value < MIN_RPE || value > MAX_RPE) return undefined;
   if (Math.round(value * 2) !== value * 2) return undefined;
   return value;
 }
 
 function cleanTitle(raw: string | null | undefined): string {
-  const title = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+  // Control characters (including CR/LF) never belong in a run title: collapse them to spaces before the whitespace pass.
+  const title = typeof raw === "string" ? raw.trim().replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ") : "";
   if (title.length === 0) return "Run";
   return title.slice(0, MAX_TITLE_CHARS);
 }
@@ -75,7 +83,7 @@ function activityIdFor(userId: string, requestId: string | null | undefined): st
 
 export function buildManualActivity(input: ManualActivityInput, context: ManualActivityContext): ManualActivityResult {
   const day = typeof input.day === "string" ? input.day.trim() : "";
-  if (!ISO_DAY.test(day)) return { ok: false, error: "Pick a valid day (YYYY-MM-DD)." };
+  if (!ISO_DAY.test(day) || !isRealDay(day)) return { ok: false, error: "Pick a valid day (YYYY-MM-DD)." };
   if (day > context.today) return { ok: false, error: "A run cannot be logged in the future." };
 
   const distanceKm = parseAmount(input.distanceKm, 0, MAX_DISTANCE_KM);

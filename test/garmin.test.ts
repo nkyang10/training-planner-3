@@ -138,9 +138,50 @@ describe("createGarminClient", () => {
 
     await expect(client.token()).rejects.toMatchObject({ name: "GarminError", status: 429, body });
   });
+  it("refuses redirects and bounds every request with an abort timeout", async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ access_token: "jwt" }));
+    const client = createGarminClient({ apiKey: "personal-key", fetchImpl, baseUrl: BASE, timeoutMs: 2500 });
+    await client.token();
+    const init = fetchImpl.mock.calls[0]![1];
+    expect(init?.redirect).toBe("error");
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("rejects a response body past the byte ceiling", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ access_token: "jwt" }))
+      .mockResolvedValueOnce(new Response("x".repeat(2 * 1024 * 1024 + 1)));
+    const client = createGarminClient({ apiKey: "personal-key", fetchImpl, baseUrl: BASE });
+    await expect(client.listActivities()).rejects.toMatchObject({ name: "GarminError", message: /too large/ });
+  });
 });
 
 describe("mapGarminActivity", () => {
+  it("caps upstream labels and strips control characters", () => {
+    const activity = mapGarminActivity(
+      {
+        activityId: 900099,
+        activityName: `Morning\nRun\u0000 ${"x".repeat(300)}`,
+        trainingEffectLabel: `AEROBIC\n${"y".repeat(200)}`,
+        startTimeLocal: "2026-11-05 06:30:00",
+        distance: 1000,
+        duration: 600,
+      },
+      "runner-1",
+    );
+    expect(activity?.title.length).toBeLessThanOrEqual(120);
+    expect(activity?.title).not.toMatch(/[\u0000-\u001F\u007F]/);
+    expect(activity?.title.startsWith("Morning Run ")).toBe(true);
+    expect(activity?.trainingEffectLabel?.length).toBeLessThanOrEqual(80);
+  });
+
+  it("rejects an activity id too long to store", () => {
+    expect(
+      mapGarminActivity({ activityId: "9".repeat(65), startTimeLocal: "2026-11-05 06:30:00" }, "runner-1"),
+    ).toBeUndefined();
+  });
+
   it("maps metres, seconds, pace, heart rate, and the idempotent id", () => {
     const raw = {
       activityId: 900001,

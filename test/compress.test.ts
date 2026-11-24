@@ -20,6 +20,9 @@ describe("compression", () => {
     expect(acceptsGzip("gzip")).toBe(true);
     expect(acceptsGzip("deflate, gzip;q=0.8, br")).toBe(true);
     expect(acceptsGzip("*")).toBe(true);
+    expect(acceptsGzip("*, gzip;q=0")).toBe(false);
+    expect(acceptsGzip("gzip;q=0, *")).toBe(false);
+    expect(acceptsGzip("br, *;q=0.5")).toBe(true);
     expect(acceptsGzip("gzip;q=0")).toBe(false);
     expect(acceptsGzip("identity")).toBe(false);
     expect(acceptsGzip("br, deflate")).toBe(false);

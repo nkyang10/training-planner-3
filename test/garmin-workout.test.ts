@@ -268,6 +268,22 @@ describe("mapGarminWorkout", () => {
     expect(workout.summary.length).toBeLessThanOrEqual(320);
     expect(workout.label.length).toBeLessThanOrEqual(64);
   });
+  it("caps upstream workout names and notes and strips their control characters", () => {
+    const workout = mapGarminWorkout(
+      {
+        name: `Threshold\n${"b".repeat(300)}`,
+        notes: `line one\nline two\u0000 ${"c".repeat(2000)}`,
+        workoutSegments: [{ workoutSteps: observed }],
+      },
+      activity,
+      "2026-11-12T10:00:00.000Z",
+    );
+
+    expect(workout.name?.length).toBeLessThanOrEqual(120);
+    expect(workout.name).not.toMatch(/[\u0000-\u001F\u007F]/);
+    expect(workout.notes?.length).toBeLessThanOrEqual(1000);
+    expect(workout.notes).not.toMatch(/[\u0000-\u001F\u007F]/);
+  });
 });
 
 describe("failedGarminWorkout", () => {

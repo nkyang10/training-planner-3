@@ -603,10 +603,14 @@ export interface Store {
   transaction<T>(work: () => T): T;
   /**
    * Erase one account and every row it owns in one transaction: all 18 user-scoped tables, then the account row.
-   * Idempotent for an unknown id (every count is zero). This is the erasure path behind the profile page; there is no
-   * soft-delete state to restore afterwards.
+   * Idempotent for an unknown id (every count is zero). The same transaction records a deletion marker so an in-flight
+   * sync or coach turn cannot re-insert rows for the erased id. This is the erasure path behind the profile page.
    */
-  deleteAccount(userId: string): ErasureReport;
+  deleteAccount(userId: string, at?: string): ErasureReport;
+  /** Record that an account was erased, so late writers skip the id. */
+  markUserDeleted(userId: string, at: string): void;
+  /** True when the id belongs to an erased account. */
+  isUserDeleted(userId: string): boolean;
   /** True when a trivial query succeeds; false once the connection is closed or broken. Backs the health check. */
   ping(): boolean;
   close(): void;

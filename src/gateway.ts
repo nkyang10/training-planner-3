@@ -9,7 +9,7 @@
  * A rejected proposal is not immediately converted into a dead-end fallback. The model sees a structured validation
  * result and gets one bounded chance to repair the proposal or ask the runner a clarifying question.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import {
   COACH_MEMORY_WINDOW,
@@ -78,11 +78,10 @@ export interface GatewayOptions {
   /** Initial proposal plus at most this many repair calls. Default 2 (one repair). */
   maxAttempts?: number;
   /**
-   * Shared secret the web surface presents on every write call. When set, a request without it is rejected
-   * before the store is touched, so another local process (or a web page via CORS) cannot act as a runner.
-   * Unset in unit tests that drive the gateway directly.
+   * Shared secret the web surface presents on every write call. Required: a gateway constructed without one would accept
+   * any local caller as any runner. `src/index.ts` always supplies it (a per-boot random value when the env is unset).
    */
-  internalToken?: string;
+  internalToken: string;
   /** Per-call model abort in milliseconds; defaults to 120 s. Lower it when an edge proxy cuts earlier. */
   modelTimeoutMs?: number;
   /** Structured event log; defaults to silent so a test never writes to stdout. */
@@ -192,6 +191,16 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
     "x-content-type-options": "nosniff",
   });
   response.end(payload);
+}
+
+const USER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Constant-time token check; a missing header or one of a different size never matches. */
+function tokenMatches(provided: string | string[] | undefined, expected: string): boolean {
+  const value = typeof provided === "string" ? provided : "";
+  const left = Buffer.from(value, "utf8");
+  const right = Buffer.from(expected, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 async function readJson(request: IncomingMessage): Promise<unknown> {
@@ -715,6 +724,12 @@ function applyParsedTurn(
 ): ApplyResult {
   return options.store.transaction(() => {
     const meta = emptyMeta();
+    // The account may have been erased while the model call was in flight: the marker is committed with the deletes, so
+    // this turn must not recreate a single row for the erased id.
+    if (options.store.isUserDeleted(userId)) {
+      meta.outcome = "clarified";
+      return { reply: "That account is no longer available.", meta };
+    }
     meta.attempts = attempts;
     meta.suggestions = turn.suggestions;
     const effectiveTurn = allowMemoryWrites ? turn : { ...turn, memories: [] };
@@ -946,10 +961,11 @@ export function createGateway(options: GatewayOptions): Gateway {
         return;
       }
       if (url.pathname === "/health" && method === "GET") {
-        sendJson(response, 200, { status: "ok", model: options.modelName });
+        // Pre-auth by design so a monitor can probe liveness, but it names nothing about the deployment.
+        sendJson(response, 200, { status: "ok" });
         return;
       }
-      if (internalToken !== undefined && request.headers["x-milebook-internal-token"] !== internalToken) {
+      if (!tokenMatches(request.headers["x-milebook-internal-token"], internalToken)) {
         sendJson(response, 401, { error: { code: "unauthorized", detail: "missing or invalid internal token" } });
         return;
       }
@@ -981,7 +997,17 @@ export function createGateway(options: GatewayOptions): Gateway {
         sendJson(response, 400, { error: { code: "no-question", detail: "the last user message is empty" } });
         return;
       }
-      const userId = typeof request.headers["x-milebook-user"] === "string" ? request.headers["x-milebook-user"] : options.userId;
+      const rawUser = request.headers["x-milebook-user"];
+      if (rawUser !== undefined && (typeof rawUser !== "string" || !USER_ID_PATTERN.test(rawUser))) {
+        sendJson(response, 400, { error: { code: "invalid-user", detail: "x-milebook-user must be a short account id" } });
+        return;
+      }
+      const userId = typeof rawUser === "string" ? rawUser : options.userId;
+      // An erased account has no profile to act for; refuse before reading or writing anything on its behalf.
+      if (options.store.isUserDeleted(userId)) {
+        sendJson(response, 403, { error: { code: "account-deleted", detail: "this account was erased" } });
+        return;
+      }
       const directiveResult = directiveFromBody(body);
       if (!directiveResult.ok) {
         sendJson(response, 400, { error: { code: "invalid-directive", detail: directiveResult.detail } });
@@ -1382,7 +1408,7 @@ export function createGateway(options: GatewayOptions): Gateway {
         }
       } catch {
         if (requestId !== null) options.store.failCoachTurn(userId, requestId, now());
-        if (directive !== undefined) {
+        if (directive !== undefined && !options.store.isUserDeleted(userId)) {
           persistDirective(
             options.store,
             userId,
@@ -1404,7 +1430,7 @@ export function createGateway(options: GatewayOptions): Gateway {
       meta.blockedWrites = blockedWrites;
       meta.blockedByStates = blockedByStates;
       meta.prefill = prefill;
-      if (directive !== undefined) {
+      if (directive !== undefined && !options.store.isUserDeleted(userId)) {
         meta.directiveId = persistDirective(
           options.store,
           userId,
@@ -1423,11 +1449,15 @@ export function createGateway(options: GatewayOptions): Gateway {
         meta.validationCode = validationCode;
         if (meta.outcome !== "clarified") meta.outcome = "fallback";
         // A guardrail fallback can still leave the runner with the context the model proposed; sensitive states
-        // stay observing and surface as a confirmation card instead of being silently lost.
-        if (validationCode === "mode-guardrail" && lastProposals.length > 0) {
-          meta.states = options.store.transaction(() => applyStateProposals(options.store, userId, lastProposals, now()));
+        // stay observing and surface as a confirmation card instead of being silently lost. Only activations are
+        // replayed here: a resolve would clear a guardrail the turn was just blocked for, outside the turn transaction.
+        const activations = lastProposals.filter((proposal) => proposal.action === "activate");
+        if (!options.store.isUserDeleted(userId)) {
+          if (validationCode === "mode-guardrail" && activations.length > 0) {
+            meta.states = options.store.transaction(() => applyStateProposals(options.store, userId, activations, now()));
+          }
+          options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text: reply, createdAt: now() });
         }
-        options.store.appendMessage({ messageId: randomUUID(), userId, role: "assistant", text: reply, createdAt: now() });
       }
 
       const id = `chatcmpl-${randomUUID()}`;

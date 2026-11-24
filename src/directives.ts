@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 
 import { isMuscleId } from "./muscles";
+import { isRealDay } from "./time";
 import type {
   CoachDirective,
   CoachDirectiveReferences,
@@ -46,7 +47,6 @@ const SOURCES: readonly CoachSource[] = [
 const LANGUAGES: readonly CoachLanguage[] = ["auto", "en", "zh-Hant"];
 const TONES: readonly CoachTone[] = ["supportive", "direct", "brief"];
 const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
-const MAX_ID_CHARS = 200;
 const MAX_BACKGROUND_CHARS = 280;
 const MAX_FOCUS = 4;
 const MAX_SESSIONS = 100;
@@ -108,16 +108,23 @@ function isAllowed<T extends string>(value: string, allowed: readonly T[]): valu
   return (allowed as readonly string[]).includes(value);
 }
 
+/**
+ * An opaque id the browser may reference. The charset is deliberately narrow: these ids are interpolated into the hidden
+ * directive block the model is told is authoritative, so a newline or quote must never survive validation and forge a
+ * directive line.
+ */
+const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:_-]{0,199}$/;
+
 function readId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim();
-  return text.length > 0 && text.length <= MAX_ID_CHARS ? text : undefined;
+  return ID_PATTERN.test(text) ? text : undefined;
 }
 
 function readDay(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const text = value.trim();
-  return ISO_DAY.test(text) ? text : undefined;
+  return ISO_DAY.test(text) && isRealDay(text) ? text : undefined;
 }
 
 function parseFocus(value: unknown): { ok: true; focus?: CoachFocus[] } | { ok: false; detail: string } {

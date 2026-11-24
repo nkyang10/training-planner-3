@@ -120,6 +120,27 @@ describe("calendar ICS", () => {
     expect(ics.indexOf("DTSTART;VALUE=DATE:20261108")).toBeLessThan(ics.indexOf("DTSTART;VALUE=DATE:20261112"));
   });
 
+  it("escapes a lone CR so no value can start a new calendar line", () => {
+    const ics = buildCalendarIcs({
+      sessions: [session({ title: "Easy 5k\rATTENDEE:mailto:attacker@evil.test" })],
+      calendarName: "Demo\rATTENDEE:mailto:attacker@evil.test",
+      now: "2026-11-18T08:00:00.000Z",
+    });
+    expect(ics).not.toMatch(/(^|\r|\n)ATTENDEE:mailto:/);
+    expect(ics).toContain("X-WR-CALNAME:Demo\\nATTENDEE:mailto:attacker@evil.test");
+    expect(ics).toContain("SUMMARY:Easy 5k\\nATTENDEE:mailto:attacker@evil.test");
+  });
+
+  it("never echoes a non-day value into a date line", () => {
+    const ics = buildCalendarIcs({
+      sessions: [session({ day: "2026-13-01" })],
+      calendarName: "Demo",
+      now: "2026-11-18T08:00:00.000Z",
+    });
+    expect(ics).toContain("DTSTART;VALUE=DATE:19700101");
+    expect(ics).not.toContain("2026-13-01");
+  });
+
   it("keeps the file empty but valid when there are no sessions", () => {
     const ics = buildCalendarIcs({ sessions: [], calendarName: "Empty", now: "2026-11-18T08:00:00.000Z" });
     expect(ics).toContain("BEGIN:VCALENDAR");

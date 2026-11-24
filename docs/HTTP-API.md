@@ -19,8 +19,11 @@ Citations are symbol anchors (`(src/web.ts · createWeb)`), never line numbers; 
 
 - The gateway has **no account authentication**: it believes `x-milebook-user` and falls back to
   `MILEBOOK_DEFAULT_USER`; it is safe only because it binds loopback. `(src/gateway.ts · createGateway)`
-- `MILEBOOK_INTERNAL_TOKEN` (generated per start when unset) closes that hole: every route except `GET /health` then
-  needs `x-milebook-internal-token` or gets `401`. `(src/gateway.ts · createGateway)`, `(src/index.ts · internalToken)`
+- `MILEBOOK_INTERNAL_TOKEN` is **required**: `src/index.ts` supplies the env value or a fresh per-boot random one, and
+  every gateway route except `GET /health` needs `x-milebook-internal-token` (constant-time compared) or gets `401`.
+  `(src/gateway.ts · createGateway)`, `(src/index.ts · internalToken)`
+- `x-milebook-user` must match `^[A-Za-z0-9_-]{1,64}$` (`400 invalid-user`) and an erased account is `403
+  account-deleted`; both are checked before any store read. `(src/gateway.ts · createGateway)`
 - The web server resolves the signed cookie to a `userId` and puts **that** in `x-milebook-user`; the browser never
   sends the header and never sees the gateway. `(src/web.ts · createWeb)`
 - Browser → gateway: `POST /chat` → `fetch(gatewayUrl + "/v1/chat/completions")`, `MILEBOOK_GATEWAY_URL` defaulting to
@@ -90,16 +93,16 @@ same, and the POST also passes `isSameOriginPost`.
 | Method | Path | Auth | Input | Output / redirect | Notes | Source |
 |---|---|---|---|---|---|---|
 | GET | `/login` | public | query `error` | `200` login page, or `303 /calendar` when already signed in | error codes render from the query, no state written | `(src/web.ts · createWeb)` |
-| POST | `/login` | public+SO | form `username`, `password` | `303 /calendar` + `milebook_session` + `milebooksid`; failure `303 /login?error=<code>` | starts a background Garmin sync when a key is saved; 10 failed attempts per 15 min per IP+username get `429` | `(src/web.ts · authLimiter)` |
+| POST | `/login` | public+SO | form `username`, `password` | `303 /calendar` + `milebook_session` + `milebooksid`; failure `303 /login?error=<code>` | starts a background Garmin sync when a key is saved; the password is verified before the throttle count, so a wrong password past 10 failures per 15 min per IP+username gets `429` but the correct one still signs in | `(src/web.ts · authLimiter)` |
 | GET | `/signup` | public | query `error` | `200` signup page, or `303 /calendar` when already signed in | — | `(src/web.ts · createWeb)` |
 | POST | `/signup` | public+SO | form `username`, `displayName`, `password`, `timezone`, `goal` | `303 /calendar` + both cookies; failure `303 /signup?error=<code>` | `timezone` defaults to `Asia/Hong_Kong`; same 429 limiter, keyed `signup` | `(src/web.ts · authLimiter)` |
-| GET | `/logout` | public | — | `303 /login` | drops the in-memory page session and clears both cookies | `(src/web.ts · clearSessionCookie)` |
+| POST | `/logout` | public | — | `303 /login` | drops the in-memory page session and clears both cookies; a `GET` is `405`, so a cross-site link cannot sign the runner out | `(src/web.ts · clearSessionCookie)` |
 | POST | `/profile/sign-out-everywhere` | cookie+SO | — | `303 /login` | bumps `tokenVersion`, so every device's cookie stops validating, then clears both cookies `(src/auth.ts · signOutEverywhere)` | `(src/web.ts · createWeb)` |
-| POST | `/profile/delete` | cookie+SO | form `currentPassword`, `confirm` (the username, typed) | `303 /goodbye` on success; `303 /profile?error=invalid-current-password` or `?error=confirm-mismatch` otherwise | deletes all 18 user-scoped tables and the account row in one transaction, drops every in-memory page session for the account and clears both cookies `(src/store.ts · deleteAccount)` | `(src/web.ts · createWeb)` |
+| POST | `/profile/delete` | cookie+SO | form `currentPassword`, `confirm` (the username, typed) | `303 /goodbye` on success; `303 /profile?error=invalid-current-password` or `?error=confirm-mismatch` otherwise | deletes all 18 user-scoped tables and the account row in one transaction, records the deletion marker so an in-flight sync/turn stops, drops the cached Garmin client and every in-memory page session for the account, then clears both cookies `(src/store.ts · deleteAccount)` | `(src/web.ts · createWeb)` |
 | GET | `/privacy` | public | — | `200` page | what is stored, who else receives it, retention, export/delete choices; both locales `(src/web.ts · renderPrivacy)` | `(src/web.ts · renderPrivacy)` |
 | GET | `/goodbye` | public | — | `200` page | post-erasure confirmation; carries no account detail `(src/web.ts · renderGoodbye)` | `(src/web.ts · renderGoodbye)` |
 | GET | `/credits` | public | — | `200` page | third-party notices in both locales: three.js MIT and BodyParts3D CC BY 4.0, printed verbatim `(src/web.ts · renderCredits)` | `(src/web.ts · renderCredits)` |
-| GET / POST | `/profile` | cookie+SO | GET query `saved`, `goal`, `error`; POST form `displayName`, `timezone`, `goal`, `password`, `currentPassword` (required when `password` is set) | GET `200` page; POST `303 /profile?saved=1` (plus `&goal=1` when the goal was newly set) or `303 /profile?error=<code>` | a password change verifies `currentPassword`, bumps `tokenVersion` and reissues the session cookie for this device; the error code is `invalid-current-password` when it does not match | `(src/web.ts · createWeb)` |
+| GET / POST | `/profile` | cookie+SO | GET query `saved`, `goal`, `error`; POST form `displayName`, `timezone`, `goal`, `password`, `currentPassword` (required when `password` is set) | GET `200` page; POST `303 /profile?saved=1` (plus `&goal=1` when the goal was newly set) or `303 /profile?error=<code>` | a password change verifies `currentPassword`, bumps `tokenVersion` and reissues the session cookie for this device; a wrong current password counts toward a 10-per-15-min throttle (`429`), while edits without a password are never throttled | `(src/web.ts · createWeb)` |
 
 ### 3.3 Calendar and days
 
@@ -189,7 +192,7 @@ All twelve go through `sendAsset` with an ETag; the table gives the cache policy
 | Method | Path | Auth | Input | Output | Notes | Source |
 |---|---|---|---|---|---|---|
 | OPTIONS | any path | none | — | `204`, only `cache-control: no-store` | answered before the token check; **no CORS grant** is sent and no preflight target is advertised | `(src/gateway.ts · createGateway)` |
-| GET | `/health` | none | — | `200 {status:"ok", model}` | the only route that stays open when an internal token is set | `(src/gateway.ts · createGateway)` |
+| GET | `/health` | none | — | `200 {status:"ok"}` | the only route that stays open without a token; it names nothing about the deployment | `(src/gateway.ts · createGateway)` |
 | GET | `/v1/models` | token | — | `200 {object:"list", data:[{id, object:"model", created, owned_by:"milebook"}]}` | OpenAI-compatible shape; `id` is `MILEBOOK_MODEL_ID` (default `milebook-coach`) | `(src/gateway.ts · createGateway)` |
 | POST | `/v1/chat/completions` | token | JSON (below) | `200` completion JSON, or SSE when `stream:true` | the only write route; any other path **or method** on the gateway gets `404 not-found` | `(src/gateway.ts · createGateway)` |
 
@@ -210,8 +213,8 @@ validationCode, mode, writesAllowed, blockedWrites, directiveId, states, muscleP
 `stream:true` answers `text/event-stream` with two `chat.completion.chunk` frames and `data: [DONE]`, with no `milebook`
 metadata. `(src/gateway.ts · streamChunk)`
 
-**Headers** — `x-milebook-user` (identity, defaults to `MILEBOOK_DEFAULT_USER`), `x-milebook-request-id`,
-`x-milebook-internal-token`, and `x-milebook-idempotent-replay: true` on a replayed completion.
+**Headers** — `x-milebook-user` (identity, defaults to `MILEBOOK_DEFAULT_USER`; must match `^[A-Za-z0-9_-]{1,64}$`),
+`x-milebook-request-id`, `x-milebook-internal-token`, and `x-milebook-idempotent-replay: true` on a replayed completion.
 `(src/gateway.ts · createGateway)`
 
 **Error envelope** — `{"error":{"code","detail"}}` on every gateway failure; `sendJson` also sends `content-length`,
@@ -222,7 +225,9 @@ metadata. `(src/gateway.ts · streamChunk)`
 | 400 | `invalid-body` | unparseable JSON, non-object body, over 2 MB |
 | 400 | `no-question` | the last user message is empty |
 | 400 | `invalid-directive` | `milebook.directive` fails validation |
-| 401 | `unauthorized` | internal token required and missing or wrong |
+| 400 | `invalid-user` | `x-milebook-user` is not a short account id |
+| 401 | `unauthorized` | internal token missing or wrong (required on every route except `/health`) |
+| 403 | `account-deleted` | the account was erased; no store read or write is performed |
 | 404 | `not-found` / `reference-not-found` | any other path or method; a directive reference is missing or foreign |
 | 409 | `directive-mismatch` / `turn-in-progress` | replay of a request id with a different directive hash, or while the first turn still runs |
 | 502 | `model-failed` | the upstream model call threw or was aborted |
@@ -251,8 +256,8 @@ also slides the page session: `resolveSession` issues a fresh `milebooksid` when
 | 404 | unknown path, unknown activity, malformed day | HTML page |
 | 404 | peeks, `/chat` with an unknown `review-activity` id, proposal JSON | JSON `{error:{detail}}` or `{ok:false, detail}` |
 | 405 | wrong method on `/login`, `/signup`, `/logout`, `/profile`, `/profile/sign-out-everywhere`, `/profile/delete`, `/credits`, `/privacy`, `/goodbye`, `/coach-audit`, `/coach-states`, `/coach-states/refresh`, `/coach-states/:id/*`, `/muscle`, `/changes`, or either peek | HTML page, or JSON `{error:{detail:"method not allowed"}}` for the peeks |
-| 429 | 10 failed logins per 15 min per IP+username; 40 coach messages per 5 min per user (only turns that reach the model) | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
-| 500 | any uncaught handler error | HTML page; the message is `error.message` interpolated into the page (HTML-escaped), so internal text can reach the browser |
+| 429 | 10 failed logins per 15 min per IP+username (the correct password still passes); 10 wrong current passwords on `/profile` or `/profile/delete`; 10 failed Garmin key checks; 21 manual syncs per 5 min; 40 coach messages per 5 min per user (only turns that reach the model) | HTML page (`error.tooManyAttempts`) or JSON `{error:{detail:"too many coach messages, try again in a few minutes"}}` |
+| 500 | any uncaught handler error | HTML page with stable copy (`error.serverError`); the internal message and stack go to the server log only, never to the browser |
 | 502 | `/chat` when the gateway answers non-OK, has no reply, or is unreachable | JSON `{error:{detail:"the coach service is unavailable"}}` |
 | 504 | `/chat` when the proxy's budget expires (default 130 s, `MILEBOOK_PROXY_TIMEOUT_SECONDS`) | JSON `{error:{detail:"the coach did not answer in time"}}` |
 

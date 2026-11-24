@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createGateway, type GatewayMeta } from "../src/gateway";
+import { setManualCoachState } from "../src/coach-states";
 import { createStore, type StoreHandle } from "../src/store";
 import type { SessionKind, Store } from "../src/types";
 
 const USER = "demo-runner";
+const TOKEN = "test-internal-token";
 const TODAY = "2026-11-05";
 const SUGGESTIONS = ["Book my long run for Sunday", "Move Thursday to Friday"];
 
@@ -158,6 +160,7 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
   const gateway = createGateway({
     store: options.failStateRefresh === true ? failingStateStore(handle.store) : handle.store,
     userId: USER,
+    internalToken: TOKEN,
     modelBaseUrl: "http://model.test/v1",
     modelApiKey: "test",
     modelName: "test-model",
@@ -175,10 +178,10 @@ const base = async (fetchImpl: typeof fetch, options: BaseOptions = {}) => {
   return { handle, gateway, url: `http://127.0.0.1:${port}` };
 };
 
-const post = async (url: string, body: unknown): Promise<Response> =>
+const post = async (url: string, body: unknown, token: string = TOKEN): Promise<Response> =>
   fetch(`${url}/v1/chat/completions`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-milebook-internal-token": token },
     body: JSON.stringify(body),
   });
 
@@ -186,6 +189,52 @@ interface Completion {
   choices: Array<{ message: { content: string } }>;
   milebook: GatewayMeta;
 }
+
+describe("gateway trust boundary", () => {
+  it("refuses a request without the internal token and never calls the model", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    const body = { model: "milebook-coach", messages: [{ role: "user", content: "hi" }] };
+    const missing = await post(url, body, "");
+    expect(missing.status).toBe(401);
+    const wrong = await post(url, body, "not-the-token");
+    expect(wrong.status).toBe(401);
+    expect(model.prompts).toHaveLength(0);
+  });
+
+  it("rejects a malformed x-milebook-user before the store is touched", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    const response = await fetch(`${url}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-milebook-internal-token": TOKEN,
+        "x-milebook-user": "not valid!",
+      },
+      body: JSON.stringify({ model: "milebook-coach", messages: [{ role: "user", content: "hi" }] }),
+    });
+    expect(response.status).toBe(400);
+    expect(model.prompts).toHaveLength(0);
+  });
+
+  it("keeps /health bare and pre-auth", async () => {
+    const model = queueModel();
+    const { url } = await base(model.fetchImpl);
+    const response = await fetch(`${url}/health`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
+  });
+
+  it("refuses a turn for an erased account", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    handle.store.markUserDeleted(USER, `${TODAY}T08:00:00.000Z`);
+    const response = await post(url, { model: "milebook-coach", messages: [{ role: "user", content: "hi" }] });
+    expect(response.status).toBe(403);
+    expect(model.prompts).toHaveLength(0);
+  });
+});
 
 it("aborts a hung model call at the configured timeout", async () => {
   // A fetch that never settles unless the signal aborts: only the timeout can end the turn.
@@ -305,7 +354,7 @@ describe("coach gateway", () => {
 
   it("serves the model list an OpenAI-compatible client needs", async () => {
     const { url } = await base(modelFetch(VALID));
-    const response = await fetch(`${url}/v1/models`);
+    const response = await fetch(`${url}/v1/models`, { headers: { "x-milebook-internal-token": TOKEN } });
     const body = (await response.json()) as { data: Array<{ id: string }> };
     expect(body.data[0]?.id).toBe("milebook-coach");
   });
@@ -1715,7 +1764,8 @@ describe("coaching states in the gateway", () => {
       userId: USER,
       key: "heat",
       status: "active",
-      source: "user",
+      // A state the coach set itself (not the runner's own setting) can still be resolved by model output.
+      source: "chat",
       confidence: 1,
       evidence: ["Hot week"],
       activatedAt: "2026-11-04T07:00:00.000Z",
@@ -1911,6 +1961,32 @@ describe("coaching states in the gateway", () => {
     expect(body.milebook.states[0]).toMatchObject({ key: "travel", status: "active" });
     expect(handle.store.getActiveCoachStates(USER, "2026-11-05T08:00:00.000Z").some((state) => state.key === "travel")).toBe(true);
     expect(handle.store.listSessions(USER, "2026-11-05", "2026-11-30")).toHaveLength(0);
+  });
+
+  it("does not let model output resolve the runner's own safety state", async () => {
+    const model = queueModel();
+    const { handle, url } = await base(model.fetchImpl);
+    const state = setManualCoachState(handle.store, USER, "medical_red_flag", 21, "Cardiac warning", `${TODAY}T07:00:00.000Z`);
+    model.answers.push(
+      turn({
+        reply: "All noted - nothing changed.",
+        memories: [],
+        sessions: [],
+        stateProposals: [
+          { key: "medical_red_flag", action: "resolve", confidence: 0.9, evidence: ["runner feels fine"], ttlDays: null, note: null },
+        ],
+      }),
+    );
+    const response = await post(url, {
+      model: "milebook-coach",
+      milebook: { directive: { mode: "review", allowCalendarWrites: false, source: "composer" } },
+      messages: [{ role: "user", content: "I feel fine, is my heart ok?" }],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Completion;
+    expect(body.milebook.states).toEqual([]);
+    expect(handle.store.getCoachState(USER, state.stateId)).toMatchObject({ status: "active", source: "user" });
+    expect(handle.store.listCoachStateEvents(USER, 10).some((event) => event.action === "resolve")).toBe(false);
   });
 
   it("keeps a sensitive proposal as a confirmation card when the guardrail forces a fallback", async () => {

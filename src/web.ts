@@ -87,7 +87,7 @@ import {
   type CalendarMonthPayload,
 } from "./calendar-items";
 import { renderCoachAudit, renderCoachStates, stateChipHtml } from "./web-coach-states";
-import { localDay, localDateTime, safeTimeZone } from "./time";
+import { localDay, localDateTime, safeTimeZone, isRealDay } from "./time";
 import {
   loadSummaryForWeek,
   matchActivitiesToPlan,
@@ -348,7 +348,12 @@ function parseCookies(request: IncomingMessage): Record<string, string> {
     if (separator < 0) continue;
     const name = part.slice(0, separator).trim();
     if (name.length === 0) continue;
-    cookies[name] = decodeURIComponent(part.slice(separator + 1).trim());
+    // A cookie value is attacker-supplied text: a malformed percent escape must be ignored, not turned into a 500.
+    try {
+      cookies[name] = decodeURIComponent(part.slice(separator + 1).trim());
+    } catch {
+      // Skip the malformed cookie; the rest of the header still parses.
+    }
   }
   return cookies;
 }
@@ -410,7 +415,7 @@ function safeNext(value: string | null): string {
     return value;
   }
   // The day page's own log form returns to that day, so a logged run is reviewed in place.
-  if (value !== null && /^\/day\/\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  if (value !== null && /^\/day\/\d{4}-\d{2}-\d{2}$/.test(value) && isRealDay(value.slice("/day/".length))) return value;
   return "/calendar";
 }
 
@@ -2001,7 +2006,7 @@ function renderAccountMenu(user: AuthUser, tx: Translator): string {
       <a class="account-item" href="/calendar?garmin=setup">${escapeHtml(tx.t("account.garminKey"))}</a>
       <a class="account-item" href="/export.json">${escapeHtml(tx.t("account.export"))}</a>
       <hr class="account-sep">
-      <a class="account-item account-signout" href="/logout">${escapeHtml(tx.t("account.signout"))}</a>
+      <form method="post" action="/logout" class="account-signout-form"><button class="account-item account-signout" type="submit">${escapeHtml(tx.t("account.signout"))}</button></form>
     </nav>
   </div>`;
 }
@@ -2091,7 +2096,8 @@ function renderNotificationScript(): string {
         if (!item || typeof item !== 'object') continue;
         const link = document.createElement('a');
         link.className = 'notif-item';
-        link.href = typeof item.href === 'string' && item.href.startsWith('/') ? item.href : '/calendar';
+        // Only a same-origin absolute path is followed; '//host' would be a protocol-relative off-site link.
+        link.href = typeof item.href === 'string' && item.href.startsWith('/') && !item.href.startsWith('//') ? item.href : '/calendar';
         const title = document.createElement('strong');
         title.textContent = typeof item.title === 'string' ? item.title : (ui.notifDefault || 'Garmin sync');
         const body = document.createElement('span');
@@ -2117,12 +2123,14 @@ function renderNotificationScript(): string {
     const load = async () => {
       try {
         const response = await fetch('/notifications', { headers: { accept: 'application/json' } });
-        if (!response.ok) return;
+        if (!response.ok) return false;
         const data = await response.json();
         setUnread(data.unread);
         render(data.notifications);
+        return true;
       } catch {
         // Keep the last good list when the network blips.
+        return false;
       }
     };
 
@@ -2169,8 +2177,31 @@ function renderNotificationScript(): string {
       });
     }
 
-    void load();
-    window.setInterval(() => { void load(); }, 5000);
+    const BASE_INTERVAL = 5000;
+    const MAX_INTERVAL = 60000;
+    let interval = BASE_INTERVAL;
+    let timer = 0;
+    const schedule = () => {
+      if (timer !== 0) { window.clearTimeout(timer); timer = 0; }
+      if (!document.hidden) timer = window.setTimeout(() => { void tick(); }, interval);
+    };
+    const tick = async () => {
+      timer = 0;
+      if (document.hidden) return;
+      const ok = await load();
+      // Back off while the server is failing: a broken deployment must not be polled every 5 s by every open tab.
+      interval = ok ? BASE_INTERVAL : Math.min(MAX_INTERVAL, Math.max(BASE_INTERVAL, interval * 2));
+      schedule();
+    };
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        if (timer !== 0) { window.clearTimeout(timer); timer = 0; }
+        return;
+      }
+      interval = BASE_INTERVAL;
+      if (timer === 0) void tick();
+    });
+    void tick();
   })();
   </script>`;
 }
@@ -2930,12 +2961,14 @@ function renderChatBubble(tx: Translator): string {
       const title = document.createElement('strong');
       title.textContent = state.label || tr('stateDefault', 'Coaching state');
       const chip = document.createElement('span');
-      chip.className = 'chip state-status state-' + (state.status || 'active');
-      chip.textContent = state.status === 'observing' ? tr('statusProposed', 'Proposed') : tr('statusActive', 'Active');
+      // Allow-list the status: it becomes part of a class name, so a malformed payload must not smuggle spaces in.
+      const status = state.status === 'observing' ? 'observing' : 'active';
+      chip.className = 'chip state-status state-' + status;
+      chip.textContent = status === 'observing' ? tr('statusProposed', 'Proposed') : tr('statusActive', 'Active');
       head.append(title, chip);
       const detail = document.createElement('p');
       detail.className = 'muted small';
-      detail.textContent = state.status === 'observing'
+      detail.textContent = status === 'observing'
         ? tr('stateProposedDetail', 'The coach proposed a durable state. Confirm it or dismiss it; it is not a diagnosis.')
         : tr('stateActiveDetail', 'Saved to your coaching states.');
       card.append(head, detail);
@@ -3929,7 +3962,8 @@ function renderChatBubble(tx: Translator): string {
     const peekLink = (className, href, text) => {
       const link = document.createElement('a');
       link.className = className;
-      link.href = typeof href === 'string' && href.startsWith('/') ? href : '/calendar';
+      // Same-origin absolute paths only; '//host' would be a protocol-relative off-site link.
+      link.href = typeof href === 'string' && href.startsWith('/') && !href.startsWith('//') ? href : '/calendar';
       link.textContent = text;
       return link;
     };
@@ -4451,6 +4485,8 @@ function authErrorInfo(code: string | undefined, mode: "login" | "signup", tx: T
       return { title: loginTitle, message: tx.t("authErr.invalidCredentials"), fields: credentials };
     case "username-taken":
       return { title: signupTitle, message: tx.t("authErr.usernameTaken"), fields: ["username"], link: { href: "#username", label: tx.t("auth.error.chooseUsername") } };
+    case "signup-unavailable":
+      return { title: signupTitle, message: tx.t("authErr.signupUnavailable"), fields: ["username"] };
     case "invalid-input":
       return { title, message: tx.t("authErr.invalidInput"), fields: mode === "signup" ? signupFields : credentials };
     case "not-found":
@@ -5083,8 +5119,25 @@ export function createWeb(options: WebOptions): WebApp {
   const gatewayToken = options.gatewayToken;
   const log = options.logger ?? silentLogger;
   const trustProxy = options.trustProxy === true;
-  /** Failed-credential throttle: a key is blocked after 10 failures in 15 minutes; a success clears it. */
-  const authLimiter = createRateLimiter({ limit: 10, windowMs: 15 * 60_000 });
+  /**
+   * Failed-credential throttle. A key is blocked after this many failures in 15 minutes; a success clears it. The
+   * login route verifies the password *before* consulting the count, so a blocked key still lets the real credential
+   * through and an attacker cannot lock a known account out.
+   */
+  const AUTH_FAILURE_LIMIT = 10;
+  /** The throttle key carries the attempted username, so only this much of it is retained. */
+  const MAX_THROTTLE_KEY_CHARS = 64;
+  const authLimiter = createRateLimiter({ limit: AUTH_FAILURE_LIMIT, windowMs: 15 * 60_000 });
+  /**
+   * Wrong current-password attempts on the profile routes. The session is already authenticated, so this exists to stop
+   * a stolen session from being turned into the account password by unlimited guessing.
+   */
+  const profileLimiter = createRateLimiter({ limit: AUTH_FAILURE_LIMIT, windowMs: 15 * 60_000 });
+  /** Garmin key validation attempts: each one calls Garmin, so the server must not become a credential oracle. */
+  const garminKeyLimiter = createRateLimiter({ limit: AUTH_FAILURE_LIMIT, windowMs: 15 * 60_000 });
+  /** Manual syncs per runner; the automatic sync already has its own interval. */
+  const SYNC_ATTEMPT_LIMIT = 20;
+  const syncLimiter = createRateLimiter({ limit: SYNC_ATTEMPT_LIMIT, windowMs: 5 * 60_000 });
   /** Model-spend throttle: at most 40 coach turns per runner per 5 minutes. */
   const chatLimiter = createRateLimiter({ limit: 40, windowMs: 5 * 60_000 });
   /**
@@ -5392,11 +5445,7 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "POST") {
           const form = await readForm(request);
           const username = (form.get("username") ?? "").trim().toLowerCase();
-          const attemptKey = `${clientKey(request, trustProxy)}|login|${username}`;
-          if (authLimiter.blocked(attemptKey)) {
-            sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
-            return;
-          }
+          const attemptKey = `${clientKey(request, trustProxy)}|login|${username.slice(0, MAX_THROTTLE_KEY_CHARS)}`;
           try {
             const result = await options.auth.login({
               username: form.get("username") ?? "",
@@ -5407,7 +5456,13 @@ export function createWeb(options: WebOptions): WebApp {
             const session = startSession(result.user.userId, loginToday, true);
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
-            authLimiter.fail(attemptKey);
+            // Verify first, count after: a blocked key never rejects the correct password, so an attacker cannot lock a
+            // known account out of their own login. A wrong password past the budget still gets the 429.
+            const failures = authLimiter.fail(attemptKey);
+            if (failures > AUTH_FAILURE_LIMIT) {
+              sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
+              return;
+            }
             const code = error instanceof AuthError ? error.code : "generic";
             redirect(response, "/login?error=" + encodeURIComponent(code));
           }
@@ -5429,7 +5484,7 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "POST") {
           const form = await readForm(request);
           const signupName = (form.get("username") ?? "").trim().toLowerCase();
-          const attemptKey = `${clientKey(request, trustProxy)}|signup|${signupName}`;
+          const attemptKey = `${clientKey(request, trustProxy)}|signup|${signupName.slice(0, MAX_THROTTLE_KEY_CHARS)}`;
           if (authLimiter.blocked(attemptKey)) {
             sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, requestUser, "none"));
             return;
@@ -5448,7 +5503,12 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/calendar", { "set-cookie": [result.cookie, session] });
           } catch (error) {
             authLimiter.fail(attemptKey);
-            const code = error instanceof AuthError ? error.code : "generic";
+            // A taken username and a rejected field both surface as one generic message: the signup form should not be a
+            // free account-existence oracle. (Open signup still reveals availability by succeeding; that is the accepted
+            // risk documented in docs/SECURITY.md.)
+            const code = error instanceof AuthError
+              ? error.code === "username-taken" ? "signup-unavailable" : error.code
+              : "generic";
             redirect(response, "/signup?error=" + encodeURIComponent(code));
           }
           return;
@@ -5458,12 +5518,13 @@ export function createWeb(options: WebOptions): WebApp {
       }
 
       if (url.pathname === "/logout") {
-        if (method === "GET") {
+        if (method === "POST") {
           const sessionId = parseCookies(request)[SESSION_COOKIE];
           if (sessionId !== undefined) sessions.delete(sessionId);
           redirect(response, "/login", { "set-cookie": [options.auth.clearCookie(), clearSessionCookie(cookieSecure)] });
           return;
         }
+        // Signing out is a state change: a cross-site image or link must not be able to trigger it.
         sendHtml(request, response, 405, pageLayout(tx.t("error.methodNotAllowed"), `<p>${tx.t("error.methodNotAllowed")}</p>`, requestUser, "none"));
         return;
       }
@@ -5509,6 +5570,12 @@ export function createWeb(options: WebOptions): WebApp {
         if (method === "POST") {
           const form = await readForm(request);
           const password = form.get("password") ?? "";
+          const profileKey = `${clientKey(request, trustProxy)}|profile|${user.userId}`;
+          // Only a password change is a credential guess; a display-name edit must never be throttled.
+          if (password.length > 0 && profileLimiter.blocked(profileKey)) {
+            sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, user, "none"));
+            return;
+          }
           const patch: ProfileUpdate = {};
           if (form.has("displayName")) patch.displayName = form.get("displayName") ?? "";
           if (form.has("timezone")) patch.timezone = form.get("timezone") ?? "";
@@ -5519,6 +5586,7 @@ export function createWeb(options: WebOptions): WebApp {
           }
           try {
             const result = await options.auth.updateProfile(user.userId, patch);
+            if (password.length > 0) profileLimiter.reset(profileKey);
             // The offer appears only when the goal actually changed to a new non-empty text, so it never nags.
             const goalChanged =
               form.has("goal") && (patch.goal ?? "").trim().length > 0 && (patch.goal ?? "").trim() !== (user.goal ?? "");
@@ -5526,6 +5594,9 @@ export function createWeb(options: WebOptions): WebApp {
               "set-cookie": result.cookie,
             });
           } catch (error) {
+            if (password.length > 0 && error instanceof AuthError && error.code === "invalid-current-password") {
+              profileLimiter.fail(profileKey);
+            }
             const code = error instanceof AuthError ? error.code : "generic";
             redirect(response, "/profile?error=" + encodeURIComponent(code));
           }
@@ -5552,8 +5623,15 @@ export function createWeb(options: WebOptions): WebApp {
           const form = await readForm(request);
           const currentPassword = form.get("currentPassword") ?? "";
           const confirmation = (form.get("confirm") ?? "").trim().toLowerCase();
+          const deleteKey = `${clientKey(request, trustProxy)}|profile-delete|${user.userId}`;
+          // The password gate below is a credential check; without a throttle a stolen session could brute-force it.
+          if (profileLimiter.blocked(deleteKey)) {
+            sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, user, "none"));
+            return;
+          }
           // Two independent gates: prove the credential, then prove intent by typing the username.
           if (!(await options.auth.confirmPassword(user.userId, currentPassword))) {
+            profileLimiter.fail(deleteKey);
             redirect(response, "/profile?error=invalid-current-password");
             return;
           }
@@ -5561,7 +5639,13 @@ export function createWeb(options: WebOptions): WebApp {
             redirect(response, "/profile?error=confirm-mismatch");
             return;
           }
-          options.store.deleteAccount(user.userId);
+          // Let this runner's in-flight Garmin sync finish before the erase, then write the deletion marker in the same
+          // transaction as the deletes: a sync or coach turn that resumes afterwards sees the marker and stops.
+          await syncService.idle(user.userId);
+          options.store.deleteAccount(user.userId, now());
+          // The cached client holds the decrypted Garmin key for the process lifetime; the erase must drop it too.
+          garminClients.delete(user.userId);
+          calendarWorkoutAt.delete(user.userId);
           // Every in-memory page session for the account dies with it, so no tab keeps a stale identity.
           for (const [sessionId, session] of sessions) {
             if (session.userId === user.userId) sessions.delete(sessionId);
@@ -6448,7 +6532,7 @@ export function createWeb(options: WebOptions): WebApp {
           currentLabel = tx.t("history.thisYear");
           picker = `<select name="period" aria-label="${escapeHtml(tx.t("history.pickYear"))}">${Array.from({ length: 101 }, (_, index) => 2000 + index).map((value) => `<option value="${value}"${String(value) === year ? " selected" : ""}>${value}</option>`).join("")}</select>`;
         } else {
-          const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(periodParam) ? weekStartOf(periodParam) : currentWeek;
+          const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(periodParam) && isRealDay(periodParam) ? weekStartOf(periodParam) : currentWeek;
           periodStart = weekStart;
           periodEnd = addDays(weekStart, 6);
           periodLabel = formatWeekRange(weekStart, date);
@@ -6957,7 +7041,7 @@ export function createWeb(options: WebOptions): WebApp {
 
       if (url.pathname.startsWith("/day/")) {
         const day = url.pathname.slice("/day/".length);
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !isRealDay(day)) {
           sendHtml(request, response, 404, pageLayout(tx.t("error.notFound"), `<p>${tx.t("error.notFound")}</p>`, user, "none"));
           return;
         }
@@ -7037,6 +7121,12 @@ export function createWeb(options: WebOptions): WebApp {
       if (url.pathname === "/garmin/key" && method === "POST") {
         const form = await readForm(request);
         const next = safeNext(form.get("next"));
+        const keyLimit = `${clientKey(request, trustProxy)}|garmin-key|${user.userId}`;
+        // Each accepted key is verified against Garmin; unlimited attempts would turn this server into an oracle.
+        if (garminKeyLimiter.blocked(keyLimit)) {
+          sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, user, "none"));
+          return;
+        }
         const key = (form.get("key") ?? "").trim();
         if (key.length === 0) {
           redirect(response, withParams(next, { garmin: "setup", keyError: "Enter your Garmin personal API key." }));
@@ -7054,9 +7144,11 @@ export function createWeb(options: WebOptions): WebApp {
           client = makeGarminClient(key);
           await client.token();
         } catch (error) {
+          garminKeyLimiter.fail(keyLimit);
           redirect(response, withParams(next, { garmin: "setup", keyError: describeGarminError(error, "key") }));
           return;
         }
+        garminKeyLimiter.reset(keyLimit);
         options.store.saveGarminKey({ userId: user.userId, apiKey: key, savedAt: now() });
         garminClients.set(user.userId, client);
         try {
@@ -7144,6 +7236,13 @@ export function createWeb(options: WebOptions): WebApp {
       if (url.pathname === "/sync" && method === "POST") {
         const form = await readForm(request);
         const next = safeNext(form.get("next"));
+        const syncKey = `${clientKey(request, trustProxy)}|sync|${user.userId}`;
+        if (syncLimiter.blocked(syncKey)) {
+          sendHtml(request, response, 429, pageLayout(tx.t("error.tooManyAttempts"), `<p>${tx.t("error.tooManyAttempts")}</p>`, user, "none"));
+          return;
+        }
+        // The limiter counts attempts here (not only failures): every sync spends a Garmin API call.
+        syncLimiter.fail(syncKey);
         if (clientFor(user.userId) === undefined) {
           redirect(response, withParams(next, { garmin: "setup" }));
           return;

@@ -41,7 +41,7 @@ import {
   type MuscleProposalDraft,
 } from "./muscle-proposals";
 import { MUSCLE_CATALOG, MUSCLE_CONDITIONS } from "./muscles";
-import { addDays, localDateTime, safeTimeZone, weekday } from "./time";
+import { addDays, isRealDay, localDateTime, safeTimeZone, weekday } from "./time";
 
 export const SESSION_KINDS: readonly SessionKind[] = ["easy", "long", "interval", "tempo", "rest", "cross", "race", "racewalk"];
 const MAX_SESSIONS = 14;
@@ -858,8 +858,8 @@ export function parseCoachTurn(raw: unknown, today: string): ParseResult {
       }
       const day = typeof item["day"] === "string" ? item["day"] : "";
       if (action !== "remove") {
-        if (!ISO_DAY.test(day)) {
-          addIssue(`${path}.day`, "invalid-session-day", `not an ISO day: ${day}`, day);
+        if (!ISO_DAY.test(day) || !isRealDay(day)) {
+          addIssue(`${path}.day`, "invalid-session-day", `not a real ISO day: ${day}`, day);
         } else if (day < today) {
           addIssue(`${path}.day`, "past-session", `the past cannot be booked: ${day}`, day);
         } else if (day > horizonEnd) {

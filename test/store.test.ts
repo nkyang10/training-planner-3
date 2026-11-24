@@ -1413,6 +1413,9 @@ describe("account erasure", () => {
     expect(account.n).toBe(0);
     expect(store.getUser(owner.userId)).toBeUndefined();
     expect(store.getUser(other.userId)?.username).toBe("other_1");
+    // The erasure leaves a marker so an in-flight sync/turn cannot re-insert rows for the erased id.
+    expect(store.isUserDeleted(owner.userId)).toBe(true);
+    expect(store.isUserDeleted(other.userId)).toBe(false);
 
     // A second erasure is a no-op rather than an error: the confirmation page can be retried.
     expect(store.deleteAccount(owner.userId).total).toBe(0);
@@ -1421,6 +1424,29 @@ describe("account erasure", () => {
     handle.close();
     handles.pop();
     rmSync(directory, { recursive: true, force: true });
+  });
+
+  it("keeps the erasure marker until a profile is created for the id again", () => {
+    const handle = createStore(":memory:");
+    handles.push(handle);
+    const store = handle.store;
+    const profile: UserProfile = {
+      userId: "user-reborn",
+      username: "reborn_1",
+      displayName: "Reborn",
+      passwordHash: "scrypt$1$aa$bb",
+      timezone: "UTC",
+      goal: null,
+      createdAt: AT,
+    };
+    store.createUser(profile);
+    expect(store.isUserDeleted(profile.userId)).toBe(false);
+    store.deleteAccount(profile.userId, AT);
+    expect(store.isUserDeleted(profile.userId)).toBe(true);
+    expect(store.deleteAccount(profile.userId, AT).total).toBe(0);
+    expect(store.isUserDeleted(profile.userId)).toBe(true);
+    store.createUser(profile);
+    expect(store.isUserDeleted(profile.userId)).toBe(false);
   });
 });
 

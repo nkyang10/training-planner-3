@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { MIGRATIONS, runMigrations, schemaVersion } from "../src/migrations";
+import { MIGRATIONS, runMigrations, schemaVersion, type MigrationDatabase } from "../src/migrations";
 import { createStore } from "../src/store";
 
 const require = createRequire(import.meta.url);
@@ -144,6 +144,42 @@ describe("schema migrations", () => {
     const columns = audit.prepare("PRAGMA table_info(t)").all() as Array<{ name: string }>;
     expect(columns.map((column) => column.name)).toEqual(["a"]);
     audit.close();
+  });
+
+  it("refuses a database written by a newer build", () => {
+    const { path } = scratch();
+    createStore(`sqlite:${path}`).close();
+    const audit = new DatabaseSync(path);
+    audit.exec("PRAGMA user_version = 99");
+    expect(() => runMigrations(audit)).toThrow(/newer than this build supports/);
+    audit.close();
+  });
+
+  it("keeps the step error when the rollback itself fails", () => {
+    const db: MigrationDatabase = {
+      exec(sql) {
+        if (sql === "ROLLBACK") throw new Error("no transaction is active");
+        if (sql.startsWith("PRAGMA user_version")) return;
+      },
+      prepare(sql) {
+        return {
+          all: () => [],
+          get: () => (sql.includes("user_version") ? { user_version: 0 } : undefined),
+          run: () => undefined,
+        };
+      },
+    };
+    expect(() =>
+      runMigrations(db, {}, [
+        {
+          version: 1,
+          name: "boom",
+          up: () => {
+            throw new Error("kaput");
+          },
+        },
+      ]),
+    ).toThrow(/migration 1 \(boom\) failed: kaput/);
   });
 
   it("refuses a step without a positive integer version", () => {

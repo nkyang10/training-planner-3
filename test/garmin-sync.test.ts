@@ -80,6 +80,38 @@ describe("createGarminSync", () => {
     }
   });
 
+  it("writes nothing for an account erased while the Garmin call was in flight", async () => {
+    const handle = createStore(":memory:");
+    try {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const slow: GarminClient = {
+        token: async () => "jwt",
+        listActivities: async () => {
+          await gate;
+          return [raw];
+        },
+      };
+      const sync = createGarminSync({
+        store: handle.store,
+        clientFor: () => slow,
+        now: () => "2026-11-15T08:00:00.000Z",
+      });
+      const pending = sync.sync("u1", "2026-11-15");
+      handle.store.deleteAccount("u1", "2026-11-15T08:00:00.000Z");
+      release();
+      const outcome = await pending;
+      expect(outcome.created).toBe(0);
+      expect(handle.store.listActivities("u1")).toHaveLength(0);
+      expect(handle.store.listNotifications("u1")).toHaveLength(0);
+      expect(handle.store.getLastSync("u1")).toBeNull();
+    } finally {
+      handle.close();
+    }
+  });
+
   it("confirms an explicit no-new sync but stays silent for automatic checks", async () => {
     const handle = createStore(":memory:");
     try {

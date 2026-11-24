@@ -14,6 +14,9 @@ import type { Activity, ActivityWorkout, ActivityWorkoutStep } from "./types";
 const MAX_STEPS = 60;
 const MAX_SUMMARY = 320;
 const MAX_LABEL = 64;
+/** Upstream labels are stored and later fed to the coach prompt, so they are capped and control-free. */
+const MAX_NAME = 120;
+const MAX_NOTES = 1000;
 
 /** One parsed step, before it is turned into display rows and the grouped summary. */
 interface ParsedStep {
@@ -142,8 +145,9 @@ function workoutName(raw: unknown): string | null {
   const root = record(raw);
   if (root === undefined) return null;
   const direct = text(pick(root, ["workoutName", "name", "title", "workoutTitle"]));
-  if (direct !== null) return direct;
-  return nestedKey(root["workout"], ["workoutName", "name", "title"]);
+  if (direct !== null) return cleanText(direct, MAX_NAME);
+  const nested = nestedKey(root["workout"], ["workoutName", "name", "title"]);
+  return nested === null ? null : cleanText(nested, MAX_NAME);
 }
 
 function intensityOf(raw: Record<string, unknown>): { key: string; label: string } {
@@ -342,6 +346,11 @@ function capText(value: string, limit: number): string {
   return value.length > limit ? `${value.slice(0, limit - 1).trimEnd()}…` : value;
 }
 
+/** Strip control characters (including line breaks) and collapse whitespace before capping an upstream label. */
+function cleanText(value: string, limit: number): string {
+  return capText(value.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim(), limit);
+}
+
 /** The grouped one-line summary. */
 function summarize(entries: readonly SummaryEntry[]): string {
   return capText(entries.map((entry) => entry.text).join(" · "), MAX_SUMMARY);
@@ -357,13 +366,13 @@ function shortLabel(name: string | null, entries: readonly SummaryEntry[]): stri
 function notesOf(raw: unknown, steps: readonly ParsedStep[]): string | null {
   const root = record(raw);
   const direct = root === undefined ? null : pick(root, ["notes", "coachNotes", "description"]);
-  if (typeof direct === "string" && direct.trim().length > 0) return direct.trim();
+  if (typeof direct === "string" && direct.trim().length > 0) return cleanText(direct, MAX_NOTES);
   if (Array.isArray(direct)) {
     const parts = direct.map(text).filter((part): part is string => part !== null);
-    if (parts.length > 0) return parts.join(" ");
+    if (parts.length > 0) return cleanText(parts.join(" "), MAX_NOTES);
   }
   const fromSteps = [...new Set(steps.map((step) => step.note).filter((note): note is string => note !== null))];
-  return fromSteps.length === 0 ? null : fromSteps.join(" ");
+  return fromSteps.length === 0 ? null : cleanText(fromSteps.join(" "), MAX_NOTES);
 }
 
 function toDisplayStep(step: ParsedStep): ActivityWorkoutStep {

@@ -71,6 +71,13 @@ CREATE TABLE IF NOT EXISTS users (
   payload TEXT NOT NULL
 );
 
+-- An erased account leaves a marker behind: a sync or coach turn already in flight when the runner deleted the account
+-- must not re-insert rows for an id that no longer has a profile. This is not a soft delete (no data is kept).
+CREATE TABLE IF NOT EXISTS deleted_users (
+  user_id TEXT PRIMARY KEY,
+  deleted_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS messages (
   message_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -247,6 +254,9 @@ CREATE INDEX IF NOT EXISTS prompt_snapshots_user_created ON prompt_snapshots (us
 const INSERT_USER =
   "INSERT INTO users (user_id, username, created_at, payload) VALUES (?, ?, ?, ?)";
 const UPDATE_USER = "UPDATE users SET payload = ? WHERE user_id = ?";
+const INSERT_DELETED_USER = "INSERT OR REPLACE INTO deleted_users (user_id, deleted_at) VALUES (?, ?)";
+const DELETE_DELETED_USER = "DELETE FROM deleted_users WHERE user_id = ?";
+const SELECT_DELETED_USER = "SELECT 1 AS deleted FROM deleted_users WHERE user_id = ?";
 const INSERT_MESSAGE =
   "INSERT INTO messages (message_id, user_id, created_at, payload) VALUES (?, ?, ?, ?)";
 const INSERT_MEMORY =
@@ -445,11 +455,22 @@ class SqliteStore implements Store {
     if (location !== ":memory:") this.db.exec("PRAGMA journal_mode = WAL");
     this.db.exec("PRAGMA synchronous = NORMAL");
     this.db.exec("PRAGMA busy_timeout = 5000");
+    // Deleted payload bytes are zeroed in their pages, so a later VACUUM cannot leave an erased row readable in free space.
+    this.db.exec("PRAGMA secure_delete = ON");
     this.db.exec(SCHEMA);
     // Ordered, versioned steps; the runner owns each transaction, so a failure leaves the file at the previous version.
     this.migrations = runMigrations(this.db, this.secretBox === undefined ? {} : { secretBox: this.secretBox });
     // With an at-rest key configured, legacy plaintext Garmin keys are sealed on boot rather than on first read.
-    this.sealStoredGarminKeys();
+    const sealed = this.sealStoredGarminKeys();
+    if (sealed > 0) {
+      try {
+        // The old plaintext may still sit in WAL frames or free pages; checkpoint and compact it away now.
+        this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+        this.db.exec("VACUUM");
+      } catch {
+        // Compaction is best-effort: a backup tool holding the file must not stop the service from booting.
+      }
+    }
   }
 
   getUser(userId: string): UserProfile | undefined {
@@ -469,6 +490,8 @@ class SqliteStore implements Store {
       this.db
         .prepare(INSERT_USER)
         .run(profile.userId, profile.username, profile.createdAt, JSON.stringify(profile));
+      // A fresh profile for an id that was erased before (only possible through an admin/import path) lifts the marker.
+      this.db.prepare(DELETE_DELETED_USER).run(profile.userId);
     } catch (error) {
       // A concurrent create can still lose the race between the lookup above and this insert.
       if (error instanceof Error && error.message.includes("UNIQUE constraint failed: users.username")) {
@@ -476,6 +499,16 @@ class SqliteStore implements Store {
       }
       throw error;
     }
+  }
+
+  /** Record that an account was erased; writers check this before inserting rows for the id. */
+  markUserDeleted(userId: string, at: string): void {
+    this.db.prepare(INSERT_DELETED_USER).run(userId, at);
+  }
+
+  /** True when the id belongs to an erased account. */
+  isUserDeleted(userId: string): boolean {
+    return this.db.prepare(SELECT_DELETED_USER).get(userId) !== undefined;
   }
 
   updateUser(userId: string, patch: UserProfilePatch): UserProfile | undefined {
@@ -1162,7 +1195,7 @@ class SqliteStore implements Store {
    * Every table that carries a `user_id`. Kept as one list so a new table cannot be added without either appearing
    * here or failing the erasure test, which asserts each table is emptied.
    */
-  deleteAccount(userId: string): ErasureReport {
+  deleteAccount(userId: string, at: string = new Date().toISOString()): ErasureReport {
     return this.transaction(() => {
       const tables: Record<string, number> = {};
       let total = 0;
@@ -1175,6 +1208,8 @@ class SqliteStore implements Store {
       const account = Number(this.db.prepare("DELETE FROM users WHERE user_id = ?").run(userId).changes);
       tables["users"] = account;
       total += account;
+      // The marker is written in the same transaction, so a sync/turn that resumes after this commit sees it and stops.
+      this.db.prepare(INSERT_DELETED_USER).run(userId, at);
       return { tables, total };
     });
   }

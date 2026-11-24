@@ -57,6 +57,18 @@ export function addDays(day: string, days: number): string {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * True when `day` is a real calendar day in `YYYY-MM-DD` form. The shape regex alone accepts `2026-13-01` and
+ * `2026-02-30`; every later date computation assumes a real date and throws or rolls over otherwise, so the three
+ * parsers that accept a day from a browser or a model use this check before the value is stored.
+ */
+export function isRealDay(day: string): boolean {
+  if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const date = new Date(`${day}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return false;
+  return date.toISOString().slice(0, 10) === day;
+}
+
 /** The English weekday for a date-only value. */
 export function weekday(day: string): string {
   return new Date(`${day}T00:00:00.000Z`).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });

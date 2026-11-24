@@ -58,6 +58,26 @@ describe("manual activity", () => {
     expect(build({ rpe: "banana" })).toMatchObject({ ok: false, error: "RPE must be between 0 and 10 in half steps." });
   });
 
+  it("rejects a day that has the ISO shape but is not a real calendar day", () => {
+    expect(build({ day: "2025-13-45" })).toMatchObject({ ok: false, error: "Pick a valid day (YYYY-MM-DD)." });
+    expect(build({ day: "2026-02-30" })).toMatchObject({ ok: false, error: "Pick a valid day (YYYY-MM-DD)." });
+    expect(build({ day: "2026-11-17" }).ok).toBe(true);
+  });
+
+  it("accepts only plain decimal amounts, not hex, exponent or binary", () => {
+    expect(build({ distanceKm: "0x10" })).toMatchObject({ ok: false });
+    expect(build({ distanceKm: "1e2" })).toMatchObject({ ok: false });
+    expect(build({ durationMin: "0b11" })).toMatchObject({ ok: false });
+    expect(build({ distanceKm: "7.5" }).ok).toBe(true);
+  });
+
+  it("strips control characters from a title", () => {
+    const result = build({ title: "Easy\u0000run\r\nwith\tspaces" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.activity.title).toBe("Easy run with spaces");
+  });
+
   it("leaves the RPE null when the runner skipped it", () => {
     for (const input of [{ rpe: "" }, { rpe: null }, {}]) {
       const result = build(input);

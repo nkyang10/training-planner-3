@@ -27,20 +27,27 @@ export function isCompressibleType(contentType: string): boolean {
 
 /**
  * Whether the client accepts gzip. `gzip;q=0` and `identity` are treated as refusals, and `*` as acceptance; a header the
- * caller cannot parse is a refusal, because sending an encoding the client did not ask for breaks it.
+ * caller cannot parse is a refusal, because sending an encoding the client did not ask for breaks it. An explicit `gzip`
+ * entry outranks `*` in either order: `*, gzip;q=0` is a refusal, not an acceptance.
  */
 export function acceptsGzip(header: string | string[] | undefined): boolean {
   const raw = Array.isArray(header) ? header.join(",") : header;
   if (raw === undefined || raw.trim() === "") return false;
+  let starWeight: number | undefined;
+  let gzipWeight: number | undefined;
   for (const part of raw.split(",")) {
     const [tokenRaw, ...parameters] = part.split(";");
     const token = (tokenRaw ?? "").trim().toLowerCase();
     if (token !== "gzip" && token !== "*") continue;
     const weightParameter = parameters.map((parameter) => parameter.trim()).find((parameter) => /^q=/i.test(parameter));
     const weight = weightParameter === undefined ? 1 : Number(weightParameter.slice(2));
-    if (Number.isFinite(weight) && weight > 0) return true;
+    if (!Number.isFinite(weight) || weight < 0 || weight > 1) continue;
+    if (token === "gzip") gzipWeight = weight;
+    else starWeight = weight;
   }
-  return false;
+  // The specific entry is authoritative; `*` is only a fallback when the header never names gzip.
+  const chosen = gzipWeight ?? starWeight;
+  return chosen !== undefined && chosen > 0;
 }
 
 export interface EncodedBody {

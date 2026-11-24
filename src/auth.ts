@@ -23,6 +23,14 @@ export const AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 const HASH_PREFIX = "scrypt";
 const SALT_BYTES = 16;
 const HASH_BYTES = 64;
+/**
+ * A fixed, valid scrypt hash of a value no runner knows. An unknown username is verified against it so the login path
+ * costs the same whether or not the account exists; without it the response time is a username-enumeration oracle.
+ */
+const DUMMY_PASSWORD_HASH =
+  "scrypt$245826cc344a900ffde02e5c1ffa38a3$a4f8d901375e73be69546a929dc0b5bcfb6f78ed115395400259203a5b641641ee976a9a191f1b246cc6536228e8725655658474f9d2d7050d0d82a2811c146c";
+/** The longest username the policy allows; anything longer is not an account, so it never reaches the store. */
+const MAX_USERNAME_CHARS = 24;
 const USERNAME_PATTERN = /^[a-z0-9_]{3,24}$/;
 const HEX_PATTERN = /^[0-9a-f]+$/i;
 const BASE64URL_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -330,8 +338,18 @@ export function createAuth(options: AuthOptions): Auth {
   const login = async (input: LoginInput): Promise<AuthResult> => {
     const username = typeof input.username === "string" ? input.username.trim().toLowerCase() : "";
     const password = typeof input.password === "string" ? input.password : "";
+    if (username.length > MAX_USERNAME_CHARS) {
+      // No account can have this name; spend the same scrypt work anyway so the timing oracle stays closed.
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      throw new AuthError("invalid-credentials", "invalid username or password");
+    }
     const profile = username.length === 0 ? undefined : store.getUserByUsername(username);
-    if (profile === undefined || !(await verifyPassword(password, profile.passwordHash))) {
+    if (profile === undefined) {
+      // Equalize the work for an unknown name: the response must not be measurably faster than a wrong password.
+      await verifyPassword(password, DUMMY_PASSWORD_HASH);
+      throw new AuthError("invalid-credentials", "invalid username or password");
+    }
+    if (!(await verifyPassword(password, profile.passwordHash))) {
       throw new AuthError("invalid-credentials", "invalid username or password");
     }
     return { user: toAuthUser(profile), cookie: setCookie(profile) };

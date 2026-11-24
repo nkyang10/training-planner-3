@@ -50,7 +50,8 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Workout enrichment | 3 per sync, 2 attempts; 6 per calendar render, 2.5 s budget, 60 s throttle | `(src/garmin-sync.ts · DEFAULT_WORKOUT_FETCH_LIMIT)`, `(src/garmin-sync.ts · DEFAULT_MAX_WORKOUT_ATTEMPTS)`, `(src/web.ts · CALENDAR_WORKOUT_BUDGET)`, `(src/web.ts · CALENDAR_WORKOUT_TIME_MS)`, `(src/web.ts · CALENDAR_WORKOUT_THROTTLE_MS)` | Best effort; never fails the sync |
 | Future plan import | impossible with a Personal API key | `(src/garmin.ts · createGarminClient)` | Needs a Garmin SSO web session and a terms decision |
 | Key storage | sealed AES-256-GCM when `MILEBOOK_GARMIN_KEY` is set, plaintext otherwise | `(src/secrets.ts · createSecretBox)`, `(src/store.ts · saveGarminKey)` | Without the variable the key is protected by file permissions only; a copied database is unreadable with it |
-| Auto sync on page load | at most once per 10 minutes | `(src/web.ts · createWeb)` | A manual sync is never throttled |
+| Auto sync on page load | at most once per 10 minutes | `(src/web.ts · createWeb)` | A manual sync has its own throttle (next row) |
+| Manual sync | 20 per runner per 5 minutes → `429` | `(src/web.ts · syncLimiter)` | Every manual pull spends a Garmin API call; the in-flight join still collapses concurrent calls |
 
 ## 5. Muscles and states
 
@@ -75,8 +76,8 @@ answers should quote this page. When you add a cap, add its row in the same chan
 | Body size | 200 KB web, 2 MB gateway | `(src/web.ts · readJsonBody)` | Larger bodies are rejected, not truncated |
 | Page sessions | 500 in memory, 24 h, lost on restart | `(src/web.ts · createWeb)` | Only gates the "sync on new session" decision |
 | Session revocation | immediate, all devices | `(src/auth.ts · signOutEverywhere)` | Bumps `tokenVersion`; there is no per-device list, so revocation is all-or-nothing |
-| Account erasure | immediate and complete, no restore | `(src/store.ts · deleteAccount)` | One transaction over all 19 tables; a host backup can still hold a copy until it is pruned (newest 14 kept) |
-| Sign-in failures | 10 per client+route+username per 15 min | `(src/rate-limit.ts · createRateLimiter)` | In-process; a proxy makes every runner share one client address |
+| Account erasure | immediate and complete, no restore | `(src/store.ts · deleteAccount)` | One transaction over all 19 tables, plus a `deleted_users` marker (id + time only) that stops an in-flight sync/turn from re-inserting rows; a host backup can still hold a copy until it is pruned (newest 14 kept) |
+| Sign-in failures | 10 per client+route+username per 15 min | `(src/rate-limit.ts · createRateLimiter)` | In-process; a proxy makes every runner share one client address. The password is verified before the count, so the correct one still signs in; a wrong one past the budget gets `429` |
 | Coach turns | 40 per runner per 5 min | `(src/rate-limit.ts · createRateLimiter)` | |
 | Coach turn lease | 10 minutes | `(src/gateway.ts · TURN_LEASE_MS)` | An `in_progress` turn older than the lease is reclaimed on replay; the 120 s upstream abort makes a live turn that slow impossible |
 | Static asset | 11 MB anatomy GLB, no compression | `(src/web.ts · sendAsset)` | ETag revalidation; first load is 11 MB. Text assets and HTML are gzipped (CSS 124 KB → 23 KB, login 31 KB → 8.7 KB); the GLB is already a compressed container, so gzipping it costs CPU for a few percent |

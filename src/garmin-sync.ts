@@ -35,7 +35,8 @@ export interface GarminSyncCallOptions {
 export interface GarminSync {
   sync(userId: string, today: string, options?: GarminSyncCallOptions): Promise<GarminSyncOutcome>;
   syncInBackground(userId: string, today: string): void;
-  idle(): Promise<void>;
+  /** Wait for every in-flight sync, or only the one belonging to `userId`. */
+  idle(userId?: string): Promise<void>;
 }
 
 const DEFAULT_LIMIT = 100;
@@ -128,13 +129,17 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
       maxWorkoutAttempts,
     );
     for (const candidate of candidates) {
+      // The account may have been erased while this sync was awaiting Garmin; do not recreate its rows.
+      if (options.store.isUserDeleted(userId)) return;
       const garminId = garminActivityId(candidate.activity.activityId);
       if (garminId.length === 0) continue;
       const at = now();
       try {
         const raw = await fetchWorkouts.call(client, garminId);
+        if (options.store.isUserDeleted(userId)) return;
         options.store.saveActivityWorkout(mapGarminWorkout(raw, candidate.activity, at));
       } catch (error) {
+        if (options.store.isUserDeleted(userId)) return;
         if (error instanceof GarminError && error.status === 404) {
           // A 404 is Garmin saying this activity has no planned workout; a confirmed "none" ends the retries.
           options.store.saveActivityWorkout(mapGarminWorkout([], candidate.activity, at));
@@ -153,6 +158,9 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
 
     try {
       const raw = await client.listActivities(limit);
+      // The runner may have deleted the account while the Garmin call was in flight: the marker was committed by the
+      // delete transaction, so stop before writing any row for the erased id.
+      if (options.store.isUserDeleted(userId)) return EMPTY;
       const fromDay = shiftDay(today, -(WINDOW_DAYS - 1));
       let imported = 0;
       let created = 0;
@@ -182,6 +190,7 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
         // The activity rows are already committed; a workout overlay must never turn a good sync into a failure.
       }
 
+      if (options.store.isUserDeleted(userId)) return EMPTY;
       const at = now();
       options.store.recordSync(userId, at);
       if (created > 0 && newest !== null) {
@@ -197,6 +206,7 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
       }
       return { imported, created, newest, error: null };
     } catch (error) {
+      if (options.store.isUserDeleted(userId)) return EMPTY;
       const at = now();
       options.store.recordSync(userId, at);
       const message = describeGarminError(error, "sync");
@@ -216,7 +226,7 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
     const existing = inFlight.get(userId);
     if (existing !== undefined) {
       const outcome = await existing;
-      if (confirmUnchanged && outcome.error === null && outcome.created === 0) {
+      if (confirmUnchanged && outcome.error === null && outcome.created === 0 && !options.store.isUserDeleted(userId)) {
         options.store.appendNotification(unchangedNotification(userId, outcome.imported, now()));
       }
       return outcome;
@@ -232,7 +242,7 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
 
     if (!confirmUnchanged) return task;
     const outcome = await task;
-    if (outcome.error === null && outcome.created === 0) {
+    if (outcome.error === null && outcome.created === 0 && !options.store.isUserDeleted(userId)) {
       options.store.appendNotification(unchangedNotification(userId, outcome.imported, now()));
     }
     return outcome;
@@ -242,7 +252,15 @@ export function createGarminSync(options: GarminSyncOptions): GarminSync {
     void sync(userId, today);
   };
 
-  const idle = async (): Promise<void> => {
+  const idle = async (userId?: string): Promise<void> => {
+    if (userId !== undefined) {
+      // Wait for the sync that was already running when the erase began. A sync started during this wait reuses the
+      // in-flight task or sees the deletion marker after its own await, so one wait is enough and a stream of new syncs
+      // cannot delay the erase indefinitely.
+      const pending = inFlight.get(userId);
+      if (pending !== undefined) await pending;
+      return;
+    }
     while (tasks.size > 0) await Promise.all([...tasks]);
   };
 

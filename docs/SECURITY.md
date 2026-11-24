@@ -15,7 +15,8 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Password policy | minimum 8 characters, no upper bound, no complexity rule | `(src/auth.ts · validatePassword)` |
 | Timezone validation | pattern plus a real `Intl.DateTimeFormat` check | `(src/auth.ts · normalizeTimezone)` |
 | Password change | requires the current password, verified against the stored hash before the hash is rotated; a wrong or missing value returns `invalid-current-password` and changes nothing | `(src/auth.ts · updateProfile)`, `(src/web.ts · createWeb)` profile POST |
-| Login throttle | 10 failures per (client, route, username) per 15 min → `429`; a success clears the key | `(src/rate-limit.ts · createRateLimiter)`, `(src/web.ts · createWeb)` |
+| Login throttle | 10 failures per (client, route, username) per 15 min → `429`; the password is verified **before** the count is consulted, so a blocked key still admits the real credential (an attacker cannot lock a known account out) and a success clears the key. The web route keeps at most 64 characters of the attempted name, the limiter bounds any key to 128 characters and holds at most 10 000 windows, evicting the oldest | `(src/rate-limit.ts · createRateLimiter)`, `(src/web.ts · createWeb)` |
+| Username enumeration | an unknown username is verified against a fixed dummy scrypt hash, so its response time matches a wrong password; the signup route maps a taken name to the generic `signup-unavailable` message. Open signup still reveals availability by succeeding — the accepted risk in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) §4 | `(src/auth.ts · login)`, `(src/web.ts · createWeb)` |
 | Credential stuffing at scale | throttled per client address; behind a reverse proxy set `MILEBOOK_TRUST_PROXY=true` so the **last** `X-Forwarded-For` hop (the one your proxy appended) is used instead of the shared proxy address `(src/web.ts · clientKey)`. A client-rotated prefix cannot buy a fresh budget, a malformed header falls back to the socket, and the header is ignored entirely unless the switch is on |
 | Hashing cost | `scrypt` runs asynchronously on the thread pool, so a burst of sign-ins does not stall other requests; measured ~56 ms per hash and `/health` stayed at 2 ms median during eight parallel verifications | `(src/auth.ts · hashPassword)` |
 
@@ -29,7 +30,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Revocation | enforced by a session version: the profile carries `tokenVersion`, the cookie carries the version it was minted with, and a mismatch invalidates the cookie. A password change bumps it and reissues a cookie for the calling device; `POST /profile/sign-out-everywhere` bumps it and clears both cookies | `(src/auth.ts · signOutEverywhere)`, `(src/auth.ts · read)` |
 | Secret | `MILEBOOK_AUTH_SECRET`, required, ≥ 32 characters, process refuses to start without it | `(src/index.ts · requireEnv)` |
 | Page-session cookie | `milebooksid` is an in-memory id that only gates "pull Garmin on a new browser session"; it grants no access | `(src/web.ts · startSession)` |
-| Logout | clears both cookies and drops the page session | `(src/web.ts · createWeb)` |
+| Logout | `POST /logout` clears both cookies and drops the page session; a `GET` is `405`, so a cross-site image or link cannot end the session | `(src/web.ts · createWeb)` |
 
 ## 3. Authorization and isolation
 
@@ -37,8 +38,9 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
   change sets, states, muscle records, notifications and audit pages (`(test/store.test.ts)`, `(test/web.test.ts)`).
 - `/coach-audit` and `/coach-states` are per-runner internal pages: they require the signed cookie and show only that
   runner's rows. They are not linked from the end-user navigation.
-- The coach gateway has no account auth of its own; it trusts `x-milebook-user` **after** checking the shared internal
-  token, and binds loopback only. Without the token a request is rejected with `401` before any store read
+- The coach gateway has no account auth of its own; it requires the shared internal token on every route except the bare
+  `/health` probe, compares it in constant time, validates `x-milebook-user` against `^[A-Za-z0-9_-]{1,64}$`, and binds
+  loopback only. Without the token a request is rejected with `401` before any store read; an erased account gets `403`
   (`(src/gateway.ts · createGateway)`).
 - Comment-only coach turns cannot write: the directive carries `allowCalendarWrites: false` and the gateway refuses
   calendar writes for such a turn (`(src/gateway.ts · createGateway)`).
@@ -57,6 +59,11 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Open redirect | `/language` accepts only a same-origin path; `next` params are allow-listed | `(src/web.ts · safeLanguageNext)`, `(src/web.ts · safeNext)` |
 | Output escaping | every interpolated value goes through `escapeHtml`; inline JSON through `jsonForScript` | `(src/web-html.ts · escapeHtml)` |
 | Gateway CORS | no grant at all; `OPTIONS` returns a bare `204` | `(src/gateway.ts · createGateway)` |
+| Malformed cookies | a percent escape that fails to decode is ignored instead of failing the request | `(src/web.ts · parseCookies)` |
+| Garmin outbound | 15 s abort per request, `redirect: "error"`, a 2 MB body ceiling, 500-char error bodies; stored labels are capped (activity title 120, workout name 120, notes 1000) and control-stripped | `(src/garmin.ts · createGarminClient)`, `(src/garmin-workout.ts · mapGarminWorkout)` |
+| Erasure marker | a `deleted_users` row is written in the same transaction as the deletes; sync and coach writes check it after every await and skip the erased id, and the cached Garmin client is dropped | `(src/store.ts · deleteAccount)`, `(src/garmin-sync.ts · createGarminSync)`, `(src/gateway.ts · applyParsedTurn)` |
+| Deleted bytes | `PRAGMA secure_delete = ON` zeroes freed payloads; after sealing legacy Garmin keys the WAL is checkpointed and the file vacuumed | `(src/store.ts · SqliteStore)` |
+| Schema downgrade | a file stamped by a newer build is refused before any step runs; a failing `ROLLBACK` never masks the step error | `(src/migrations.ts · runMigrations)` |
 
 ## 5. Secrets and key material
 
@@ -65,7 +72,7 @@ The disclosure policy is in [SECURITY.md](../SECURITY.md) at the repository root
 | Auth secret | environment or `data/milebook-auth.secret` | never logged; rotation invalidates every session |
 | Model API key | environment or `data/milebook-model.secret` | sent only to the configured endpoint |
 | Internal token | generated per start, or `MILEBOOK_INTERNAL_TOKEN` | in-process only |
-| Garmin personal key | sealed with AES-256-GCM (fresh 96-bit nonce, authenticated) when `MILEBOOK_GARMIN_KEY` is set; plaintext otherwise, and the boot log warns (**open** in that case) | masked to last 4 characters in the UI, never returned by export; legacy plaintext rows are sealed on the first boot after the key appears |
+| Garmin personal key | sealed with AES-256-GCM (fresh 96-bit nonce, authenticated) when `MILEBOOK_GARMIN_KEY` is set; plaintext otherwise, and the boot log warns (**open** in that case) | masked to last 4 characters in the UI, never returned by export; legacy plaintext rows are sealed on the first boot after the key appears, then the WAL is checkpointed and the file vacuumed so the old bytes do not linger |
 | Password hash | scrypt string in `users.payload` | never returned by any route |
 | Logs | one JSON line per request, asset, coach turn and boot; credential-shaped field names are redacted by name and values over 300 characters truncated; the runner's message text is never logged | `(src/log.ts · createLogger)` |
 
@@ -95,7 +102,7 @@ with its revisit trigger in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) �
 |---|---|
 | Data inventory | profile (name, timezone, goal), plan, activities and Garmin metrics, coach messages, directives, change sets, coaching states, muscle check-ins (health-adjacent), preferences, notifications |
 | Export | `/export.json` and `/export.ics`; the bundle omits the password hash, the Garmin key and coach messages (`(src/export.ts · buildExportBundle)`) |
-| Erasure | **open** — there is no account-deletion route and no cascade delete; a runner cannot remove their data |
+| Erasure | **closed** — `POST /profile/delete` requires the current password and the typed username, then deletes every user-scoped row and the account in one transaction and leaves a marker so an in-flight sync or coach turn cannot recreate rows (`(src/store.ts · deleteAccount)`, `(src/web.ts · createWeb)`) |
 | Retention | resolved states and events pruned after 180 days; memories windowed; proposals expire at read time; messages and turns have no retention limit |
 | Third-party transfer | coach prompts (including health-adjacent text) are sent to the configured model provider; there is no privacy policy or consent surface in the app (**open**) |
 | Medical posture | the product is not a medical device; the licence carries the disclaimer and the muscle/state copy routes red flags to a clinician |
@@ -107,8 +114,9 @@ with its revisit trigger in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) �
 - Cannot reach the gateway from another host (loopback bind).
 - Cannot drive the gateway from a web page (no CORS grant) or another local process (internal token).
 - **Can** read traffic in clear text on the LAN while TLS is missing.
-- **Can** brute-force a known username at 10 attempts per 15 minutes per client address, which is slow but not
-  eliminated, and can rotate client addresses.
+- **Can** brute-force a known username at scrypt speed; a wrong password past 10 failures per 15 minutes gets `429`, but
+  the throttle never blocks the correct password, so the account cannot be locked out. Rotating client addresses buys a
+  fresh budget, which is why the scrypt cost and the generic failure copy are the real controls.
 
 ## 9. Rules that must not regress
 
@@ -119,3 +127,9 @@ with its revisit trigger in [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) �
 5. Every interpolated value is escaped; inline JSON goes through `jsonForScript`.
 6. `Secure` cookies and HSTS turn on with TLS; production must set `MILEBOOK_COOKIE_SECURE=true`.
 7. Secrets never enter the repository; the lint gate and `.gitignore` stay in place.
+8. A write that resumes after an `await` checks `store.isUserDeleted(userId)` before inserting; the erasure marker is
+   written in the delete transaction and must stay there.
+9. The gateway's internal token stays required and constant-time compared; `/health` stays bare and pre-auth.
+10. Outbound Garmin calls keep a timeout, `redirect: "error"` and the body ceiling; upstream text is capped before it is
+    stored or put in a prompt.
+11. The rate limiter keeps a hard window ceiling; the login route verifies the credential before consulting the count.
